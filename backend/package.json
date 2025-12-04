@@ -10,6 +10,9 @@
     "build": "prisma generate && tsc",
     "start": "node dist/index.js"
   },
+  "prisma": {
+    "seed": "ts-node --transpile-only prisma/seed.ts"
+  },
   "author": "SreeCharan Desu",
   "license": "MIT",
   "devDependencies": {
@@ -26,6 +29,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@faker-js/faker": "^10.1.0",
     "@prisma/adapter-pg": "^7.1.0",
     "axios": "^1.7.7",
     "bcrypt": "^5.1.1",
@@ -42,7 +46,7 @@
     "jsonwebtoken": "^9.0.2",
     "node-fetch": "^3.3.2",
     "node-mailer": "^0.1.1",
-    "nodemailer": "^6.9.15",
+    "nodemailer": "^7.0.11",
     "pg": "^8.16.3",
     "postgres": "^3.4.4",
     "socket.io-client": "^4.7.5",

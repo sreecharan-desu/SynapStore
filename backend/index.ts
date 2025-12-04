@@ -1,22 +1,22 @@
 import express from "express";
 import cors from "cors";
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+
+import dotenv from "dotenv";
+import v1Router from "./routes/v1";
+
+dotenv.config();
 
 const app = express();
-// Middleware
-app.use(express.json({ limit: "10mb" })); // Increase limit to 10MB
+
+app.use(express.json({ limit: "10mb" }));
 app.use(cors());
 
-const connectionString = process.env.DATABASE_URL!;
-const adapter = new PrismaPg({ connectionString });
+app.use("/api/v1", v1Router);
 
-export const prisma = new PrismaClient({ adapter });
 app.get("/", async (req, res) => {
-  res.send({ msg: "Hello from backend", count: await prisma.user.count() });
+  res.send("Hello from backend");
 });
 
-// Start the server
-app.listen(3000, () => {
-  console.log(`Listening on Port number ${3000}`);
+app.listen(process.env.PORT || 3000, () => {
+  console.log(`Listening on Port number ${process.env.PORT || 3000}`);
 });
