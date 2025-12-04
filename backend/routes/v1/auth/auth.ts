@@ -4,46 +4,15 @@ import { generateOtp, getOtpExpiryDate } from "../../../lib/otp";
 import { sendOtpEmail } from "../../../lib/mailer";
 import { hashPassword, comparePassword, signJwt } from "../../../lib/auth";
 import { z } from "zod";
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import prisma from "../../../lib/prisma";
 import type { Request, Response } from "express";
+import { crypto$ } from "../../../lib/crypto";
 import rateLimiter from "../../../middleware/ratelimitter";
 
-/**
- Robust Auth Router
- - POST /api/v1/auth/register
- - POST /api/v1/auth/resend-otp
- - POST /api/v1/auth/signin
- - POST /api/v1/auth/verify-otp
-*/
+const router = Router();
+const ENCRYPTED_FIELDS = ["username", "email", "imageUrl", "OtpCode"];
 
-// ---------- Prisma client ----------
-const connectionString = process.env.DATABASE_URL!;
-const adapter = new PrismaPg({ connectionString });
-const prisma = new PrismaClient({ adapter });
-
-// ---------- Helpers ----------
-type ErrorResponse = { error: string; code?: string; details?: any[] };
-
-const respond = (res: Response, status: number, body: object) =>
-  res.status(status).json(body);
-
-// Map zod issues to friendly details
-const zodDetails = (err: any) =>
-  err?.issues?.map((i: any) => ({
-    path: i.path.join("."),
-    message: i.message,
-  })) ?? [];
-
-// Safe parse wrapper
-const safeParseBody = <T>(schema: z.ZodTypeAny, body: unknown) => {
-  const parsed = schema.safeParse(body);
-  return parsed.success
-    ? { ok: true, data: parsed.data as T }
-    : { ok: false, error: parsed.error };
-};
-
-// ---------- Schemas ----------
+/* Schemas */
 const registerSchema = z.object({
   username: z.string().min(3, "username must be at least 3 characters"),
   email: z.string().email("invalid email"),
@@ -64,9 +33,46 @@ const verifyOtpSchema = z.object({
   otp: z.string().min(4, "otp too short"),
 });
 
-const router = Router();
+/* Helpers */
+type ErrorResponse = { error: string; code?: string; details?: any[] };
+const respond = (res: Response, status: number, body: object) =>
+  res.status(status).json(body);
 
-// ---------- Rate limiters (in-memory) ----------
+const zodDetails = (err: any) =>
+  err?.issues?.map((i: any) => ({
+    path: i.path.join("."),
+    message: i.message,
+  })) ?? [];
+
+async function findUserByEmail(email: string) {
+  // deterministic encryption for lookup
+  const enc = crypto$.encryptCellDeterministic(email);
+  const row = await prisma.user.findUnique({
+    where: { email: enc },
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      password: true,
+      OtpCode: true,
+      otpExpiresAt: true,
+    },
+  });
+  if (!row) return null;
+  return crypto$.decryptObject(row, ENCRYPTED_FIELDS) as any;
+}
+
+async function findUserByUsername(username: string) {
+  const enc = crypto$.encryptCellDeterministic(username);
+  const row = await prisma.user.findUnique({
+    where: { username: enc },
+    select: { id: true, username: true, email: true },
+  });
+  if (!row) return null;
+  return crypto$.decryptObject(row, ENCRYPTED_FIELDS) as any;
+}
+
+/* Rate limiters (in-memory) */
 const registerLimiter = rateLimiter({
   keyPrefix: "register-ip",
   windowMs: 60 * 1000,
@@ -107,59 +113,163 @@ const verifyLimiter = rateLimiter({
     req.body?.email ? String(req.body.email).toLowerCase() : req.ip ?? null,
 });
 
-// ---------- POST /register ----------
+/* Routes */
+
+/* Register */
 router.post(
   "/register",
   registerLimiter,
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response, next) => {
     try {
-      const parsed: any = safeParseBody(registerSchema, req.body);
-      if (!parsed.ok) {
+      const parsed = registerSchema.safeParse(req.body);
+      if (!parsed.success) {
         return respond(res, 400, {
           error: "validation failed",
           details: zodDetails(parsed.error),
         } as ErrorResponse);
       }
-
       const { username, email, password } = parsed.data;
 
-      // generate otp + expiry
-      const otp = generateOtp();
-      const otpExpiry = getOtpExpiryDate();
+      // check duplicates via deterministic encryption lookups
+      const existingEmail = await findUserByEmail(email);
+      if (existingEmail) {
+        return respond(res, 409, {
+          error: "user already exists",
+          code: "user_exists",
+        });
+      }
+      const existingUsername = await findUserByUsername(username);
+      if (existingUsername) {
+        return respond(res, 409, {
+          error: "user already exists",
+          code: "user_exists",
+        });
+      }
 
-      // hash password
+      // prepare data
       const hashed = await hashPassword(password);
+      const encUsername = crypto$.encryptCellDeterministic(username);
+      const encEmail = crypto$.encryptCellDeterministic(email);
 
-      // create user with otp (atomic)
-      let user;
+      // create user (password stored hashed, not encrypted)
+      let userRow;
       try {
-        user = await prisma.user.create({
+        userRow = await prisma.user.create({
           data: {
-            username,
-            email,
+            username: encUsername,
+            email: encEmail,
             password: hashed,
-            OtpCode: otp,
-            otpExpiresAt: otpExpiry,
           },
-          select: { id: true, email: true, username: true },
+          select: { id: true, username: true, email: true },
         });
       } catch (pErr: any) {
-        // friendly unique conflict
+        console.error("Prisma create user error:", pErr);
+        // In case of race unique violation, return friendly message
         if (pErr?.code === "P2002") {
           return respond(res, 409, {
             error: "user already exists",
             code: "user_exists",
           });
         }
-        console.error("Prisma create user error:", pErr);
         return respond(res, 502, { error: "database error creating user" });
       }
 
-      // send OTP; if mail fails, clear otp so user isn't stuck
+      // generate and store encrypted OTP
+      const otp = generateOtp();
+      const otpExpiry = getOtpExpiryDate();
+      const encOtp = crypto$.encryptCell(otp);
+
       try {
-        await sendOtpEmail(user.email, otp);
+        await prisma.user.update({
+          where: { id: userRow.id },
+          data: { OtpCode: encOtp, otpExpiresAt: otpExpiry },
+        });
+      } catch (pErr: any) {
+        console.error("Prisma update OTP error:", pErr);
+        // best-effort cleanup: delete user to avoid incomplete account? (optional)
+        // For now return error and log
+        return respond(res, 502, { error: "database error storing otp" });
+      }
+
+      // send OTP to plaintext email provided by client
+      try {
+        await sendOtpEmail(email, otp);
       } catch (mailErr: any) {
         console.error("Failed to send OTP email:", mailErr);
+        // clear otp to avoid leaving unusable OTP
+        try {
+          await prisma.user.update({
+            where: { id: userRow.id },
+            data: { OtpCode: null, otpExpiresAt: null },
+          });
+        } catch (clearErr) {
+          console.error("Failed to clear OTP after mail failure:", clearErr);
+        }
+        return respond(res, 502, {
+          error: "failed to send verification email, please try again later",
+        });
+      }
+
+      // decrypt user fields for response
+      const decrypted = crypto$.decryptObject(userRow, ENCRYPTED_FIELDS) as any;
+
+      return respond(res, 201, {
+        message: "registered - otp sent",
+        user: {
+          id: decrypted.id,
+          username: decrypted.username,
+          email: decrypted.email,
+        },
+      });
+    } catch (err: any) {
+      console.error("Register handler error:", err);
+      if (err?.name === "ZodError") {
+        return respond(res, 400, {
+          error: "validation failed",
+          details: err.errors,
+        });
+      }
+      next(err);
+    }
+  }
+);
+
+/* Resend OTP */
+router.post(
+  "/resend-otp",
+  resendLimiter,
+  async (req: Request, res: Response, next) => {
+    try {
+      const parsed = resendSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return respond(res, 400, {
+          error: "validation failed",
+          details: zodDetails(parsed.error),
+        } as ErrorResponse);
+      }
+      const { email } = parsed.data;
+
+      const user = await findUserByEmail(email);
+      if (!user) return respond(res, 404, { error: "user not found" });
+
+      const otp = generateOtp();
+      const otpExpiry = getOtpExpiryDate();
+      const encOtp = crypto$.encryptCell(otp);
+
+      try {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { OtpCode: encOtp, otpExpiresAt: otpExpiry },
+        });
+      } catch (pErr: any) {
+        console.error("Prisma update OTP error:", pErr);
+        return respond(res, 502, { error: "failed to update otp" });
+      }
+
+      try {
+        await sendOtpEmail(email, otp);
+      } catch (mailErr: any) {
+        console.error("Failed to send resend OTP email:", mailErr);
         try {
           await prisma.user.update({
             where: { id: user.id },
@@ -173,151 +283,84 @@ router.post(
         });
       }
 
-      return respond(res, 201, {
-        message: "registered - otp sent to email",
-        user,
-      });
-    } catch (err: any) {
-      console.error("Unhandled register error:", err);
-      return respond(res, 500, { error: "unexpected server error" });
-    }
-  }
-);
-
-// ---------- POST /resend-otp ----------
-router.post(
-  "/resend-otp",
-  resendLimiter,
-  async (req: Request, res: Response) => {
-    try {
-      const parsed: any = safeParseBody(resendSchema, req.body);
-      if (!parsed.ok) {
-        return respond(res, 400, {
-          error: "validation failed",
-          details: zodDetails(parsed.error),
-        });
-      }
-      const { email } = parsed.data;
-
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        // explicit 404 (change to generic 200 if you want to avoid enumeration)
-        return respond(res, 404, { error: "user not found" });
-      }
-
-      const otp = generateOtp();
-      const otpExpiry = getOtpExpiryDate();
-
-      try {
-        await prisma.user.update({
-          where: { email },
-          data: { OtpCode: otp, otpExpiresAt: otpExpiry },
-        });
-      } catch (pErr: any) {
-        console.error("Prisma update OTP error:", pErr);
-        return respond(res, 502, { error: "failed to update otp" });
-      }
-
-      try {
-        await sendOtpEmail(email, otp);
-      } catch (mailErr: any) {
-        console.error("Failed to send resend OTP email:", mailErr);
-        try {
-          await prisma.user.update({
-            where: { email },
-            data: { OtpCode: null, otpExpiresAt: null },
-          });
-        } catch (clearErr) {
-          console.error("Failed to clear OTP after mail failure:", clearErr);
-        }
-        return respond(res, 502, {
-          error: "failed to send verification email, please try again later",
-        });
-      }
-
       return respond(res, 200, { message: "otp resent" });
     } catch (err: any) {
-      console.error("Unhandled resend-otp error:", err);
-      return respond(res, 500, { error: "unexpected server error" });
+      console.error("Resend OTP error:", err);
+      if (err?.name === "ZodError")
+        return respond(res, 400, {
+          error: "validation failed",
+          details: err.errors,
+        });
+      next(err);
     }
   }
 );
 
-// ---------- POST /signin ----------
+/* Signin */
 router.post(
   "/signin",
   signinIpLimiter,
   signinEmailLimiter,
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response, next) => {
     try {
-      const parsed: any = safeParseBody(signinSchema, req.body);
-      if (!parsed.ok) {
+      const parsed = signinSchema.safeParse(req.body);
+      if (!parsed.success) {
         return respond(res, 400, {
           error: "validation failed",
           details: zodDetails(parsed.error),
-        });
+        } as ErrorResponse);
       }
       const { email, password } = parsed.data;
 
-      const user = await prisma.user.findUnique({ where: { email } });
-      // avoid user enumeration
-      if (!user) {
-        return respond(res, 401, { error: "invalid credentials" });
-      }
+      const user = await findUserByEmail(email);
+      if (!user) return respond(res, 401, { error: "invalid credentials" });
 
-      const ok = await comparePassword(password, user.password).catch(
-        (cErr) => {
-          console.error("Password compare error:", cErr);
-          return false;
-        }
-      );
+      const ok = await comparePassword(password, user.password);
+      if (!ok) return respond(res, 401, { error: "invalid credentials" });
 
-      if (!ok) {
-        return respond(res, 401, { error: "invalid credentials" });
-      }
-
-      const token = signJwt({ sub: user.id, email: user.email });
+      const token = signJwt({ sub: user.id, email });
 
       return respond(res, 200, {
         token,
-        user: { id: user.id, email: user.email, username: user.username },
+        user: { id: user.id, username: user.username, email },
       });
     } catch (err: any) {
-      console.error("Unhandled signin error:", err);
-      return respond(res, 500, { error: "unexpected server error" });
+      console.error("Signin error:", err);
+      if (err?.name === "ZodError")
+        return respond(res, 400, {
+          error: "validation failed",
+          details: err.errors,
+        });
+      next(err);
     }
   }
 );
 
-// ---------- POST /verify-otp ----------
+/* Verify OTP */
 router.post(
   "/verify-otp",
   verifyLimiter,
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response, next) => {
     try {
-      const parsed: any = safeParseBody(verifyOtpSchema, req.body);
-      if (!parsed.ok) {
+      const parsed = verifyOtpSchema.safeParse(req.body);
+      if (!parsed.success) {
         return respond(res, 400, {
           error: "validation failed",
           details: zodDetails(parsed.error),
-        });
+        } as ErrorResponse);
       }
       const { email, otp } = parsed.data;
 
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        return respond(res, 404, { error: "user not found" });
-      }
+      const user = await findUserByEmail(email);
+      if (!user) return respond(res, 404, { error: "user not found" });
 
-      if (!user.OtpCode || !user.otpExpiresAt) {
-        return respond(res, 400, { error: "no otp pending for this user" });
-      }
+      if (!user.OtpCode || !user.otpExpiresAt)
+        return respond(res, 400, { error: "no otp pending" });
 
-      const now = new Date();
-      if (user.otpExpiresAt < now) {
+      if (user.otpExpiresAt < new Date()) {
         try {
           await prisma.user.update({
-            where: { email },
+            where: { id: user.id },
             data: { OtpCode: null, otpExpiresAt: null },
           });
         } catch (clearErr) {
@@ -326,18 +369,17 @@ router.post(
         return respond(res, 400, { error: "otp expired" });
       }
 
-      if (user.OtpCode !== otp) {
+      // user.OtpCode is stored encrypted; compare plaintext by decrypting earlier in findUserByEmail
+      if (user.OtpCode !== otp)
         return respond(res, 400, { error: "invalid otp" });
-      }
 
       try {
         await prisma.user.update({
-          where: { email },
+          where: { id: user.id },
           data: { OtpCode: null, otpExpiresAt: null },
         });
       } catch (pErr: any) {
         console.error("Prisma clear OTP error:", pErr);
-        // Return success but signal server-side persistence failure
         return respond(res, 200, {
           message: "otp verified (but failed to persist clear on server)",
         });
@@ -345,8 +387,13 @@ router.post(
 
       return respond(res, 200, { message: "otp verified" });
     } catch (err: any) {
-      console.error("Unhandled verify-otp error:", err);
-      return respond(res, 500, { error: "unexpected server error" });
+      console.error("Verify OTP error:", err);
+      if (err?.name === "ZodError")
+        return respond(res, 400, {
+          error: "validation failed",
+          details: err.errors,
+        });
+      next(err);
     }
   }
 );
