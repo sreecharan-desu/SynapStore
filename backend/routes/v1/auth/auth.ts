@@ -17,24 +17,25 @@ import rateLimiter from "../../../middleware/ratelimitter";
  - POST /api/v1/auth/verify-otp
 */
 
-// ---------- Prisma client (kept local to avoid import mismatch) ----------
+// ---------- Prisma client ----------
 const connectionString = process.env.DATABASE_URL!;
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
-// ---------- Helper types & functions ----------
+// ---------- Helpers ----------
 type ErrorResponse = { error: string; code?: string; details?: any[] };
 
 const respond = (res: Response, status: number, body: object) =>
   res.status(status).json(body);
 
-// Normalized zod error -> friendly list
+// Map zod issues to friendly details
 const zodDetails = (err: any) =>
   err?.issues?.map((i: any) => ({
     path: i.path.join("."),
     message: i.message,
   })) ?? [];
 
+// Safe parse wrapper
 const safeParseBody = <T>(schema: z.ZodTypeAny, body: unknown) => {
   const parsed = schema.safeParse(body);
   return parsed.success
@@ -70,7 +71,7 @@ const registerLimiter = rateLimiter({
   keyPrefix: "register-ip",
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: (req) => (req.ip ? req.ip : null),
+  keyGenerator: (req) => req.ip ?? null,
 });
 
 const resendLimiter = rateLimiter({
@@ -79,9 +80,8 @@ const resendLimiter = rateLimiter({
   max: 1,
   burstWindowMs: 60 * 60 * 1000,
   burstMax: 5,
-  // @ts-ignore
   keyGenerator: (req) =>
-    req.body?.email ? String(req.body.email).toLowerCase() : req.ip,
+    req.body?.email ? String(req.body.email).toLowerCase() : req.ip ?? null,
 });
 
 const signinIpLimiter = rateLimiter({
@@ -103,9 +103,8 @@ const verifyLimiter = rateLimiter({
   keyPrefix: "verify-email",
   windowMs: 60 * 1000,
   max: 5,
-  // @ts-ignore
   keyGenerator: (req) =>
-    req.body?.email ? String(req.body.email).toLowerCase() : req.ip,
+    req.body?.email ? String(req.body.email).toLowerCase() : req.ip ?? null,
 });
 
 // ---------- POST /register ----------
@@ -119,17 +118,20 @@ router.post(
         return respond(res, 400, {
           error: "validation failed",
           details: zodDetails(parsed.error),
-        });
+        } as ErrorResponse);
       }
 
       const { username, email, password } = parsed.data;
 
+      // generate otp + expiry
       const otp = generateOtp();
       const otpExpiry = getOtpExpiryDate();
+
+      // hash password
       const hashed = await hashPassword(password);
 
+      // create user with otp (atomic)
       let user;
-
       try {
         user = await prisma.user.create({
           data: {
@@ -139,25 +141,21 @@ router.post(
             OtpCode: otp,
             otpExpiresAt: otpExpiry,
           },
-          select: {
-            id: true,
-            email: true,
-            username: true,
-          },
+          select: { id: true, email: true, username: true },
         });
       } catch (pErr: any) {
-        // Friendly error for existing user
+        // friendly unique conflict
         if (pErr?.code === "P2002") {
           return respond(res, 409, {
             error: "user already exists",
             code: "user_exists",
           });
         }
-
         console.error("Prisma create user error:", pErr);
         return respond(res, 502, { error: "database error creating user" });
       }
 
+      // send OTP; if mail fails, clear otp so user isn't stuck
       try {
         await sendOtpEmail(user.email, otp);
       } catch (mailErr: any) {
@@ -197,12 +195,13 @@ router.post(
         return respond(res, 400, {
           error: "validation failed",
           details: zodDetails(parsed.error),
-        } as ErrorResponse);
+        });
       }
       const { email } = parsed.data;
 
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
+        // explicit 404 (change to generic 200 if you want to avoid enumeration)
         return respond(res, 404, { error: "user not found" });
       }
 
@@ -256,11 +255,12 @@ router.post(
         return respond(res, 400, {
           error: "validation failed",
           details: zodDetails(parsed.error),
-        } as ErrorResponse);
+        });
       }
       const { email, password } = parsed.data;
 
       const user = await prisma.user.findUnique({ where: { email } });
+      // avoid user enumeration
       if (!user) {
         return respond(res, 401, { error: "invalid credentials" });
       }
@@ -300,7 +300,7 @@ router.post(
         return respond(res, 400, {
           error: "validation failed",
           details: zodDetails(parsed.error),
-        } as ErrorResponse);
+        });
       }
       const { email, otp } = parsed.data;
 
@@ -337,6 +337,7 @@ router.post(
         });
       } catch (pErr: any) {
         console.error("Prisma clear OTP error:", pErr);
+        // Return success but signal server-side persistence failure
         return respond(res, 200, {
           message: "otp verified (but failed to persist clear on server)",
         });
