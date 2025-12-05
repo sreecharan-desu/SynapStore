@@ -1,185 +1,436 @@
 // prisma/seed.ts
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
 import { faker } from "@faker-js/faker";
+import bcrypt from "bcrypt";
+import prisma from "../lib/prisma";
+import { crypto$ } from "../lib/crypto";
 
-const connectionString = process.env.DATABASE_URL!;
-if (!connectionString) {
-  throw new Error("DATABASE_URL is not set in .env");
+if (process.env.NODE_ENV === "production") {
+  console.error("Seeding aborted: NODE_ENV=production");
+  process.exit(1);
 }
 
-const adapter = new PrismaPg({ connectionString });
-const prisma = new PrismaClient({ adapter });
+const SEED = {
+  STORES: 2,
+  USERS_PER_STORE: 4,
+  SUPPLIERS_PER_STORE: 6,
+  DOCTORS: 12,
+  INSURANCES: 8,
+  PATIENTS: 40,
+  MEDICINES_PER_STORE: 50,
+  BATCHES_PER_MEDICINE: 2,
+  PRESCRIPTIONS: 80,
+};
 
-async function createSuppliers(count = 25) {
-  const created: { supID: number }[] = [];
-  for (let i = 0; i < count; i++) {
-    const sup = await prisma.supplier.create({
+/**
+ * Helper utilities
+ */
+async function hashPw(plain: string) {
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(plain, salt);
+}
+
+function rndInt(min: number, max: number) {
+  return faker.number.int({ min, max });
+}
+
+/**
+ * DB cleanup - development only
+ */
+async function clearAll() {
+  // Delete in dependency order (safe for dev only)
+  await prisma.prescription.deleteMany();
+  await prisma.inventoryBatch.deleteMany();
+  await prisma.medicine.deleteMany();
+  await prisma.patient.deleteMany();
+  await prisma.insurance.deleteMany();
+  await prisma.doctor.deleteMany();
+  await prisma.supplier.deleteMany();
+  await prisma.userStoreRole.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.store.deleteMany();
+}
+
+/**
+ * Create a dedicated testing user at the very top
+ * Email: sreecharan309@gmail.com
+ * Password: 12345678
+ *
+ * Uses deterministic encryption for username/email to match app lookups.
+ */
+async function createTestingUser() {
+  const emailPlain = "sreecharan309@gmail.com";
+  const usernamePlain = "sreecharan";
+  const plain = "12345678";
+  const passwordHash = await hashPw(plain);
+
+  const encEmail = crypto$.encryptCellDeterministic(emailPlain);
+
+  // If user already exists (by encrypted email), return it
+  const existing = await prisma.user.findUnique({ where: { email: encEmail } });
+  if (existing) return existing;
+
+  const encUsername = crypto$.encryptCellDeterministic(usernamePlain);
+  // no image for test user - leave null
+  const user = await prisma.user.create({
+    data: {
+      username: encUsername,
+      email: encEmail,
+      passwordHash,
+      imageUrl: null,
+      phone: null,
+      isActive: true,
+      isverified: true, // explicitly verified for testing
+    },
+    select: { id: true, email: true, username: true },
+  });
+
+  return user;
+}
+
+/**
+ * Create stores and some users per store.
+ * All created user identity fields are encrypted to match runtime behavior.
+ * Assign the test user as STORE_OWNER on the first store.
+ */
+async function createStoresAndUsers(testUserId: string) {
+  const stores: { id: string; slug: string }[] = [];
+
+  for (let i = 0; i < SEED.STORES; i++) {
+    const name = `${faker.company.name()} Pharmacy`;
+    const slug = faker.helpers.slugify(name).toLowerCase() + `-${i + 1}`;
+
+    const store = await prisma.store.create({
       data: {
-        name: `${faker.company.name()} ${i + 1}`,
-        address: faker.location.streetAddress(),
-        phone: faker.phone.number({ style: "human" }),
+        name,
+        slug,
+        timezone: "Asia/Kolkata",
+        currency: "INR",
+        settings: {},
       },
-      select: { supID: true },
+      select: { id: true, slug: true },
     });
-    created.push(sup);
+
+    stores.push(store);
+
+    // create some users for this store (besides the test user)
+    for (let u = 0; u < SEED.USERS_PER_STORE; u++) {
+      const usernamePlain = (
+        faker.internet.username() + `${i}${u}`
+      ).toLowerCase();
+      const emailPlain = `${usernamePlain}@example.com`;
+      const password = "Password123!"; // seeded password for dev
+      const passwordHash = await hashPw(password);
+
+      const encUsername = crypto$.encryptCellDeterministic(usernamePlain);
+      const encEmail = crypto$.encryptCellDeterministic(emailPlain);
+      // optional image - encrypt non-deterministically if present
+      const imagePlain = faker.image.avatar();
+      const encImage = crypto$.encryptCell(imagePlain);
+
+      const user = await prisma.user.create({
+        data: {
+          username: encUsername,
+          email: encEmail,
+          passwordHash,
+          imageUrl: encImage ?? undefined,
+          phone: faker.phone.number({ style: "international" }),
+          isActive: true,
+          isverified: true, // seeded users are verified to ease dev login
+        },
+        select: { id: true },
+      });
+
+      // assign roles: first user is STORE_OWNER, next ADMIN, rest STAFF / MANAGER
+      const role =
+        u === 0
+          ? "STORE_OWNER"
+          : u === 1
+          ? "ADMIN"
+          : u === 2
+          ? "MANAGER"
+          : "STAFF";
+
+      await prisma.userStoreRole.create({
+        data: {
+          userId: user.id,
+          storeId: store.id,
+          role,
+        },
+      });
+    }
   }
-  return created.map((c) => c.supID);
+
+  // assign the testing user as STORE_OWNER on the first store (so you can exercise everything)
+  if (stores.length > 0) {
+    try {
+      await prisma.userStoreRole.create({
+        data: {
+          userId: testUserId,
+          storeId: stores[0].id,
+          role: "STORE_OWNER",
+        },
+      });
+    } catch (e) {
+      // ignore unique constraint errors if role already exists
+      console.warn(
+        "Could not assign test user to first store:",
+        (e as any).message ?? e
+      );
+    }
+  }
+
+  return stores;
 }
 
-async function createDoctors(count = 25) {
-  const created: { physID: number }[] = [];
+/**
+ * Create per-store suppliers
+ */
+async function createSuppliersForStore(storeId: string, count = 6) {
+  const ids: string[] = [];
   for (let i = 0; i < count; i++) {
-    const doc = await prisma.doctor.create({
+    const s = await prisma.supplier.create({
+      data: {
+        storeId,
+        name: `${faker.company.name()} Supplies`,
+        address: faker.location.streetAddress(),
+        phone: faker.phone.number({ style: "international" }),
+        contactName: faker.person.fullName(),
+        defaultLeadTime: rndInt(1, 14),
+        defaultMOQ: rndInt(1, 50),
+        externalMeta: {},
+      },
+      select: { id: true },
+    });
+    ids.push(s.id);
+  }
+  return ids;
+}
+
+/**
+ * Create doctors (shared)
+ */
+async function createDoctors(count = 12) {
+  const ids: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = await prisma.doctor.create({
       data: {
         name: faker.person.fullName(),
         address: faker.location.streetAddress(),
-        phone: faker.phone.number({ style: "human" }),
+        phone: faker.phone.number({ style: "international" }),
       },
       select: { physID: true },
     });
-    created.push(doc);
+    ids.push(d.physID);
   }
-  return created.map((c) => c.physID);
+  return ids;
 }
 
-async function createInsurances(count = 25) {
-  const created: string[] = [];
+/**
+ * Create insurances (shared)
+ */
+async function createInsurances(count = 8) {
+  const names: string[] = [];
   for (let i = 0; i < count; i++) {
-    const name = `${faker.company.buzzNoun()}-${faker.number.int({
-      min: 1000,
-      max: 9999,
-    })}`;
+    const name = `${faker.company.name()} Insurance`;
     await prisma.insurance.create({
       data: {
         name,
-        phone: faker.phone.number({ style: "human" }),
+        phone: faker.phone.number({ style: "international" }),
         coPay: faker.helpers.arrayElement(["Yes", "No"]),
       },
     });
-    created.push(name);
+    names.push(name);
   }
-  return created;
+  return names;
 }
 
-async function createPatients(count = 25, insuranceNames: string[]) {
-  const created: { patientID: number }[] = [];
+/**
+ * Create patients (shared)
+ */
+async function createPatients(count = 40, insuranceNames: string[]) {
+  const ids: number[] = [];
   for (let i = 0; i < count; i++) {
     const insurance = faker.helpers.arrayElement([
       ...insuranceNames,
       null,
-      undefined,
       null,
-    ] as (string | null | undefined)[]); // some patients w/o insurance
-    const patient = await prisma.patient.create({
+    ]);
+    const birth = faker.date.birthdate({ min: 1, max: 90, mode: "age" });
+    const p = await prisma.patient.create({
       data: {
         firstName: faker.person.firstName(),
         lastName: faker.person.lastName(),
-        birthdate: faker.date
-          .birthdate({ min: 18, max: 90, mode: "age" })
-          .toISOString()
-          .split("T")[0],
+        birthdate: birth,
         address: faker.location.streetAddress(),
-        phone: faker.phone.number({ style: "human" }),
+        phone: faker.phone.number({ style: "international" }),
         gender: faker.helpers.arrayElement(["Male", "Female", "Other"]),
-        insurance: insurance ?? undefined,
+        insuranceProvider: insurance
+          ? { connect: { name: insurance } }
+          : undefined,
       },
       select: { patientID: true },
     });
-    created.push(patient);
+    ids.push(p.patientID);
   }
-  return created.map((c) => c.patientID);
+  return ids;
 }
 
-async function createDrugs(count = 25, supplierIds: number[]) {
-  const created: { NDC: number }[] = [];
+/**
+ * Create medicines + inventory batches for a store
+ */
+async function createMedicinesForStore(
+  storeId: string,
+  supplierIds: string[],
+  count = 50
+) {
+  const meds: string[] = [];
   for (let i = 0; i < count; i++) {
-    // Create a pseudo NDC (should be unique)
-    // generate unique-ish 10-digit-like numbers but within signed 32-bit range
-    const ndc = faker.number.int({ min: 1000000, max: 2000000000 });
-    const supID = faker.helpers.arrayElement(supplierIds);
-    const drug = await prisma.drugs.create({
+    const ndc = faker.string.numeric(10);
+    const med = await prisma.medicine.create({
       data: {
-        NDC: ndc,
+        ndc,
+        storeId,
+        sku: faker.helpers.slugify(faker.commerce.product()).slice(0, 32),
         brandName: faker.commerce.productName(),
         genericName: faker.commerce.productAdjective() + "ine",
-        dosage: faker.number.int({ min: 5, max: 500 }),
-        expDate: faker.date.soon({ days: 730 }).toISOString().split("T")[0],
-        supID,
-        purchasePrice: parseFloat(
-          faker.commerce.price({ min: 1, max: 30, dec: 2 })
-        ),
-        sellPrice: parseFloat(
-          faker.commerce.price({ min: 31, max: 120, dec: 2 })
-        ),
+        dosageForm: faker.helpers.arrayElement([
+          "tablet",
+          "syrup",
+          "injection",
+        ]),
+        strength: `${rndInt(1, 500)} mg`,
+        uom: "mg",
+        category: faker.commerce.department(),
+        taxInfo: {},
       },
-      select: { NDC: true },
+      select: { id: true },
     });
-    created.push(drug);
+    meds.push(med.id);
+
+    // create a couple of inventory batches per medicine
+    for (let b = 0; b < SEED.BATCHES_PER_MEDICINE; b++) {
+      const qtyReceived = rndInt(10, 200);
+      const expiryDate = faker.date.soon({ days: rndInt(30, 365 * 2) });
+      await prisma.inventoryBatch.create({
+        data: {
+          storeId,
+          medicineId: med.id,
+          batchNumber: `BATCH-${faker.string.alphanumeric(6).toUpperCase()}`,
+          qtyReceived,
+          qtyAvailable: Math.max(0, qtyReceived - rndInt(0, 5)),
+          qtyReserved: 0,
+          expiryDate,
+          purchasePrice: parseFloat(
+            faker.commerce.price({ min: 10, max: 200, dec: 2 })
+          ),
+          mrp: parseFloat(faker.commerce.price({ min: 200, max: 500, dec: 2 })),
+          receivedAt: faker.date.past(),
+          location: faker.helpers.arrayElement(["Main", "Shelf A", "Coldroom"]),
+        },
+      });
+    }
   }
-  return created.map((c) => c.NDC);
+  return meds;
 }
 
+/**
+ * Create prescriptions (shared), distributed across given storeIds
+ */
 async function createPrescriptions(
-  count = 25,
+  count = 80,
   patientIds: number[],
   doctorIds: number[],
-  ndcs: number[]
+  medicineIds: string[],
+  storeIds: string[]
 ) {
   for (let i = 0; i < count; i++) {
     const patientID = faker.helpers.arrayElement(patientIds);
     const physID = faker.helpers.arrayElement(doctorIds);
-    const NDC = faker.helpers.arrayElement(ndcs);
+    const medicineId = faker.helpers.arrayElement(medicineIds);
+    const storeId = faker.helpers.arrayElement(storeIds);
     await prisma.prescription.create({
       data: {
+        storeId,
         patientID,
         physID,
-        NDC,
-        qty: faker.number.int({ min: 1, max: 120 }),
-        days: faker.number.int({ min: 1, max: 90 }),
-        refills: faker.number.int({ min: 0, max: 5 }),
+        medicineId,
+        qty: rndInt(1, 30),
+        days: rndInt(1, 30),
+        refills: rndInt(0, 3),
         status: faker.helpers.arrayElement([
           "active",
           "completed",
           "cancelled",
         ]),
+        issuedAt: faker.date.recent(),
       },
     });
   }
 }
 
+/**
+ * Main seeding flow
+ */
 async function main() {
-  console.log("Starting seeding...");
+  console.log("Starting seed... (development only)");
 
-  // Clear tables in dependency order (safe for dev). Use with caution in prod.
-  await prisma.prescription.deleteMany();
-  await prisma.patient.deleteMany();
-  await prisma.doctor.deleteMany();
-  await prisma.drugs.deleteMany();
-  await prisma.supplier.deleteMany();
-  await prisma.insurance.deleteMany();
+  await clearAll();
 
-  // Create base data
-  const supplierIds = await createSuppliers(25);
-  console.log(`Created ${supplierIds.length} suppliers`);
+  // create testing user first (encrypted)
+  const testUser = await createTestingUser();
+  console.log("Created test user:", "sreecharan309@gmail.com");
 
-  const doctorIds = await createDoctors(25);
+  const stores = await createStoresAndUsers(testUser.id);
+  console.log(`Created ${stores.length} stores`);
+
+  // create shared resources
+  const doctorIds = await createDoctors(SEED.DOCTORS);
   console.log(`Created ${doctorIds.length} doctors`);
 
-  const insuranceNames = await createInsurances(25);
+  const insuranceNames = await createInsurances(SEED.INSURANCES);
   console.log(`Created ${insuranceNames.length} insurance providers`);
 
-  const patientIds = await createPatients(25, insuranceNames);
+  const patientIds = await createPatients(SEED.PATIENTS, insuranceNames);
   console.log(`Created ${patientIds.length} patients`);
 
-  const ndcs = await createDrugs(25, supplierIds);
-  console.log(`Created ${ndcs.length} drugs`);
+  // per-store suppliers, medicines, batches, prescriptions
+  const allMedicineIds: string[] = [];
+  const storeIds = stores.map((s) => s.id);
 
-  await createPrescriptions(25, patientIds, doctorIds, ndcs);
-  console.log(`Created 25 prescriptions`);
+  for (const s of stores) {
+    const supplierIds = await createSuppliersForStore(
+      s.id,
+      SEED.SUPPLIERS_PER_STORE
+    );
+    console.log(`[store ${s.slug}] created ${supplierIds.length} suppliers`);
+
+    const meds = await createMedicinesForStore(
+      s.id,
+      supplierIds,
+      SEED.MEDICINES_PER_STORE
+    );
+    console.log(`[store ${s.slug}] created ${meds.length} medicines + batches`);
+    allMedicineIds.push(...meds);
+
+    // create some prescriptions referencing these medicines for this store
+    await createPrescriptions(
+      Math.floor(SEED.PRESCRIPTIONS / stores.length),
+      patientIds,
+      doctorIds,
+      meds,
+      [s.id]
+    );
+    console.log(`[store ${s.slug}] created prescriptions`);
+  }
 
   console.log("Seeding finished successfully");
+  console.log(
+    "Test credentials - email:",
+    "sreecharan309@gmail.com",
+    " password:",
+    "12345678"
+  );
 }
 
 main()

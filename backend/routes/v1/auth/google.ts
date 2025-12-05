@@ -55,20 +55,29 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
     const encUsername = crypto$.encryptCellDeterministic(usernamePlain);
     const encImage = picture ? crypto$.encryptCell(picture) : null;
 
-    // upsert user using encrypted email for lookup
+    // upsert user using encrypted email for lookup.
+    // set isverified = true because Google validated the email.
     const userRow = await prisma.user.upsert({
       where: { email: encEmail },
       update: {
         username: encUsername,
         imageUrl: encImage ?? undefined,
+        isverified: true,
       },
       create: {
         username: encUsername,
         email: encEmail,
         passwordHash: null,
         imageUrl: encImage ?? undefined,
+        isverified: true,
       },
-      select: { id: true, email: true, username: true, imageUrl: true },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        imageUrl: true,
+        isverified: true,
+      },
     });
 
     // decrypt encrypted fields before returning
