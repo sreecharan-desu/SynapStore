@@ -3,19 +3,14 @@ import { Router } from "express";
 import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { signJwt } from "../../../lib/auth";
-
 import type { Request, Response } from "express";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
-import router from ".././auth/auth";
+import prisma from "../../../lib/prisma";
+import { crypto$ } from "../../../lib/crypto";
 
-export const GoogleRouter = Router();
+const GoogleRouter = Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-const connectionString = process.env.DATABASE_URL!;
-const adapter = new PrismaPg({ connectionString });
-const prisma = new PrismaClient({ adapter });
 
-// request schema
+/* request schema */
 const googleSchema = z.object({
   idToken: z.string().min(20, "idToken is required"),
 });
@@ -47,44 +42,53 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
     if (!payload)
       return respond(res, 400, { error: "invalid id token payload" });
 
-    const googleId = payload.sub; // stable Google user id
-    const email = payload.email!;
+    const email = payload.email;
     const name = payload.name ?? "";
     const picture = payload.picture ?? "";
 
     if (!email)
       return respond(res, 400, { error: "google account missing email" });
 
-    // Upsert user - set emailVerified true because Google verified it
-    const user = await prisma.user.upsert({
-      where: { email },
+    // encrypt fields for DB usage
+    const encEmail = crypto$.encryptCellDeterministic(email);
+    const usernamePlain = name || email.split("@")[0];
+    const encUsername = crypto$.encryptCellDeterministic(usernamePlain);
+    const encImage = picture ? crypto$.encryptCell(picture) : null;
+
+    // upsert user using encrypted email for lookup
+    const userRow = await prisma.user.upsert({
+      where: { email: encEmail },
       update: {
-        username: name || email.split("@")[0],
-        imageUrl: picture,
-        // optionally keep google id
-        // add field googleId String? to schema if you want to store it
+        username: encUsername,
+        imageUrl: encImage ?? undefined,
       },
       create: {
-        username: name || email.split("@")[0],
-        email,
-        password: "", // no password for google-only users; keep empty or random
-        imageUrl: picture,
-        // optionally store googleId here
+        username: encUsername,
+        email: encEmail,
+        passwordHash: null,
+        imageUrl: encImage ?? undefined,
       },
       select: { id: true, email: true, username: true, imageUrl: true },
     });
 
-    // sign app JWT
+    // decrypt encrypted fields before returning
+    const decrypted = crypto$.decryptObject(userRow, [
+      "username",
+      "email",
+      "imageUrl",
+    ]) as any;
+
+    // sign app JWT with decrypted email
     const token = signJwt({
-      sub: user.id,
-      email: user.email,
+      sub: decrypted.id,
+      email: decrypted.email,
       provider: "google",
     });
 
-    return respond(res, 200, { token, user });
+    return respond(res, 200, { token, user: decrypted });
   } catch (err: any) {
     console.error("Google sign-in error:", err?.message ?? err);
-    // If verification failed - bad token
+
     if (
       err?.message?.includes("Token used too late") ||
       err?.message?.includes("invalid")
@@ -98,4 +102,4 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
   }
 });
 
-export default router;
+export default GoogleRouter;

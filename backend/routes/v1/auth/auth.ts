@@ -10,7 +10,9 @@ import { crypto$ } from "../../../lib/crypto";
 import rateLimiter from "../../../middleware/ratelimitter";
 
 const router = Router();
-const ENCRYPTED_FIELDS = ["username", "email", "imageUrl", "OtpCode"];
+
+// encrypted fields stored with crypto$.encryptCell / encryptCellDeterministic
+const ENCRYPTED_FIELDS = ["username", "email", "imageUrl"];
 
 /* Schemas */
 const registerSchema = z.object({
@@ -44,8 +46,12 @@ const zodDetails = (err: any) =>
     message: i.message,
   })) ?? [];
 
+/**
+ - findUserByEmail
+ - uses deterministic encryption for lookup, returns decrypted fields
+ - keeps passwordHash property intact (not decrypted)
+*/
 async function findUserByEmail(email: string) {
-  // deterministic encryption for lookup
   const enc = crypto$.encryptCellDeterministic(email);
   const row = await prisma.user.findUnique({
     where: { email: enc },
@@ -53,23 +59,21 @@ async function findUserByEmail(email: string) {
       id: true,
       email: true,
       username: true,
-      password: true,
-      OtpCode: true,
-      otpExpiresAt: true,
+      imageUrl: true,
+      passwordHash: true,
+      phone: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
     },
   });
   if (!row) return null;
-  return crypto$.decryptObject(row, ENCRYPTED_FIELDS) as any;
-}
 
-async function findUserByUsername(username: string) {
-  const enc = crypto$.encryptCellDeterministic(username);
-  const row = await prisma.user.findUnique({
-    where: { username: enc },
-    select: { id: true, username: true, email: true },
-  });
-  if (!row) return null;
-  return crypto$.decryptObject(row, ENCRYPTED_FIELDS) as any;
+  // decrypt encrypted fields
+  const decrypted = crypto$.decryptObject(row, ENCRYPTED_FIELDS) as any;
+  // keep passwordHash (already present)
+  decrypted.passwordHash = row.passwordHash ?? null;
+  return decrypted as any;
 }
 
 /* Rate limiters (in-memory) */
@@ -113,6 +117,35 @@ const verifyLimiter = rateLimiter({
     req.body?.email ? String(req.body.email).toLowerCase() : req.ip ?? null,
 });
 
+/* Helpers - OTP model interaction
+ - We store email OTPs in Otp.phone to avoid changing schema
+ - otpHash is stored via crypto$.encryptCell for symmetric encryption so we can decrypt and compare
+*/
+async function createOtpForUser(
+  userId: string | null,
+  email: string,
+  otpPlain: string,
+  expiresAt: Date
+) {
+  const encOtp = crypto$.encryptCell(otpPlain);
+  // store phone = email to preserve schema
+  const otpRow = await prisma.otp.create({
+    // note: Prisma generates model accessor name from model 'Otp' -> 'oTP'
+    // If your generated client uses a different name, update accordingly.
+    data: {
+      userId: userId ?? undefined,
+      storeId: undefined,
+      phone: email,
+      otpHash: encOtp,
+      salt: "", // not used with encryptCell approach
+      expiresAt,
+      used: false,
+      attempts: 0,
+    },
+  });
+  return otpRow;
+}
+
 /* Routes */
 
 /* Register */
@@ -138,8 +171,14 @@ router.post(
           code: "user_exists",
         });
       }
-      const existingUsername = await findUserByUsername(username);
-      if (existingUsername) {
+
+      // check username duplicate
+      const encUsername = crypto$.encryptCellDeterministic(username);
+      const existingUsernameRow = await prisma.user.findUnique({
+        where: { username: encUsername },
+        select: { id: true },
+      });
+      if (existingUsernameRow) {
         return respond(res, 409, {
           error: "user already exists",
           code: "user_exists",
@@ -148,7 +187,6 @@ router.post(
 
       // prepare data
       const hashed = await hashPassword(password);
-      const encUsername = crypto$.encryptCellDeterministic(username);
       const encEmail = crypto$.encryptCellDeterministic(email);
 
       // create user (password stored hashed, not encrypted)
@@ -158,7 +196,7 @@ router.post(
           data: {
             username: encUsername,
             email: encEmail,
-            password: hashed,
+            passwordHash: hashed,
           },
           select: { id: true, username: true, email: true },
         });
@@ -174,20 +212,15 @@ router.post(
         return respond(res, 502, { error: "database error creating user" });
       }
 
-      // generate and store encrypted OTP
+      // generate and store OTP (in Otp table)
       const otp = generateOtp();
       const otpExpiry = getOtpExpiryDate();
-      const encOtp = crypto$.encryptCell(otp);
 
       try {
-        await prisma.user.update({
-          where: { id: userRow.id },
-          data: { OtpCode: encOtp, otpExpiresAt: otpExpiry },
-        });
+        await createOtpForUser(userRow.id, email, otp, otpExpiry);
       } catch (pErr: any) {
-        console.error("Prisma update OTP error:", pErr);
-        // best-effort cleanup: delete user to avoid incomplete account? (optional)
-        // For now return error and log
+        console.error("Prisma create OTP error:", pErr);
+        // Consider deleting user to avoid incomplete account - for now return error
         return respond(res, 502, { error: "database error storing otp" });
       }
 
@@ -196,14 +229,17 @@ router.post(
         await sendOtpEmail(email, otp);
       } catch (mailErr: any) {
         console.error("Failed to send OTP email:", mailErr);
-        // clear otp to avoid leaving unusable OTP
+        // best-effort: mark latest OTP as used / remove it to avoid lingering OTPs
         try {
-          await prisma.user.update({
-            where: { id: userRow.id },
-            data: { OtpCode: null, otpExpiresAt: null },
+          await prisma.otp.updateMany({
+            where: { phone: email, used: false },
+            data: { used: true },
           });
         } catch (clearErr) {
-          console.error("Failed to clear OTP after mail failure:", clearErr);
+          console.error(
+            "Failed to mark OTP used after mail failure:",
+            clearErr
+          );
         }
         return respond(res, 502, {
           error: "failed to send verification email, please try again later",
@@ -254,29 +290,29 @@ router.post(
 
       const otp = generateOtp();
       const otpExpiry = getOtpExpiryDate();
-      const encOtp = crypto$.encryptCell(otp);
 
       try {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { OtpCode: encOtp, otpExpiresAt: otpExpiry },
-        });
+        await createOtpForUser(user.id, email, otp, otpExpiry);
       } catch (pErr: any) {
-        console.error("Prisma update OTP error:", pErr);
-        return respond(res, 502, { error: "failed to update otp" });
+        console.error("Prisma create OTP error:", pErr);
+        return respond(res, 502, { error: "failed to create otp" });
       }
 
       try {
         await sendOtpEmail(email, otp);
       } catch (mailErr: any) {
         console.error("Failed to send resend OTP email:", mailErr);
+        // attempt to mark latest OTP as used
         try {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { OtpCode: null, otpExpiresAt: null },
+          await prisma.otp.updateMany({
+            where: { phone: email, used: false },
+            data: { used: true },
           });
         } catch (clearErr) {
-          console.error("Failed to clear OTP after mail failure:", clearErr);
+          console.error(
+            "Failed to mark OTP used after mail failure:",
+            clearErr
+          );
         }
         return respond(res, 502, {
           error: "failed to send verification email, please try again later",
@@ -315,7 +351,7 @@ router.post(
       const user = await findUserByEmail(email);
       if (!user) return respond(res, 401, { error: "invalid credentials" });
 
-      const ok = await comparePassword(password, user.password);
+      const ok = await comparePassword(password, user.passwordHash);
       if (!ok) return respond(res, 401, { error: "invalid credentials" });
 
       const token = signJwt({ sub: user.id, email });
@@ -354,34 +390,51 @@ router.post(
       const user = await findUserByEmail(email);
       if (!user) return respond(res, 404, { error: "user not found" });
 
-      if (!user.OtpCode || !user.otpExpiresAt)
-        return respond(res, 400, { error: "no otp pending" });
+      // fetch latest unused OTP rows for this phone (email)
+      const otpRow = await prisma.otp.findFirst({
+        where: {
+          phone: email,
+          used: false,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: "desc" as const },
+      });
 
-      if (user.otpExpiresAt < new Date()) {
-        try {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { OtpCode: null, otpExpiresAt: null },
-          });
-        } catch (clearErr) {
-          console.error("Failed to clear expired OTP:", clearErr);
-        }
-        return respond(res, 400, { error: "otp expired" });
+      if (!otpRow)
+        return respond(res, 400, { error: "no otp pending or otp expired" });
+
+      // decrypt stored otpHash then compare
+      let storedOtpPlain: string | null = null;
+      try {
+        storedOtpPlain = crypto$.decryptCell(otpRow.otpHash);
+      } catch (dErr) {
+        console.error("Failed to decrypt stored OTP:", dErr);
       }
 
-      // user.OtpCode is stored encrypted; compare plaintext by decrypting earlier in findUserByEmail
-      if (user.OtpCode !== otp)
+      if (storedOtpPlain !== otp) {
+        // increment attempts for audit
+        try {
+          await prisma.otp.update({
+            where: { id: otpRow.id },
+            data: { attempts: otpRow.attempts + 1 },
+          });
+        } catch (_e) {
+          // ignore
+        }
         return respond(res, 400, { error: "invalid otp" });
+      }
 
+      // mark OTP as used
       try {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { OtpCode: null, otpExpiresAt: null },
+        await prisma.otp.update({
+          where: { id: otpRow.id },
+          data: { used: true },
         });
       } catch (pErr: any) {
-        console.error("Prisma clear OTP error:", pErr);
+        console.error("Prisma mark OTP used error:", pErr);
+        // still treat as success but warn
         return respond(res, 200, {
-          message: "otp verified (but failed to persist clear on server)",
+          message: "otp verified (but failed to persist used state on server)",
         });
       }
 

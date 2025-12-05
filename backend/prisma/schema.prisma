@@ -101,7 +101,7 @@ model User {
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-
+  isverified  Boolean   @default(false)
   stores       UserStoreRole[]
   otps         Otp[]
   activityLogs ActivityLog[]
