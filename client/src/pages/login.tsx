@@ -1,15 +1,59 @@
 // src/components/Login.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { setCookie } from "../utils/cookieUtils";
+import { FcGoogle } from "react-icons/fc";
 
 /**
- * Uses global BASE_URL (try window.BASE_URL or process.env.REACT_APP_BASE_URL)
+ * Uses global BASE_URL (try window.BASE_URL or import.meta/env)
  */
-const BASE_URL = "http://localhost:3000";
+const BASE_URL =
+  (window as any).BASE_URL ||
+  (typeof import.meta !== "undefined"
+    ? (import.meta as any).env?.VITE_BASE_URL
+    : undefined) ||
+  (typeof process !== "undefined"
+    ? (import.meta.env as any)?.REACT_APP_BASE_URL
+    : undefined) ||
+  "http://localhost:3000";
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60; // seconds default if server doesn't provide expiry
+
+// Your provided Google client id (safe to embed; it's not a secret)
+const PROVIDED_GOOGLE_CLIENT_ID =
+  "725689508552-prvotvild62vcf5rsk70ridh26v6sfve.apps.googleusercontent.com";
+
+// Make TypeScript happy about global google
+declare global {
+  interface Window {
+    google?: any;
+    GOOGLE_CLIENT_ID?: string;
+  }
+}
+
+const getGoogleClientId = (): string => {
+  const win = window as any;
+  const fromWindow = win.GOOGLE_CLIENT_ID;
+  const fromVite =
+    typeof import.meta !== "undefined"
+      ? (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID
+      : undefined;
+  const fromCRA =
+    typeof process !== "undefined"
+      ? (process.env as any)?.REACT_APP_GOOGLE_CLIENT_ID
+      : undefined;
+
+  // Diagnostics - remove in production if desired
+  console.info("Google Client ID lookup:", {
+    fromWindow,
+    fromVite,
+    fromCRA,
+    provided: PROVIDED_GOOGLE_CLIENT_ID,
+  });
+
+  return fromWindow || fromVite || fromCRA || PROVIDED_GOOGLE_CLIENT_ID;
+};
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -31,6 +75,10 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Google button container ref
+  const googleBtnRef = useRef<HTMLDivElement | null>(null);
+  const googleClientId = getGoogleClientId();
+
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | undefined;
     if (timer > 0) {
@@ -50,7 +98,6 @@ const Login: React.FC = () => {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      // prefer structured { error: "..." } shape
       const msg =
         (body && (body.error || body.message || JSON.stringify(body))) ||
         res.statusText;
@@ -72,11 +119,9 @@ const Login: React.FC = () => {
           password,
         }),
       });
-      // success: show OTP UI
       setShowOtp(true);
       setIsSignup(true);
-      setTimer(RESEND_COOLDOWN); // start cooldown; backend expiry may differ
-      // server returns user object; don't store sensitive things here
+      setTimer(RESEND_COOLDOWN);
       return body;
     } catch (err: any) {
       setError(err.message || "Registration failed");
@@ -95,12 +140,9 @@ const Login: React.FC = () => {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      // Expect: { token: "<jwt>", user: { ... } }
       if (body.token) {
-        // cookie expiry: 7 days
         setCookie("token", body.token, 7);
         setCookie("isLoggedIn", "true", 7);
-        // navigate to home (or wherever)
         navigate("/home");
       } else {
         throw new Error("no token returned");
@@ -108,6 +150,31 @@ const Login: React.FC = () => {
       return body;
     } catch (err: any) {
       setError(err.message || "Sign in failed");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Google sign-in handler: sends idToken to server and stores returned JWT
+  const handleGoogleCredential = async (credential: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const body = await jsonFetch("/api/v1/auth/google", {
+        method: "POST",
+        body: JSON.stringify({ idToken: credential }),
+      });
+      if (body.token) {
+        setCookie("token", body.token, 7);
+        setCookie("isLoggedIn", "true", 7);
+        navigate("/home");
+      } else {
+        throw new Error("No token returned from Google auth endpoint");
+      }
+      return body;
+    } catch (err: any) {
+      setError(err.message || "Google sign-in failed");
       throw err;
     } finally {
       setLoading(false);
@@ -149,7 +216,6 @@ const Login: React.FC = () => {
         method: "POST",
         body: JSON.stringify({ email, otp: code }),
       });
-      // success: clear UI and show success. If this was signup, user can now sign in.
       setShowOtp(false);
       setIsSignup(false);
       setOtp(Array.from({ length: OTP_LENGTH }).map(() => ""));
@@ -221,6 +287,113 @@ const Login: React.FC = () => {
       `otp-${OTP_LENGTH - 1}`
     ) as HTMLInputElement | null;
     last?.focus();
+  };
+
+  // Google Identity script loader + initialize & render button
+  useEffect(() => {
+    // ensure the client id is available on window (avoid race with script)
+    try {
+      (window as any).GOOGLE_CLIENT_ID = googleClientId;
+    } catch {
+      /* ignore */
+    }
+
+    let script: HTMLScriptElement | null = null;
+    let initialized = false;
+
+    const loadAndInit = () => {
+      if (!googleClientId) {
+        console.warn("Google Client ID not found.");
+        setError("Google Client ID not configured. See console for details.");
+        return;
+      }
+
+      if (
+        !window.google ||
+        !window.google.accounts ||
+        !window.google.accounts.id
+      ) {
+        // script not yet loaded
+        if (!script) return;
+      }
+
+      try {
+        if (initialized || !window.google?.accounts?.id) return;
+        initialized = true;
+
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: (resp: any) => {
+            if (resp && resp.credential) {
+              handleGoogleCredential(resp.credential).catch(() => {});
+            } else {
+              setError("Google sign-in failed: no credential returned");
+            }
+          },
+        });
+
+        if (googleBtnRef.current) {
+          try {
+            window.google.accounts.id.renderButton(googleBtnRef.current, {
+              theme: "outline",
+              size: "large",
+              type: "standard",
+            });
+          } catch (err) {
+            console.warn("Google button render failed", err);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to initialize Google Identity", err);
+      }
+    };
+
+    if (
+      !document.querySelector(
+        'script[src="https://accounts.google.com/gsi/client"]'
+      )
+    ) {
+      script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.onload = () => loadAndInit();
+      script.onerror = () => {
+        console.warn("Failed to load Google Identity script");
+        setError("Could not load Google Identity script");
+      };
+      document.head.appendChild(script);
+    } else {
+      loadAndInit();
+    }
+
+    const retryTimer = setTimeout(loadAndInit, 600);
+
+    return () => {
+      clearTimeout(retryTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleClientId]);
+
+  // Fallback manual click: request One Tap / show popup credential via prompt
+  const manualGoogleSignIn = () => {
+    if (!googleClientId) {
+      setError("Google Client ID not configured.");
+      return;
+    }
+    if (
+      !window.google ||
+      !window.google.accounts ||
+      !window.google.accounts.id
+    ) {
+      setError("Google Identity not available in this browser.");
+      return;
+    }
+    try {
+      window.google.accounts.id.prompt();
+    } catch (err: any) {
+      setError("Could not start Google sign-in flow");
+    }
   };
 
   // Simple UI rendering
@@ -356,6 +529,45 @@ const Login: React.FC = () => {
                 ? "Create account"
                 : "Sign in"}
             </button>
+
+            {/* Shared Google sign-in area */}
+            <div className="mt-4">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">
+                    or continue with
+                  </span>
+                </div>
+              </div>
+
+              {/* Google button rendered by Google's library into this container */}
+              <div
+                ref={googleBtnRef}
+                className="mt-4 flex justify-center"
+                aria-hidden={false}
+              />
+
+              {/* Fallback manual button (visible if auto-render fails or for styling control) */}
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    manualGoogleSignIn();
+                  }}
+                  className="w-full mt-1 flex items-center justify-center gap-2 bg-white border border-gray-300 rounded-lg py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <FcGoogle className="w-5 h-5" />
+                  {loading
+                    ? "Working..."
+                    : isSignup
+                    ? "Sign up with Google"
+                    : "Sign in with Google"}
+                </button>
+              </div>
+            </div>
           </form>
         )}
 
@@ -364,7 +576,6 @@ const Login: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              // toggling resets OTP ui & errors
               setIsSignup((s) => !s);
               setShowOtp(false);
               setOtp(Array.from({ length: OTP_LENGTH }).map(() => ""));
