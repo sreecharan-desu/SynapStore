@@ -1,6 +1,5 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Package } from "lucide-react";
 import HeroSection from "./HeroSection";
 import HowItWorks from "./HowItWorks";
 import { AnimatedListDemo } from "./AnimatedList";
