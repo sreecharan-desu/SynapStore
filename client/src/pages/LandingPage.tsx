@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import HeroSection from "../components/landingpage/HeroSection";
 import HowItWorks from "../components/landingpage/HowItWorks";
-import { AnimatedListDemo } from "../components/landingpage/AnimatedList";
+import AnimatedInventoryShowcase from "../components/landingpage/AnimatedList";
 import WhyChooseUs from "../components/landingpage/WhyChooseUs";
 import Faq from "../components/landingpage/Faq";
 import Testimonials from "../components/landingpage/Testimonials";
@@ -86,7 +86,7 @@ const LandingPage: React.FC = () => {
       {/* How It Works - 3 Steps */}
       <HowItWorks />
       {/* Key Features */}
-      <AnimatedListDemo />
+      <AnimatedInventoryShowcase />
 
       {/* Comparison Section */}
       <WhyChooseUs />
