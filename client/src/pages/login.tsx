@@ -18,13 +18,12 @@ const BASE_URL =
   "http://localhost:3000";
 
 const OTP_LENGTH = 6;
-const RESEND_COOLDOWN = 60; // seconds default if server doesn't provide expiry
+const RESEND_COOLDOWN = 60; // seconds fallback if server does not provide expiry
 
-// Your provided Google client id (safe to embed; it's not a secret)
+// Development fallback google client id - replace with your config if needed
 const PROVIDED_GOOGLE_CLIENT_ID =
   "725689508552-prvotvild62vcf5rsk70ridh26v6sfve.apps.googleusercontent.com";
 
-// Make TypeScript happy about global google
 declare global {
   interface Window {
     google?: any;
@@ -44,13 +43,20 @@ const getGoogleClientId = (): string => {
       ? (process.env as any)?.REACT_APP_GOOGLE_CLIENT_ID
       : undefined;
 
-  // Diagnostics - remove in production if desired
-  console.info("Google Client ID lookup:", {
-    fromWindow,
-    fromVite,
-    fromCRA,
-    provided: PROVIDED_GOOGLE_CLIENT_ID,
-  });
+  // keep light dev diagnostic
+  try {
+    if ((import.meta as any)?.env?.DEV) {
+      // eslint-disable-next-line no-console
+      console.info("Google Client ID lookup:", {
+        fromWindow,
+        fromVite,
+        fromCRA,
+        provided: PROVIDED_GOOGLE_CLIENT_ID,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
 
   return fromWindow || fromVite || fromCRA || PROVIDED_GOOGLE_CLIENT_ID;
 };
@@ -64,19 +70,21 @@ const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSignup, setIsSignup] = useState(false);
 
-  // OTP state (6 digits)
+  // OTP state
   const [showOtp, setShowOtp] = useState(false);
   const [otp, setOtp] = useState<string[]>(
     Array.from({ length: OTP_LENGTH }).map(() => "")
   );
   const [timer, setTimer] = useState(0);
 
-  // loading / error
+  // loading / messages
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  // Google button container ref
+  // Google button container ref + render flag
   const googleBtnRef = useRef<HTMLDivElement | null>(null);
+  const [googleRendered, setGoogleRendered] = useState(false);
   const googleClientId = getGoogleClientId();
 
   useEffect(() => {
@@ -106,10 +114,11 @@ const Login: React.FC = () => {
     return body;
   };
 
-  // Register -> create user, server sends OTP to email
+  // Register - server sends OTP to email
   const register = async () => {
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       const body = await jsonFetch("/api/v1/auth/register", {
         method: "POST",
@@ -122,6 +131,7 @@ const Login: React.FC = () => {
       setShowOtp(true);
       setIsSignup(true);
       setTimer(RESEND_COOLDOWN);
+      setSuccess("OTP sent to your email");
       return body;
     } catch (err: any) {
       setError(err.message || "Registration failed");
@@ -131,10 +141,11 @@ const Login: React.FC = () => {
     }
   };
 
-  // Sign in (email + password) -> receives JWT token & user
+  // Sign in - preserves your existing logic
   const signin = async () => {
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       const body = await jsonFetch("/api/v1/auth/signin", {
         method: "POST",
@@ -156,12 +167,13 @@ const Login: React.FC = () => {
     }
   };
 
-  // Google sign-in handler: sends idToken to server and stores returned JWT
+  // Google sign-in handler - preserved
   const handleGoogleCredential = async (credential: string) => {
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
-      const body = await jsonFetch("/api/v1/auth/google", {
+      const body = await jsonFetch("/api/v1/oauth/google", {
         method: "POST",
         body: JSON.stringify({ idToken: credential }),
       });
@@ -189,12 +201,14 @@ const Login: React.FC = () => {
     }
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       await jsonFetch("/api/v1/auth/resend-otp", {
         method: "POST",
         body: JSON.stringify({ email }),
       });
       setTimer(RESEND_COOLDOWN);
+      setSuccess("OTP resent");
     } catch (err: any) {
       setError(err.message || "Could not resend OTP");
     } finally {
@@ -202,7 +216,7 @@ const Login: React.FC = () => {
     }
   };
 
-  // Verify OTP
+  // Verify OTP - replaced blocking alert with inline success message
   const verifyOtp = async () => {
     const code = otp.join("");
     if (code.length < OTP_LENGTH) {
@@ -211,6 +225,7 @@ const Login: React.FC = () => {
     }
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       await jsonFetch("/api/v1/auth/verify-otp", {
         method: "POST",
@@ -221,7 +236,7 @@ const Login: React.FC = () => {
       setOtp(Array.from({ length: OTP_LENGTH }).map(() => ""));
       setEmail("");
       setPassword("");
-      alert("OTP verified — you can now sign in");
+      setSuccess("OTP verified - you can now sign in");
     } catch (err: any) {
       setError(err.message || "OTP verification failed");
     } finally {
@@ -233,6 +248,7 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     if (!email || !password) {
       setError("Email and password are required");
       return;
@@ -245,11 +261,11 @@ const Login: React.FC = () => {
         await signin();
       }
     } catch {
-      // error state already set in functions
+      // errors are already set in each function
     }
   };
 
-  // OTP input helpers (6 boxes)
+  // OTP helpers
   const handleOtpChange = (index: number, value: string) => {
     if (!/^[0-9]*$/.test(value)) return;
     const next = [...otp];
@@ -289,9 +305,8 @@ const Login: React.FC = () => {
     last?.focus();
   };
 
-  // Google Identity script loader + initialize & render button
+  // Google Identity script loader - preserved, but sets googleRendered when render succeeds
   useEffect(() => {
-    // ensure the client id is available on window (avoid race with script)
     try {
       (window as any).GOOGLE_CLIENT_ID = googleClientId;
     } catch {
@@ -313,7 +328,6 @@ const Login: React.FC = () => {
         !window.google.accounts ||
         !window.google.accounts.id
       ) {
-        // script not yet loaded
         if (!script) return;
       }
 
@@ -334,17 +348,21 @@ const Login: React.FC = () => {
 
         if (googleBtnRef.current) {
           try {
+            // renderButton may create its own button; mark that it was rendered
             window.google.accounts.id.renderButton(googleBtnRef.current, {
               theme: "outline",
               size: "large",
               type: "standard",
             });
+            setGoogleRendered(true);
           } catch (err) {
             console.warn("Google button render failed", err);
+            setGoogleRendered(false);
           }
         }
       } catch (err) {
         console.error("Failed to initialize Google Identity", err);
+        setGoogleRendered(false);
       }
     };
 
@@ -361,6 +379,7 @@ const Login: React.FC = () => {
       script.onerror = () => {
         console.warn("Failed to load Google Identity script");
         setError("Could not load Google Identity script");
+        setGoogleRendered(false);
       };
       document.head.appendChild(script);
     } else {
@@ -375,7 +394,7 @@ const Login: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [googleClientId]);
 
-  // Fallback manual click: request One Tap / show popup credential via prompt
+  // Manual google signin fallback
   const manualGoogleSignIn = () => {
     if (!googleClientId) {
       setError("Google Client ID not configured.");
@@ -396,17 +415,37 @@ const Login: React.FC = () => {
     }
   };
 
-  // Simple UI rendering
+  // UI
   return (
-    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-white p-6">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white p-6">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
-        <h2 className="text-2xl font-semibold text-center mb-6">
+        {/* header - subtle product title */}
+        <div className="mb-6 text-center">
+          <h1 className="text-xl font-bold">SynapStore</h1>
+          <p className="text-xs text-gray-400 mt-1">Accounts and access</p>
+        </div>
+
+        <h2 className="text-2xl font-semibold text-center mb-4">
           {isSignup ? "Create your account" : "Welcome Back"}
         </h2>
 
+        {/* status messages */}
         {error && (
-          <div className="mb-4 text-sm text-red-600 bg-red-50 p-2 rounded">
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="mb-4 text-sm text-red-600 bg-red-50 p-2 rounded"
+          >
             {error}
+          </div>
+        )}
+        {success && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-4 text-sm text-green-700 bg-green-50 p-2 rounded"
+          >
+            {success}
           </div>
         )}
 
@@ -422,6 +461,7 @@ const Login: React.FC = () => {
                 <input
                   key={i}
                   id={`otp-${i}`}
+                  aria-label={`OTP digit ${i + 1}`}
                   inputMode="numeric"
                   pattern="[0-9]*"
                   maxLength={1}
@@ -429,13 +469,14 @@ const Login: React.FC = () => {
                   onChange={(e) => handleOtpChange(i, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(e, i)}
                   onPaste={handleOtpPaste}
-                  className="w-12 h-12 text-center border rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  autoComplete="one-time-code"
+                  className="w-12 h-12 text-center border rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:shadow"
                   disabled={loading}
                 />
               ))}
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-3">
               <button
                 type="button"
                 onClick={verifyOtp}
@@ -475,6 +516,7 @@ const Login: React.FC = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="you@company.com"
+                autoComplete="email"
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
                 disabled={loading}
               />
@@ -490,6 +532,7 @@ const Login: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="Enter your password"
+                autoComplete={isSignup ? "new-password" : "current-password"}
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
                 disabled={loading}
               />
@@ -497,8 +540,7 @@ const Login: React.FC = () => {
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-2 top-8 text-sm text-gray-600 px-2 py-1 rounded"
-                tabIndex={-1}
+                className="absolute right-2 inset-y-0 flex items-center text-sm text-gray-600 px-2 py-1 rounded"
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
@@ -530,7 +572,7 @@ const Login: React.FC = () => {
                 : "Sign in"}
             </button>
 
-            {/* Shared Google sign-in area */}
+            {/* divider */}
             <div className="mt-4">
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
@@ -543,30 +585,28 @@ const Login: React.FC = () => {
                 </div>
               </div>
 
-              {/* Google button rendered by Google's library into this container */}
-              <div
-                ref={googleBtnRef}
-                className="mt-4 flex justify-center"
-                aria-hidden={false}
-              />
+              {/* container for Google library button */}
+              <div ref={googleBtnRef} className="mt-4 flex justify-center" />
 
-              {/* Fallback manual button (visible if auto-render fails or for styling control) */}
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    manualGoogleSignIn();
-                  }}
-                  className="w-full mt-1 flex items-center justify-center gap-2 bg-white border border-gray-300 rounded-lg py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <FcGoogle className="w-5 h-5" />
-                  {loading
-                    ? "Working..."
-                    : isSignup
-                    ? "Sign up with Google"
-                    : "Sign in with Google"}
-                </button>
-              </div>
+              {/* show manual fallback only if Google library didn't render its button */}
+              {!googleRendered && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      manualGoogleSignIn();
+                    }}
+                    className="w-full mt-1 flex items-center justify-center gap-2 bg-white border border-gray-300 rounded-lg py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <FcGoogle className="w-5 h-5" />
+                    {loading
+                      ? "Working..."
+                      : isSignup
+                      ? "Sign up with Google"
+                      : "Sign in with Google"}
+                  </button>
+                </div>
+              )}
             </div>
           </form>
         )}
@@ -580,6 +620,7 @@ const Login: React.FC = () => {
               setShowOtp(false);
               setOtp(Array.from({ length: OTP_LENGTH }).map(() => ""));
               setError(null);
+              setSuccess(null);
             }}
             className="text-blue-600 hover:underline"
           >
