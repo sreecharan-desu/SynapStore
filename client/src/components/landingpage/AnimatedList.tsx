@@ -11,7 +11,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AnimatedList } from "@/components/ui/animated-list";
+import { AnimatedList } from "@/components/landingpage/animated-list";
 
 interface Item {
   name: string;

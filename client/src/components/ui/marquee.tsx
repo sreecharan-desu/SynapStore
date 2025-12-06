@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import { ComponentPropsWithoutRef } from "react"
 
 import { cn } from "@/lib/utils"

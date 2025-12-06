@@ -1,12 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import HeroSection from "./HeroSection";
-import HowItWorks from "./HowItWorks";
-import { AnimatedListDemo } from "./AnimatedList";
-import WhyChooseUs from "./WhyChooseUs";
-import Faq from "./Faq";
-import Testimonials from "./Testimonials";
-import Footer from "./Footer";
+import HeroSection from "../components/landingpage/HeroSection";
+import HowItWorks from "../components/landingpage/HowItWorks";
+import { AnimatedListDemo } from "../components/landingpage/AnimatedList";
+import WhyChooseUs from "../components/landingpage/WhyChooseUs";
+import Faq from "../components/landingpage/Faq";
+import Testimonials from "../components/landingpage/Testimonials";
+import Footer from "../components/landingpage/Footer";
 
 const LandingPage: React.FC = () => {
   return (

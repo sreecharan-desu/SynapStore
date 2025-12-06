@@ -14,21 +14,6 @@ const ArrowRight = () => (
   </svg>
 );
 
-const Package = () => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-  >
-    <path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
-    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-    <line x1="12" y1="22.08" x2="12" y2="12" />
-  </svg>
-);
-
 const Twitter = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
@@ -54,7 +39,7 @@ const Linkedin = () => (
 );
 
 export default function CTAAndFooter() {
-  const [hoveredSocial, setHoveredSocial] = useState(null);
+  const [, setHoveredSocial] = useState(null);
 
   return (
     <div className="w-full bg-gray-50">
@@ -233,7 +218,7 @@ export default function CTAAndFooter() {
             <div className="col-span-2 md:col-span-2 animate-fadeInUp stagger-1">
               <div className="flex items-center gap-3 mb-6">
                 <div className="logo-container w-11 h-11 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg">
-                  <Package />
+                  <img src="/logo.svg" alt="SynapStore Logo" />
                 </div>
                 <span className="text-2xl font-bold text-gray-900">
                   SynapStore
