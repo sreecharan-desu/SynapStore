@@ -331,18 +331,6 @@ const Login: React.FC = () => {
               </button>
             </div>
 
-            {!isSignup && (
-              <div className="flex items-center justify-between text-sm">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="h-4 w-4" />
-                  Remember me
-                </label>
-                <button type="button" className="text-blue-600 hover:underline">
-                  Forgot?
-                </button>
-              </div>
-            )}
-
             <button
               type="submit"
               className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-60"
@@ -356,6 +344,19 @@ const Login: React.FC = () => {
                 ? "Create account"
                 : "Sign in"}
             </button>
+
+            {isSignup && (
+              <button
+                type="button"
+                className="w-full border border-gray-300 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-50 transition flex items-center justify-center gap-2"
+                onClick={() => {
+                  // TODO: Implement Google OAuth login
+                  alert("Google login coming soon!");
+                }}
+              >
+                <span>🔗</span> Sign up with Google
+              </button>
+            )}
           </form>
         )}
 

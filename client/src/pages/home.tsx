@@ -5,8 +5,16 @@ const Home = () => {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    removeCookie("isLoggedIn");
+    // Clear all cookies
+    document.cookie.split(";").forEach((c) => {
+      const cookieName = c.split("=")[0].trim();
+      if (cookieName) {
+        removeCookie(cookieName);
+      }
+    });
+    // Navigate to login and refresh
     navigate("/login");
+    window.location.reload();
   };
 
   return (
