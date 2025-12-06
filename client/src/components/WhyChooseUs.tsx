@@ -91,12 +91,12 @@ export default function WhyChooseUs() {
       {/* floating gradient blobs */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
-          className={`absolute top-8 -right-20 w-96 h-96 rounded-full blur-3xl bg-gradient-to-br from-blue-300/30 to-emerald-300/20 ${
+          className={`absolute top-8 -right-20 w-96 h-96 rounded-full blur-3xl bg-linear-to-br from-blue-300/30 to-emerald-300/20 ${
             reduced ? "" : "wc-float"
           }`}
         />
         <div
-          className={`absolute -left-12 bottom-8 w-80 h-80 rounded-full blur-3xl bg-gradient-to-br from-pink-300/20 to-violet-300/10 ${
+          className={`absolute -left-12 bottom-8 w-80 h-80 rounded-full blur-3xl bg-linear-to-br from-pink-300/20 to-violet-300/10 ${
             reduced ? "" : "wc-float"
           }`}
           style={{ animationDelay: "800ms" }}
@@ -113,7 +113,7 @@ export default function WhyChooseUs() {
             style={{ animationDelay: "60ms" }}
           >
             Why choose{" "}
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-emerald-500">
+            <span className="bg-clip-text text-transparent bg-linear-to-r from-blue-600 to-emerald-500">
               SynapStore
             </span>
             ?
@@ -162,7 +162,7 @@ export default function WhyChooseUs() {
                     transform: inView || reduced ? "translateY(0)" : undefined,
                   }}
                 >
-                  <span className="flex-shrink-0 mt-0.5 w-7 h-7 rounded-full bg-red-50 flex items-center justify-center text-red-600 text-xs font-semibold">
+                  <span className="shrink-0 mt-0.5 w-7 h-7 rounded-full bg-red-50 flex items-center justify-center text-red-600 text-xs font-semibold">
                     ✕
                   </span>
                   <p className="text-slate-700">{t}</p>
@@ -211,9 +211,7 @@ export default function WhyChooseUs() {
                   }}
                 >
                   <CheckCircle2
-                    className={`w-7 h-7 flex-shrink-0 ${
-                      inView ? "wc-pop" : ""
-                    }`}
+                    className={`w-7 h-7 shrink-0 ${inView ? "wc-pop" : ""}`}
                     style={{ color: "white" }}
                     aria-hidden
                   />
