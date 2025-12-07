@@ -1,0 +1,1871 @@
+openapi: 3.1.0
+info:
+  title: SynapStore API - v1
+  version: "1.0.0"
+  description: |
+    OpenAPI 3.1 specification for SynapStore - v1 API.
+    Use this as the single source of truth while implementing routes, tests and clients.
+servers:
+  - url: /api/v1
+    description: Local / relative server
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # Standard wrappers
+    StandardResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        code:
+          type: string
+          nullable: true
+        details:
+          nullable: true
+      required:
+        - success
+
+    ValidationErrorDetail:
+      type: object
+      properties:
+        path:
+          type: string
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationErrorDetail"
+      required:
+        - success
+        - error
+
+    # Auth
+    UserPublic:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+
+    TokenResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserPublic"
+
+    RegisterRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+      required:
+        - username
+        - email
+        - password
+
+    SigninRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+      required:
+        - email
+        - password
+
+    OtpRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        otp:
+          type: string
+
+    GoogleOauthRequest:
+      type: object
+      properties:
+        idToken:
+          type: string
+      required:
+        - idToken
+
+    # Store
+    Store:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        timezone:
+          type: string
+        currency:
+          type: string
+        settings:
+          type: object
+          nullable: true
+        isActive:
+          type: boolean
+      required:
+        - id
+        - name
+        - slug
+
+    StoreCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        timezone:
+          type: string
+        currency:
+          type: string
+        settings:
+          type: object
+      required:
+        - name
+
+    # Roles
+    Role:
+      type: string
+      enum:
+        - SUPERADMIN
+        - ADMIN
+        - STORE_OWNER
+        - MANAGER
+        - STAFF
+        - READ_ONLY
+        - SUPPLIER
+
+    # Medicine & Inventory
+    Medicine:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        storeId:
+          type: string
+        ndc:
+          type: string
+          nullable: true
+        sku:
+          type: string
+          nullable: true
+        brandName:
+          type: string
+        genericName:
+          type: string
+          nullable: true
+        dosageForm:
+          type: string
+          nullable: true
+        strength:
+          type: string
+          nullable: true
+        uom:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+
+    MedicineCreate:
+      type: object
+      properties:
+        brandName:
+          type: string
+        genericName:
+          type: string
+        sku:
+          type: string
+        ndc:
+          type: string
+        dosageForm:
+          type: string
+        strength:
+          type: string
+        uom:
+          type: string
+        category:
+          type: string
+        taxInfo:
+          type: object
+      required:
+        - brandName
+
+    InventoryBatch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        storeId:
+          type: string
+        medicineId:
+          type: string
+        batchNumber:
+          type: string
+          nullable: true
+        qtyReceived:
+          type: integer
+        qtyAvailable:
+          type: integer
+        qtyReserved:
+          type: integer
+        expiryDate:
+          type: string
+          format: date-time
+          nullable: true
+        purchasePrice:
+          type: number
+          format: float
+          nullable: true
+        mrp:
+          type: number
+          format: float
+          nullable: true
+        receivedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    InventoryCreate:
+      type: object
+      properties:
+        medicineId:
+          type: string
+        batchNumber:
+          type: string
+        qtyReceived:
+          type: integer
+        expiryDate:
+          type: string
+          format: date-time
+        purchasePrice:
+          type: number
+        mrp:
+          type: number
+        receivedAt:
+          type: string
+      required:
+        - medicineId
+        - qtyReceived
+
+    StockMovement:
+      type: object
+      properties:
+        id:
+          type: string
+        storeId:
+          type: string
+        inventoryId:
+          type: string
+        medicineId:
+          type: string
+        delta:
+          type: integer
+        reason:
+          type: string
+          enum:
+            - SALE
+            - ADJUSTMENT
+            - RETURN
+            - DAMAGE
+            - RECEIPT
+            - TRANSFER
+            - IMPORT
+        note:
+          type: string
+          nullable: true
+        performedById:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    StockMovementCreate:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              batchId:
+                type: string
+                nullable: true
+              medicineId:
+                type: string
+              qty:
+                type: integer
+              price:
+                type: number
+                nullable: true
+            required:
+              - medicineId
+              - qty
+        reason:
+          type: string
+        note:
+          type: string
+      required:
+        - items
+        - reason
+
+    # Uploads
+    Upload:
+      type: object
+      properties:
+        id:
+          type: string
+        storeId:
+          type: string
+        filename:
+          type: string
+        fileRef:
+          type: string
+        mimeType:
+          type: string
+        status:
+          type: string
+          enum:
+            - PENDING
+            - PROCESSING
+            - PREVIEW_READY
+            - APPLIED
+            - FAILED
+        rowsProcessed:
+          type: integer
+          nullable: true
+        errorsCount:
+          type: integer
+          nullable: true
+        preview:
+          type: object
+          nullable: true
+        createdById:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    # Suppliers / Reorders
+    Supplier:
+      type: object
+      properties:
+        id:
+          type: string
+        storeId:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        contactName:
+          type: string
+        defaultLeadTime:
+          type: integer
+        defaultMOQ:
+          type: integer
+        isActive:
+          type: boolean
+
+    Reorder:
+      type: object
+      properties:
+        id:
+          type: string
+        storeId:
+          type: string
+        supplierId:
+          type: string
+        totalValue:
+          type: number
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - SENT
+            - CONFIRMED
+            - PARTIALLY_RECEIVED
+            - RECEIVED
+            - CANCELLED
+            - FAILED
+        externalRef:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ReorderCreate:
+      type: object
+      properties:
+        supplierId:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReorderItemCreate"
+        autoSend:
+          type: boolean
+        note:
+          type: string
+      required:
+        - supplierId
+        - items
+
+    ReorderItemCreate:
+      type: object
+      properties:
+        medicineId:
+          type: string
+        qty:
+          type: integer
+        price:
+          type: number
+          nullable: true
+        sku:
+          type: string
+          nullable: true
+        batchPref:
+          type: string
+          nullable: true
+      required:
+        - medicineId
+        - qty
+
+    # Notifications / Webhooks
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        storeId:
+          type: string
+        userId:
+          type: string
+          nullable: true
+        channel:
+          type: string
+        recipient:
+          type: string
+        subject:
+          type: string
+          nullable: true
+        body:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        status:
+          type: string
+          enum:
+            - QUEUED
+            - SENT
+            - FAILED
+        providerResp:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    WebhookRegistration:
+      type: object
+      properties:
+        id:
+          type: string
+        storeId:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+        secret:
+          type: string
+          nullable: true
+        events:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # Alerts, Forecasts, Activity
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+        storeId:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        metadata:
+          type: object
+        severity:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    Forecast:
+      type: object
+      properties:
+        id:
+          type: string
+        storeId:
+          type: string
+        medicineId:
+          type: string
+        model:
+          type: string
+        params:
+          type: object
+          nullable: true
+        result:
+          type: object
+        computedAt:
+          type: string
+          format: date-time
+
+    ActivityLog:
+      type: object
+      properties:
+        id:
+          type: string
+        storeId:
+          type: string
+        userId:
+          type: string
+          nullable: true
+        action:
+          type: string
+        payload:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+
+    # Patients / Prescriptions / Doctors
+    Patient:
+      type: object
+      properties:
+        patientID:
+          type: integer
+        firstName:
+          type: string
+        lastName:
+          type: string
+          nullable: true
+        birthdate:
+          type: string
+          format: date
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        insuranceId:
+          type: string
+          nullable: true
+
+    Prescription:
+      type: object
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: string
+          nullable: true
+        patientID:
+          type: integer
+        physID:
+          type: integer
+        medicineId:
+          type: string
+        qty:
+          type: integer
+        days:
+          type: integer
+          nullable: true
+        refills:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        issuedAt:
+          type: string
+          format: date-time
+
+    SupplierCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        contactName:
+          type: string
+        address:
+          type: string
+        defaultLeadTime:
+          type: integer
+        defaultMOQ:
+          type: integer
+        userId:
+          type: string
+          nullable: true
+      required:
+        - name
+
+  parameters:
+    storeIdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Store id (use x-store-id header alternative where appropriate)
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user and send OTP
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Registered and OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: registered - otp sent
+                  user:
+                    $ref: "#/components/schemas/UserPublic"
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: User exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/resend-otp:
+    post:
+      summary: Resend OTP to email
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: OTP resent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/verify-otp:
+    post:
+      summary: Verify an OTP for email
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OtpRequest"
+      responses:
+        "200":
+          description: OTP verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        "400":
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/signin:
+    post:
+      summary: Sign in using email and password
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SigninRequest"
+      responses:
+        "200":
+          description: Returns JWT token and user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /oauth/google:
+    post:
+      summary: Sign in with Google idToken
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoogleOauthRequest"
+      responses:
+        "200":
+          description: Returns JWT token and user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Invalid id token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/signout:
+    post:
+      summary: Sign out - invalidate client cookie or instruct client to drop token
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Signed out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /stores/my:
+    get:
+      summary: Get stores the authenticated user belongs to with roles
+      tags: [Stores]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of stores with roles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        slug:
+                          type: string
+                        roles:
+                          type: array
+                          items:
+                            $ref: "#/components/schemas/Role"
+
+  /stores:
+    post:
+      summary: Create a store (SUPERADMIN only)
+      tags: [Stores]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreCreate"
+      responses:
+        "201":
+          description: Store created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/Store"
+
+  /stores/{id}:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    get:
+      summary: Get store details
+      tags: [Stores]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Store
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/Store"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update a store
+      tags: [Stores]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                timezone:
+                  type: string
+                currency:
+                  type: string
+                settings:
+                  type: object
+      responses:
+        "200":
+          description: Store updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    delete:
+      summary: Delete (deactivate) a store (SUPERADMIN only)
+      tags: [Stores]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Store deleted / deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /stores/{id}/users/invite:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    post:
+      summary: Invite user to store with role
+      tags: [UserStore]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  $ref: "#/components/schemas/Role"
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /users/me:
+    get:
+      summary: Get authenticated user profile
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/UserPublic"
+
+    patch:
+      summary: Update authenticated user profile
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                imageUrl:
+                  type: string
+                phone:
+                  type: string
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /stores/{id}/medicines:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    get:
+      summary: List medicines for store
+      tags: [Medicines]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Paginated medicines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Medicine"
+    post:
+      summary: Create medicine
+      tags: [Medicines]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedicineCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Medicine"
+
+  /stores/{id}/medicines/{medicineId}:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: medicineId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get medicine detail
+      tags: [Medicines]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Medicine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Medicine"
+        "404":
+          description: Not found
+    patch:
+      summary: Update medicine
+      tags: [Medicines]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedicineCreate"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Soft-delete medicine (isActive=false)
+      tags: [Medicines]
+      security:
+        - bearerAuth: []
+
+  /stores/{id}/inventory:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    get:
+      summary: List inventory batches (FEFO)
+      tags: [Inventory]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: medicineId
+          in: query
+          schema:
+            type: string
+        - name: batchNumber
+          in: query
+          schema:
+            type: string
+        - name: expiryBefore
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Batch list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InventoryBatch"
+    post:
+      summary: Create inventory batch (receipt)
+      tags: [Inventory]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryCreate"
+      responses:
+        "201":
+          description: Created batch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryBatch"
+
+  /stores/{id}/inventory/{batchId}/adjust:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: batchId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Adjust inventory batch by delta
+      tags: [Inventory]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delta:
+                  type: integer
+                reason:
+                  type: string
+                note:
+                  type: string
+      responses:
+        "200":
+          description: Batch updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryBatch"
+        "400":
+          description: Invalid adjustment
+
+  /stores/{id}/stock-movements:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    post:
+      summary: Create stock movement (sale/adjust)
+      tags: [Stock]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StockMovementCreate"
+      responses:
+        "201":
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    get:
+      summary: List stock movements
+      tags: [Stock]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: medicineId
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Movements list
+
+  /stores/{id}/uploads:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    post:
+      summary: Upload inventory spreadsheet (multipart form-data)
+      tags: [Uploads]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "202":
+          description: Upload queued - preview processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    get:
+      summary: List uploads
+      tags: [Uploads]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Upload list
+
+  /stores/{id}/uploads/{uploadId}/preview:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: uploadId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Generate or fetch preview for an upload
+      tags: [Uploads]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Preview ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+
+  /stores/{id}/uploads/{uploadId}/apply:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: uploadId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Apply the upload preview - create batches and receipts transactionally
+      tags: [Uploads]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /stores/{id}/suppliers:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    get:
+      summary: List suppliers
+      tags: [Suppliers]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Supplier list
+    post:
+      summary: Create supplier
+      tags: [Suppliers]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupplierCreate"
+      responses:
+        "201":
+          description: Created supplier
+
+  /stores/{id}/suppliers/{supplierId}:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: supplierId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get a supplier
+      tags: [Suppliers]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Supplier
+    patch:
+      summary: Update supplier
+      tags: [Suppliers]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+    delete:
+      summary: Soft-delete supplier
+      tags: [Suppliers]
+      security:
+        - bearerAuth: []
+
+  /stores/{id}/reorders:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    get:
+      summary: List reorders
+      tags: [Reorders]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Reorder list
+    post:
+      summary: Create reorder (DRAFT)
+      tags: [Reorders]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderCreate"
+      responses:
+        "201":
+          description: Created reorder
+
+  /stores/{id}/reorders/{reorderId}:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: reorderId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get reorder
+      tags: [Reorders]
+      security:
+        - bearerAuth: []
+    patch:
+      summary: Patch reorder (edit draft or change status)
+      tags: [Reorders]
+      security:
+        - bearerAuth: []
+    post:
+      summary: Not used
+  /stores/{id}/reorders/{reorderId}/send:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: reorderId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Send reorder to supplier
+      tags: [Reorders]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sent
+
+  /stores/{id}/reorders/{reorderId}/receive:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: reorderId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Receive items from reorder - create batches and movements
+      tags: [Reorders]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      reorderItemId:
+                        type: string
+                      qtyReceived:
+                        type: integer
+                      batchNumber:
+                        type: string
+                      expiryDate:
+                        type: string
+                        format: date-time
+                      purchasePrice:
+                        type: number
+                receiptReference:
+                  type: string
+      responses:
+        "200":
+          description: Received and inventory updated
+
+  /stores/{id}/notifications:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    post:
+      summary: Enqueue a notification
+      tags: [Notifications]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channel:
+                  type: string
+                recipient:
+                  type: string
+                subject:
+                  type: string
+                body:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        "202":
+          description: Enqueued
+
+    get:
+      summary: List notifications
+      tags: [Notifications]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Notifications
+
+  /stores/{id}/notifications/{notificationId}/retry:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: notificationId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Retry a notification (sync attempt for webhooks)
+      tags: [Notifications]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Retry initiated or queued
+
+  /stores/{id}/webhooks:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    get:
+      summary: List webhook registrations
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+    post:
+      summary: Register a webhook
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                url:
+                  type: string
+                secret:
+                  type: string
+                events:
+                  type: array
+                  items:
+                    type: string
+                isActive:
+                  type: boolean
+      responses:
+        "201":
+          description: Created webhook
+
+  /stores/{id}/webhooks/{registrationId}:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: registrationId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Update webhook registration
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+    delete:
+      summary: Deactivate webhook registration
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+
+  /stores/{id}/webhooks/{registrationId}/test:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: registrationId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Test webhook delivery
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Delivery result
+
+  /admin/stats:
+    get:
+      summary: Global admin stats (SUPERADMIN only)
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Stats object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /admin/users/{userId}/impersonate:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Impersonate a user and return token (SUPERADMIN)
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Impersonation token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                      user:
+                        $ref: "#/components/schemas/UserPublic"
+
+  /stores/{id}/patients:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    get:
+      summary: List patients
+      tags: [Patients]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Patients list
+    post:
+      summary: Create patient
+      tags: [Patients]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Patient"
+      responses:
+        "201":
+          description: Patient created
+
+  /stores/{id}/patients/{patientID}:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: patientID
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get patient
+      tags: [Patients]
+      security:
+        - bearerAuth: []
+    patch:
+      summary: Update patient
+      tags: [Patients]
+      security:
+        - bearerAuth: []
+    delete:
+      summary: Delete patient
+      tags: [Patients]
+      security:
+        - bearerAuth: []
+
+  /stores/{id}/prescriptions:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    get:
+      summary: List prescriptions
+      tags: [Prescriptions]
+      security:
+        - bearerAuth: []
+    post:
+      summary: Create prescription
+      tags: [Prescriptions]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Prescription"
+      responses:
+        "201":
+          description: Created
+
+  /stores/{id}/prescriptions/upload:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+    post:
+      summary: Upload a doctor prescription file and create a record
+      tags: [Prescriptions]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                patientID:
+                  type: integer
+                physID:
+                  type: integer
+                medicineId:
+                  type: string
+                qty:
+                  type: integer
+      responses:
+        "201":
+          description: Prescription created
+
+  /stores/{id}/prescriptions/{prescriptionId}:
+    parameters:
+      - $ref: "#/components/parameters/storeIdParam"
+      - name: prescriptionId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get prescription
+      tags: [Prescriptions]
+      security:
+        - bearerAuth: []
+    patch:
+      summary: Update prescription
+      tags: [Prescriptions]
+      security:
+        - bearerAuth: []
+    delete:
+      summary: Delete prescription
+      tags: [Prescriptions]
+      security:
+        - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Authentication and OAuth
+  - name: Stores
+    description: Store management
+  - name: UserStore
+    description: User invitations and roles per store
+  - name: Users
+    description: User profile
+  - name: Medicines
+    description: Medicine catalogue
+  - name: Inventory
+    description: Inventory batch creation and adjustments
+  - name: Stock
+    description: Stock movements and POS interactions
+  - name: Uploads
+    description: Bulk uploads and previews
+  - name: Suppliers
+    description: Supplier CRUD and management
+  - name: Reorders
+    description: Purchase orders and receiving flows
+  - name: Notifications
+    description: Notifications queue and retry
+  - name: Webhooks
+    description: Webhook registration and testing
+  - name: Admin
+    description: Superadmin utilities
+  - name: Patients
+    description: Patient management
+  - name: Prescriptions
+    description: Prescription management and doctor uploads
