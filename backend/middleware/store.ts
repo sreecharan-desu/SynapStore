@@ -1,109 +1,103 @@
-// src/middleware/store.ts
-
 import { Request, Response, NextFunction } from "express";
 import prisma from "../lib/prisma";
+import type { Role, Store } from "@prisma/client";
 
 /**
- * storeContext
- * - Extracts storeId from:
- *    • X-Store-Id header
- *    • ?storeId= query
- *    • req.body.storeId (optional)
- * - Verifies that the authenticated user has access to that store
- * - Attaches: req.store = { id, role, meta }
- *
- * REQUIREMENT:
- * Your auth middleware must set req.user = { id, ... } before this runs.
+ * Augmented request types used by these middlewares
  */
+export type RequestWithUser = Request & {
+  user?: {
+    id: string;
+    email?: string;
+    username?: string;
+    globalRole?: Role | null;
+  };
+  store?: Partial<Store> | null;
+  userStoreRoles?: Role[]; // roles the user has for the active store
+};
 
+/**
+ * Read storeId from common places (header first, then body/query)
+ */
+function resolveStoreId(req: Request): string | null {
+  const hdr = req.header("x-store-id");
+  if (hdr && typeof hdr === "string" && hdr.trim() !== "") return hdr;
+  if (req.body && req.body.storeId) return String(req.body.storeId);
+  if (req.query && req.query.storeId) return String(req.query.storeId);
+  return null;
+}
+
+/**
+ * storeContext middleware
+ *
+ * - requires authenticate() to have run earlier to populate req.user.id
+ * - resolves the Store and the user's role(s) for that store
+ * - attaches req.store and req.userStoreRoles
+ */
 export async function storeContext(
-  req: Request & { user?: any; store?: any },
+  req: RequestWithUser,
   res: Response,
   next: NextFunction
 ) {
   try {
-    const storeId =
-      (req.headers["x-store-id"] as string) ||
-      (req.query.storeId as string) ||
-      (req.body?.storeId as string);
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "unauthenticated" });
 
-    if (!storeId) return next(); // allow unscoped routes
-
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ error: "unauthenticated" });
+    const storeId = resolveStoreId(req);
+    if (!storeId) {
+      return res.status(400).json({
+        error: "store id required (x-store-id header or storeId param)",
+      });
     }
 
-    // Verify membership
-    const roleRow = await prisma.userStoreRole.findFirst({
-      where: { userId: req.user.id, storeId },
+    // fetch store minimally
+    const store = await prisma.store.findUnique({
+      where: { id: storeId },
       select: {
-        role: true,
-        store: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            timezone: true,
-            currency: true,
-          },
-        },
+        id: true,
+        name: true,
+        slug: true,
+        timezone: true,
+        currency: true,
+        settings: true,
       },
     });
 
-    if (!roleRow) {
-      return res.status(403).json({ error: "access to store denied" });
+    if (!store) {
+      // do not attach anything - allow requireStore to surface 404
+      return res.status(404).json({ error: "store not found" });
     }
 
-    req.store = {
-      id: storeId,
-      role: roleRow.role,
-      meta: roleRow.store,
-    };
+    // fetch user roles for this store (a user should normally have one role per store)
+    const roleRows = await prisma.userStoreRole.findMany({
+      where: { userId, storeId },
+      select: { role: true },
+    });
+
+    const roles: Role[] = roleRows.map((r) => r.role);
+
+    // attach to request for downstream handlers
+    req.store = store;
+    req.userStoreRoles = roles;
 
     return next();
   } catch (err) {
-    next(err);
+    console.error("storeContext error:", err);
+    return next(err);
   }
 }
 
 /**
- * requireStore
- * - Ensures that storeContext resolved a store.
+ * requireStore - lightweight guard that ensures req.store is present
+ * Useful when storeContext is optional in a chain and you want to enforce it for a route
  */
 export function requireStore(
-  req: Request & { store?: any },
+  req: RequestWithUser,
   res: Response,
   next: NextFunction
 ) {
   if (!req.store) {
-    return res
-      .status(400)
-      .json({ error: "store not specified or access denied" });
+    return res.status(404).json({ error: "store not resolved" });
   }
   return next();
-}
-
-/**
- * requireRole(...roles)
- * - Restricts route access by role inside the selected store
- *
- * Example:
- * router.post("/update", requireRole("ADMIN", "STORE_OWNER"), handler)
- */
-
-export function requireRole(...allowedRoles: string[]) {
-  return (
-    req: Request & { store?: any },
-    res: Response,
-    next: NextFunction
-  ) => {
-    const role = req.store?.role;
-    if (!role) return res.status(403).json({ error: "forbidden" });
-
-    if (!allowedRoles.includes(role)) {
-      return res.status(403).json({ error: "insufficient role" });
-    }
-
-    return next();
-  };
 }

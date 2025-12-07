@@ -128,18 +128,30 @@ async function createStoresAndUsers(testUserId: string) {
       const imagePlain = faker.image.avatar();
       const encImage = crypto$.encryptCell(imagePlain);
 
-      const user = await prisma.user.create({
-        data: {
-          username: encUsername,
-          email: encEmail,
-          passwordHash,
-          imageUrl: encImage ?? undefined,
-          phone: faker.phone.number({ style: "international" }),
-          isActive: true,
-          isverified: true, // seeded users are verified to ease dev login
-        },
-        select: { id: true },
-      });
+      // create user
+      let user;
+      try {
+        user = await prisma.user.create({
+          data: {
+            username: encUsername,
+            email: encEmail,
+            passwordHash,
+            imageUrl: encImage ?? undefined,
+            phone: faker.phone.number({ style: "international" }),
+            isActive: true,
+            isverified: true, // seeded users are verified to ease dev login
+          },
+          select: { id: true },
+        });
+      } catch (e: any) {
+        // in case of unique collisions (rare in seed), try to find existing
+        const found = await prisma.user.findUnique({
+          where: { email: encEmail },
+          select: { id: true },
+        });
+        if (found) user = found;
+        else throw e;
+      }
 
       // assign roles: first user is STORE_OWNER, next ADMIN, rest STAFF / MANAGER
       const role =
@@ -151,13 +163,17 @@ async function createStoresAndUsers(testUserId: string) {
           ? "MANAGER"
           : "STAFF";
 
-      await prisma.userStoreRole.create({
-        data: {
-          userId: user.id,
-          storeId: store.id,
-          role,
-        },
-      });
+      try {
+        await prisma.userStoreRole.create({
+          data: {
+            userId: user.id,
+            storeId: store.id,
+            role,
+          },
+        });
+      } catch (e) {
+        // ignore unique constraint errors if role already exists
+      }
     }
   }
 
@@ -185,24 +201,80 @@ async function createStoresAndUsers(testUserId: string) {
 
 /**
  * Create per-store suppliers
+ *
+ * Change: 30% of suppliers will have a linked User account (globalRole: SUPPLIER)
+ * and Supplier.userId will point to that user.id.
  */
 async function createSuppliersForStore(storeId: string, count = 6) {
   const ids: string[] = [];
   for (let i = 0; i < count; i++) {
-    const s = await prisma.supplier.create({
-      data: {
-        storeId,
-        name: `${faker.company.name()} Supplies`,
-        address: faker.location.streetAddress(),
-        phone: faker.phone.number({ style: "international" }),
-        contactName: faker.person.fullName(),
-        defaultLeadTime: rndInt(1, 14),
-        defaultMOQ: rndInt(1, 50),
-        externalMeta: {},
-      },
-      select: { id: true },
-    });
-    ids.push(s.id);
+    const supplierName = `${faker.company.name()} Supplies`;
+    const willHaveUser = Math.random() < 0.3; // 30% chance supplier has a user account
+    let userId: string | undefined = undefined;
+
+    if (willHaveUser) {
+      // create a supplier user account
+      const usernamePlain =
+        faker.helpers.slugify(supplierName).slice(0, 24).toLowerCase() +
+        `${i}${storeId.slice(0, 4)}`;
+      const emailPlain = `${usernamePlain}@supplier.example.com`;
+      const passwordPlain = "Supplier123!";
+      const passwordHash = await hashPw(passwordPlain);
+
+      const encUsername = crypto$.encryptCellDeterministic(usernamePlain);
+      const encEmail = crypto$.encryptCellDeterministic(emailPlain);
+      const encImage = crypto$.encryptCell(faker.image.avatar());
+
+      try {
+        const supplierUser = await prisma.user.create({
+          data: {
+            username: encUsername,
+            email: encEmail,
+            passwordHash,
+            imageUrl: encImage,
+            phone: faker.phone.number({ style: "international" }),
+            isActive: true,
+            isverified: true,
+            globalRole: "SUPPLIER",
+          },
+          select: { id: true },
+        });
+        userId = supplierUser.id;
+      } catch (e: any) {
+        // if collision, try to lookup existing user by encrypted email
+        const found = await prisma.user.findUnique({
+          where: { email: crypto$.encryptCellDeterministic(emailPlain) },
+          select: { id: true },
+        });
+        if (found) userId = found.id;
+        else {
+          // on unexpected failure, leave userId undefined and continue
+          console.warn("Failed to create supplier user:", e?.message ?? e);
+          userId = undefined;
+        }
+      }
+    }
+
+    // create supplier row, link to userId if created
+    try {
+      const s = await prisma.supplier.create({
+        data: {
+          storeId,
+          name: supplierName,
+          address: faker.location.streetAddress(),
+          phone: faker.phone.number({ style: "international" }),
+          contactName: faker.person.fullName(),
+          defaultLeadTime: rndInt(1, 14),
+          defaultMOQ: rndInt(1, 50),
+          externalMeta: {},
+          userId: userId ?? undefined,
+        },
+        select: { id: true },
+      });
+      ids.push(s.id);
+    } catch (e: any) {
+      console.warn("Failed to create supplier row:", e?.message ?? e);
+    }
   }
   return ids;
 }

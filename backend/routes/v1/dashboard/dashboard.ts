@@ -2,7 +2,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import prisma from "../../../lib/prisma";
 import { storeContext, requireStore } from "../../../middleware/store";
-import { authenticate } from "../../../lib/authenticate";
+import { authenticate } from "../../../middleware/authenticate";
 import type { Role } from "@prisma/client"; // <- use Prisma's generated enum type
 
 type RoleEnum = Role;

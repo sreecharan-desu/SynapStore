@@ -59,35 +59,41 @@ enum ReorderStatus {
   FAILED
 }
 
-model Store {
-  id          String    @id @default(uuid())
-  name        String
-  slug        String    @unique
-  timezone    String    @default("Asia/Kolkata")
-  currency    String    @default("INR")
-  settings    Json?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
 
-  users       UserStoreRole[]
-  medicines   Medicine[]
-  suppliers   Supplier[]
-  inventory   InventoryBatch[]
-  uploads     Upload[]
-  forecasts   Forecast[]
-  alerts      Alert[]
-  reorders    Reorder[]
-  featureFlags FeatureFlag[]
-  health      StoreHealth?
-  activityLogs ActivityLog[]
+model Store {
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique
+  timezone      String    @default("Asia/Kolkata")
+  currency      String    @default("INR")
+  settings      Json?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  users         UserStoreRole[]
+  medicines     Medicine[]
+  suppliers     Supplier[]
+  inventory     InventoryBatch[]
+  uploads       Upload[]
+  forecasts     Forecast[]
+  alerts        Alert[]
+  reorders      Reorder[]
+  featureFlags  FeatureFlag[]
+  health        StoreHealth?
+  activityLogs  ActivityLog[]
   notifications Notification[]
 
   @@index([slug])
-  doctors Doctor[]
+  doctors       Doctor[]
   stockMovements StockMovement[]
   webhookRegistrations WebhookRegistration[]
-  otps Otp[]
+  otps          Otp[]
   prescriptions Prescription[]
 }
 
@@ -101,7 +107,11 @@ model User {
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-  isverified  Boolean   @default(false)
+  isverified   Boolean   @default(false)
+
+  // Global role for system-level permissions - use SUPERADMIN here for global admin users
+  globalRole   Role?
+
   stores       UserStoreRole[]
   otps         Otp[]
   activityLogs ActivityLog[]
@@ -109,11 +119,15 @@ model User {
 
   stockMovements StockMovement[]
 
-  alerts Alert[]
+  alerts       Alert[]
 
-  reorders Reorder[]
+  reorders     Reorder[]
 
   notifications Notification[]
+
+  // remove supplierRefId from User (Supplier owns the relation)
+
+  suppliers Supplier[]
 }
 
 model UserStoreRole {
@@ -125,7 +139,8 @@ model UserStoreRole {
   role      Role
   createdAt DateTime @default(now())
 
-  @@unique([userId, storeId, role])
+  // single role per user per store
+  @@unique([userId, storeId])
   @@index([storeId])
   @@index([userId])
 }
@@ -142,7 +157,6 @@ model Doctor {
 
   prescriptions Prescription[]
 }
-
 model Supplier {
   id               String   @id @default(uuid())
   supLegacyId      Int?     // keep legacy reference if needed
@@ -157,15 +171,21 @@ model Supplier {
   externalMeta     Json?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  isActive         Boolean  @default(true)
+
+  // Supplier optionally maps to a User account
+  user             User?    @relation(fields: [userId], references: [id])
+  userId           String?  @unique
 
   medicines        Medicine[] 
   reorders         Reorder[]
 }
 
+
 model Medicine {
   id            String    @id @default(uuid())
   // keep legacy NDC if available
-  ndc           String?   @unique
+  ndc           String?   
   store         Store     @relation(fields: [storeId], references: [id])
   storeId       String
   sku           String?   
@@ -176,6 +196,7 @@ model Medicine {
   uom           String?
   category      String?
   taxInfo       Json?
+  isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -187,6 +208,7 @@ model Medicine {
 
   @@index([storeId, brandName])
   @@index([storeId, ndc])
+  reorderItems ReorderItem[]
 }
 
 model InventoryBatch {
@@ -212,6 +234,7 @@ model InventoryBatch {
   @@index([storeId, medicineId])
   @@index([storeId, batchNumber])
   @@index([storeId, expiryDate])
+  @@index([storeId, expiryDate, medicineId]) // composite index for expiry queries per store and medicine
 }
 
 model StockMovement {
@@ -230,6 +253,7 @@ model StockMovement {
   createdAt     DateTime  @default(now())
 
   @@index([storeId, medicineId])
+  @@index([storeId, createdAt])
 }
 
 model Upload {
@@ -247,6 +271,7 @@ model Upload {
   createdById   String?
   createdAt     DateTime   @default(now())
   processedAt   DateTime?
+
   @@index([storeId, status])
 }
 
@@ -266,16 +291,16 @@ model Forecast {
 }
 
 model Alert {
-  id            String    @id @default(uuid())
-  store         Store     @relation(fields: [storeId], references: [id])
-  storeId       String
-  type          AlertType
-  status        AlertStatus @default(ACTIVE)
-  metadata      Json?
-  severity      Int?
-  createdAt     DateTime   @default(now())
+  id             String    @id @default(uuid())
+  store          Store     @relation(fields: [storeId], references: [id])
+  storeId        String
+  type           AlertType
+  status         AlertStatus @default(ACTIVE)
+  metadata       Json?
+  severity       Int?
+  createdAt      DateTime   @default(now())
   acknowledgedBy User?     @relation(fields: [ackById], references: [id])
-  ackById       String?
+  ackById        String?
   acknowledgedAt DateTime?
 
   @@index([storeId, type])
@@ -290,14 +315,28 @@ model Reorder {
   supplierId   String
   createdBy    User?    @relation(fields: [createdById], references: [id])
   createdById  String?
-  items        Json     // [{ medicineId, qty, price, sku, batchPref }]
+  // items moved into ReorderItem for relational queries
   totalValue   Decimal? @db.Decimal(12, 2)
   status       ReorderStatus @default(DRAFT)
   externalRef  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  items        ReorderItem[]
   @@index([storeId, status])
+  @@index([supplierId, status])
+}
+
+model ReorderItem {
+  id         String   @id @default(uuid())
+  reorder    Reorder  @relation(fields: [reorderId], references: [id])
+  reorderId  String
+  medicine   Medicine @relation(fields: [medicineId], references: [id])
+  medicineId String
+  qty        Int
+  price      Decimal? @db.Decimal(12,2)
+  sku        String?
+  batchPref  String?
 }
 
 model FeatureFlag {
@@ -361,7 +400,7 @@ model Notification {
   subject      String?
   body         String?
   metadata     Json?
-  status       String   @default("queued")
+  status       NotificationStatus @default(QUEUED)
   providerResp Json?
   createdAt    DateTime @default(now())
   sentAt       DateTime?
