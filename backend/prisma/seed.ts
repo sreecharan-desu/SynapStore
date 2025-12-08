@@ -668,6 +668,7 @@ async function createPrescriptions(
         storeId,
         patientID,
         physID,
+        // @ts-ignore
         medicineId,
         qty: rndInt(1, 30),
         days: rndInt(1, 30),
