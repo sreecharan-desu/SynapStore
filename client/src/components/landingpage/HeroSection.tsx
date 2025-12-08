@@ -162,25 +162,6 @@ export default function HeroSection() {
       </div>
 
       <div className="relative max-w-7xl mx-auto px-6 z-10">
-        <div className="flex justify-center">
-          <div
-            ref={badgeInView.ref}
-            className={`inline-flex items-center gap-3 px-6 py-3 rounded-full glass border border-white/40 text-blue-700 text-sm font-semibold shadow-lg ${
-              badgeInView.inView ? "fade-up" : ""
-            }`}
-            style={{ animationDelay: reduced ? undefined : "60ms" }}
-          >
-            <div className="relative">
-              <Star className="w-4 h-4 text-blue-600 fill-blue-600" />
-              <div className="absolute -top-1 -right-1">
-                <Sparkles className="w-3 h-3 text-yellow-500" />
-              </div>
-            </div>
-            <span>Trusted by 500+ pharmacies nationwide</span>
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-          </div>
-        </div>
-
         <div className="text-center mt-8">
           <h1
             id="hero-heading"
@@ -224,21 +205,11 @@ export default function HeroSection() {
             <button
               onClick={() => navigate("/login")}
               className="group relative inline-flex items-center gap-3 px-8 py-4 rounded-full bg-gradient-to-r from-blue-600 to-emerald-600 text-white font-bold text-lg shadow-2xl hover:scale-105 transition-transform"
-              aria-label="Start free trial"
+              aria-label="Get Started"
             >
-              <span className="relative z-10">Start Free Trial</span>
+              <span className="relative z-10">Get Started</span>
               <ArrowRight className="w-5 h-5 relative z-10" />
               <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity bg-black/10" />
-            </button>
-
-            <button
-              className="group inline-flex items-center gap-3 px-8 py-4 rounded-full border-2 border-slate-300 bg-white/80 backdrop-blur text-slate-700 font-bold text-lg hover:shadow-lg transition-shadow"
-              aria-label="Watch demo"
-            >
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center shadow-lg">
-                <div className="w-0 h-0 border-l-8 border-l-white border-t-4 border-t-transparent border-b-4 border-b-transparent ml-1" />
-              </div>
-              <span>Watch Demo</span>
             </button>
           </div>
         </div>

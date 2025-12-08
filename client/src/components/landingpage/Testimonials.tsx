@@ -218,31 +218,7 @@ export function Testimonials() {
           <p className="text-sm text-gray-500 mb-6">
             Join our growing community of satisfied customers
           </p>
-          <button
-            className="group relative inline-flex items-center gap-2 px-6 py-3 bg-linear-to-r from-blue-600 to-blue-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
-            onClick={() => {
-              const contact = document.getElementById("contact");
-              contact?.scrollIntoView({ behavior: "smooth" });
-            }}
-          >
-            <span className="relative z-10">Get Started Today</span>
-            <svg
-              className="relative z-10"
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-              <polyline points="12 5 19 12 12 19"></polyline>
-            </svg>
-            <span className="absolute inset-0 bg-linear-to-r from-blue-700 to-blue-800 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
-          </button>
+        
         </motion.div>
       </div>
     </section>

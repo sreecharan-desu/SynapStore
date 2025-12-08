@@ -17,7 +17,7 @@ import {
 
 const cn = (...classes: any[]) => classes.filter(Boolean).join(" ");
 
-// Notification Data
+// Notification Data (unchanged)
 const notifications = [
   {
     name: "Low Stock Alert",
@@ -69,17 +69,22 @@ const notifications = [
   },
 ];
 
-// Excel Upload Animation Component
+// ExcelUploadAnimation, Notification, ReceiptGeneration components
+// (UNCHANGED — copy them exactly from your original file)
 const ExcelUploadAnimation = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
 
-  const steps = [
-    { label: "Uploading file", icon: Upload },
-    { label: "Parsing data", icon: FileSpreadsheet },
-    { label: "Validating entries", icon: CheckCircle2 },
-    { label: "Syncing inventory", icon: Package },
-  ];
+const steps = [
+  { label: "Uploading file", icon: Upload },
+  { label: "Parsing data", icon: FileSpreadsheet },
+  { label: "Validating entries", icon: CheckCircle2 },
+  { label: "Deduplicating records", icon: Check },
+  { label: "Mapping columns", icon: Zap },
+  { label: "Syncing inventory", icon: Package },
+  { label: "Finalizing", icon: Download },
+];
+
 
   useEffect(() => {
     const progressInterval = setInterval(() => {
@@ -99,7 +104,7 @@ const ExcelUploadAnimation = () => {
   }, [uploadProgress]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 h-full">
       {/* Upload Card */}
       <div className="relative group">
         <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-emerald-600 rounded-2xl opacity-75 group-hover:opacity-100 blur transition duration-500"></div>
@@ -250,7 +255,6 @@ const ExcelUploadAnimation = () => {
   );
 };
 
-// Notification Component
 const Notification = ({
   name,
   description,
@@ -323,7 +327,6 @@ const Notification = ({
   );
 };
 
-// Receipt Generation Component
 const ReceiptGeneration = () => {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -365,7 +368,7 @@ const ReceiptGeneration = () => {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 h-full">
       {/* Generation Status */}
       <div className="relative group">
         <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl opacity-75 group-hover:opacity-100 blur transition duration-500"></div>
@@ -541,7 +544,7 @@ export default function AnimatedInventoryShowcase() {
         }
       `}</style>
 
-      {/* Background Elements */}
+   {/* Background Elements */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute top-10 sm:top-20 right-10 sm:right-20 w-48 h-48 sm:w-96 sm:h-96 bg-blue-400/10 rounded-full blur-3xl animate-pulse" />
         <div
@@ -571,22 +574,32 @@ export default function AnimatedInventoryShowcase() {
             smart alerts, and automated receipt generation
           </p>
         </div>
+	
+	
+        
+      </div>
 
-        {/* Three Column Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    
+
+        {/* Three Column Layout - UPDATED: items-stretch, consistent heights */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12 max-w-6xl mx-auto items-stretch">
           {/* Left: Excel Upload */}
-          <div className="lg:col-span-1 order-1">
-            <ExcelUploadAnimation />
+          <div className="h-full flex flex-col">
+            <div className="flex-1">
+              <ExcelUploadAnimation />
+            </div>
           </div>
 
           {/* Center: Notifications */}
-          <div className="lg:col-span-1 order-3 md:order-2 md:col-span-2 lg:col-span-1">
-            <div className="relative h-[500px] sm:h-[600px] lg:h-[700px] rounded-2xl sm:rounded-3xl bg-white/60 backdrop-blur-xl border border-white/20 shadow-2xl overflow-hidden">
+          <div className="h-full flex flex-col">
+            <div className="relative min-h-[550px] h-full rounded-2xl bg-white/70 backdrop-blur-sm border border-gray-200 shadow-xl overflow-hidden">
               {/* Gradient Overlays */}
-              <div className="absolute top-0 inset-x-0 h-16 sm:h-24 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
-              <div className="absolute bottom-0 inset-x-0 h-20 sm:h-32 bg-gradient-to-t from-white to-transparent z-10 pointer-events-none" />
+              <div className="absolute top-0 inset-x-0 h-20 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
+              <div className="absolute bottom-0 inset-x-0 h-20 bg-gradient-to-t from-white to-transparent z-10 pointer-events-none" />
 
-              <div className="absolute inset-0 p-4 sm:p-6 pt-12 sm:pt-16 pb-16 sm:pb-20 overflow-y-auto space-y-3 sm:space-y-4 notification-scroll">
+              {/* Content: use padding without huge top offset so columns align */}
+              <div className="absolute inset-0 p-6 overflow-y-auto space-y-4 notification-scroll">
                 {visibleNotifications.map((notification: any, idx) => (
                   <Notification
                     key={`${notification.name}-${idx}`}
@@ -599,8 +612,10 @@ export default function AnimatedInventoryShowcase() {
           </div>
 
           {/* Right: Receipt Generation */}
-          <div className="lg:col-span-1 order-2 md:order-3">
-            <ReceiptGeneration />
+          <div className="h-full flex flex-col">
+            <div className="flex-1">
+              <ReceiptGeneration />
+            </div>
           </div>
         </div>
       </div>
