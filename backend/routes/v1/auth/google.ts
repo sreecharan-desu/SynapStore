@@ -32,12 +32,10 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
   const { idToken } = parsed.data;
 
   try {
-    // verify token with Google
     const ticket = await client.verifyIdToken({
       idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
-
     const payload = ticket.getPayload();
     if (!payload)
       return respond(res, 400, { error: "invalid id token payload" });
@@ -49,14 +47,12 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
     if (!email)
       return respond(res, 400, { error: "google account missing email" });
 
-    // encrypt fields for DB usage
     const encEmail = crypto$.encryptCellDeterministic(email);
     const usernamePlain = name || email.split("@")[0];
     const encUsername = crypto$.encryptCellDeterministic(usernamePlain);
-    const encImage = picture ? crypto$.encryptCell(picture) : null;
+    const encImage = picture ? crypto$.encryptCell(picture) : undefined;
 
-    // upsert user using encrypted email for lookup.
-    // set isverified = true because Google validated the email.
+    // upsert user (google-verified => isverified true)
     const userRow = await prisma.user.upsert({
       where: { email: encEmail },
       update: {
@@ -77,34 +73,145 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
         username: true,
         imageUrl: true,
         isverified: true,
+        globalRole: true,
       },
     });
 
-    // decrypt encrypted fields before returning
-    const decrypted = crypto$.decryptObject(userRow, [
+    const user = crypto$.decryptObject(userRow, [
       "username",
       "email",
       "imageUrl",
     ]) as any;
+    user.globalRole = userRow.globalRole ?? null;
 
-    // sign app JWT with decrypted email
-    const token = signJwt({
-      sub: decrypted.id,
-      email: decrypted.email,
-      provider: "google",
+    // find single-store assignment (single-store mode)
+    const link = await prisma.userStoreRole.findFirst({
+      where: { userId: user.id },
+      select: {
+        role: true,
+        storeId: true,
+        store: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            timezone: true,
+            currency: true,
+            settings: true,
+          },
+        },
+      },
     });
 
-    return respond(res, 200, { token, user: decrypted });
+    // suppliers (if mapped)
+    const supplierRows = await prisma.supplier.findMany({
+      where: { userId: user.id },
+      select: { id: true, storeId: true, name: true, isActive: true },
+    });
+
+    let effectiveStore: any = null;
+    if (link?.store) {
+      effectiveStore = { ...link.store, roles: [link.role] };
+    } else if (supplierRows.length === 1 && supplierRows[0].storeId) {
+      // supplier single-store convenience
+      const s = await prisma.store.findUnique({
+        where: { id: supplierRows[0].storeId },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          timezone: true,
+          currency: true,
+          settings: true,
+        },
+      });
+      if (s) effectiveStore = { ...s, roles: ["SUPPLIER"] };
+    }
+
+    // sign token (include storeId when available)
+    const tokenPayload: Record<string, any> = {
+      sub: user.id,
+      email: user.email,
+      provider: "google",
+      globalRole: user.globalRole ?? null,
+    };
+    if (effectiveStore) tokenPayload.storeId = effectiveStore.id;
+    const token = signJwt(tokenPayload);
+
+    // persist activity / audit
+    try {
+      await prisma.$transaction([
+        prisma.activityLog.create({
+          data: {
+            storeId: effectiveStore?.id ?? undefined,
+            userId: user.id,
+            action: "auth.google_signin",
+            payload: { ip: req.ip, provider: "google" },
+          },
+        }),
+        prisma.auditLog.create({
+          data: {
+            actorId: user.id,
+            actorType: "user",
+            storeId: effectiveStore?.id ?? undefined,
+            action: "signin_google",
+            payload: {
+              ip: req.ip,
+              userAgent: req.headers["user-agent"] ?? null,
+            },
+          },
+        }),
+      ]);
+    } catch (e) {
+      console.error("google signin: failed to persist logs", e);
+    }
+
+    // response: if no store, instruct onboarding
+    if (!effectiveStore) {
+      return respond(res, 200, {
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          globalRole: user.globalRole ?? null,
+        },
+        effectiveStore: null,
+        needsStoreSetup: true,
+        suppliers: supplierRows.map((s) => ({
+          id: s.id,
+          storeId: s.storeId,
+          name: s.name,
+          isActive: s.isActive,
+        })),
+      });
+    }
+
+    // normal success with effectiveStore
+    return respond(res, 200, {
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        globalRole: user.globalRole ?? null,
+      },
+      effectiveStore,
+      suppliers: supplierRows.map((s) => ({
+        id: s.id,
+        storeId: s.storeId,
+        name: s.name,
+        isActive: s.isActive,
+      })),
+    });
   } catch (err: any) {
     console.error("Google sign-in error:", err?.message ?? err);
-
     if (
       err?.message?.includes("Token used too late") ||
       err?.message?.includes("invalid")
     ) {
       return respond(res, 400, { error: "invalid id token" });
     }
-
     return respond(res, 502, {
       error: "failed to verify id token with google",
     });

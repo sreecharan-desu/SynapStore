@@ -288,7 +288,12 @@ router.post(
 
       const user = await findUserByEmail(email);
       if (!user) return respond(res, 404, { error: "user not found" });
-
+      if (user.isverified) {
+        return respond(res, 400, {
+          error: "email already verified",
+          code: "email_already_verified",
+        });
+      }
       // Strict server-side rate limit per email:
       // allow only one unused OTP created per 60 seconds.
       const encPhone = crypto$.encryptCellDeterministic(email);
@@ -372,14 +377,14 @@ router.post(
         return respond(res, 400, {
           error: "validation failed",
           details: zodDetails(parsed.error),
-        } as ErrorResponse);
+        });
       }
+
       const { email, password } = parsed.data;
 
       const user = await findUserByEmail(email);
       if (!user) return respond(res, 401, { error: "invalid credentials" });
 
-      // reject if email not verified
       if (!user.isverified) {
         return respond(res, 403, {
           error: "email not verified",
@@ -392,17 +397,62 @@ router.post(
 
       const token = signJwt({ sub: user.id, email });
 
+      // fetch store roles for this user
+      const stores = await prisma.userStoreRole.findMany({
+        where: { userId: user.id },
+        select: {
+          role: true,
+          store: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              timezone: true,
+              currency: true,
+              settings: true,
+            },
+          },
+        },
+      });
+
+      // NO STORE → must create one
+      if (stores.length === 0) {
+        return respond(res, 200, {
+          token,
+          user: { id: user.id, username: user.username, email },
+          effectiveStore: null,
+          needsStoreSetup: true,
+        });
+      }
+
+      // ONE STORE → use directly
+      if (stores.length === 1) {
+        const s = stores[0];
+        return respond(res, 200, {
+          token,
+          user: { id: user.id, username: user.username, email },
+          effectiveStore: {
+            id: s.store.id,
+            name: s.store.name,
+            slug: s.store.slug,
+            timezone: s.store.timezone,
+            currency: s.store.currency,
+            settings: s.store.settings,
+            roles: [s.role],
+          },
+        });
+      }
+
+      // (future support) MULTIPLE STORES → frontend must show switcher
       return respond(res, 200, {
         token,
         user: { id: user.id, username: user.username, email },
+        effectiveStore: null,
+        stores,
+        needsStoreSelection: true,
       });
     } catch (err: any) {
       console.error("Signin error:", err);
-      if (err?.name === "ZodError")
-        return respond(res, 400, {
-          error: "validation failed",
-          details: err.errors,
-        });
       next(err);
     }
   }

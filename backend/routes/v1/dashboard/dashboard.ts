@@ -1,46 +1,30 @@
 // src/routes/v1/dashboard.ts
 import { Router, Request, Response, NextFunction } from "express";
-import prisma from "../../../lib/prisma";
 import { storeContext, requireStore } from "../../../middleware/store";
 import { authenticate } from "../../../middleware/authenticate";
-import type { Role } from "@prisma/client"; // <- use Prisma's generated enum type
+import type { Role } from "@prisma/client";
+import prisma from "../../../lib/prisma";
 
 type RoleEnum = Role;
 
 type AuthRequest = Request & {
-  user?: { id: string; username?: string; email?: string };
+  user?: {
+    id: string;
+    username?: string | null;
+    email?: string | null;
+    globalRole?: RoleEnum | null;
+  };
   store?: any;
-};
-
-type StoreInfo = {
-  id: string;
-  name: string;
-  slug: string;
-  timezone?: string | null;
-  currency?: string | null;
-  settings?: any | null;
-};
-
-type UserStoreEntry = {
-  store: StoreInfo;
-  role: RoleEnum;
-};
-
-type Permissions = {
-  canEditInventory: boolean;
-  canCreateReorder: boolean;
-  canAcknowledgeAlerts: boolean;
-  canViewReports: boolean;
-  canManageUsers: boolean;
+  userStoreRoles?: RoleEnum[];
 };
 
 const dashboardRouter = Router();
 
 /**
- * Middleware order:
- * 1) authenticate - populates req.user
- * 2) storeContext - resolves req.store using req.user
- * 3) requireStore - ensures a store was resolved
+ * Middleware stack:
+ *  - authenticate populates req.user
+ *  - storeContext populates req.store and req.userStoreRoles (single-store)
+ *  - requireStore enforces a store exists
  */
 dashboardRouter.use(authenticate);
 dashboardRouter.use(storeContext);
@@ -49,10 +33,9 @@ dashboardRouter.use(requireStore);
 /**
  * Utility - derive capability flags from role list (conservative)
  */
-function permissionsForRoles(roles: RoleEnum[] = []): Permissions {
+function permissionsForRoles(roles: RoleEnum[] = []) {
   const has = (r: RoleEnum) => roles.includes(r);
 
-  // core permission mapping - keep conservative and explicit
   const canManageUsers =
     has("SUPERADMIN") || has("ADMIN") || has("STORE_OWNER");
   const canEditInventory = canManageUsers || has("MANAGER") || has("STAFF");
@@ -72,97 +55,34 @@ function permissionsForRoles(roles: RoleEnum[] = []): Permissions {
 
 /**
  * GET /v1/dashboard/store
- * Returns the current active store and the user's roles and derived permissions.
+ * single-store mode - return store id, store meta, user info, roles and permissions
  */
 dashboardRouter.get(
   "/store",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user?.id;
-      const store = req.store as StoreInfo | undefined;
-
-      if (!userId) {
+      const user = req.user;
+      if (!user)
         return res
           .status(401)
           .json({ success: false, error: "unauthenticated" });
-      }
+
+      const store = req.store;
       if (!store) {
-        return res
-          .status(404)
-          .json({ success: false, error: "store not found" });
+        return res.status(403).json({
+          success: false,
+          error: "no_store_found",
+          needsStoreSetup: true,
+        });
       }
 
-      // fetch all roles this user has for the active store
-      const roleRows = await prisma.userStoreRole.findMany({
-        where: { userId, storeId: store.id },
-        select: { role: true, createdAt: true },
-      });
-
-      if (roleRows.length === 0) {
-        // defense-in-depth: user should not reach this point without a role
+      const roles = (req.userStoreRoles ?? []) as RoleEnum[];
+      if (roles.length === 0 && user.globalRole !== "SUPERADMIN") {
         return res.status(403).json({ success: false, error: "forbidden" });
       }
 
-      const roles = roleRows.map((r) => r.role as RoleEnum);
-      const roleAssignedAt = roleRows[0]?.createdAt ?? null;
-
-      // gather all stores the user belongs to (for a client store switcher)
-      const userStoreRows = await prisma.userStoreRole.findMany({
-        where: { userId },
-        select: {
-          role: true,
-          store: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              timezone: true,
-              currency: true,
-              settings: true,
-            },
-          },
-        },
-      });
-
-      // aggregate roles per store
-      const stores = userStoreRows.reduce<
-        Record<
-          string,
-          {
-            id: string;
-            name: string;
-            slug: string;
-            timezone?: string | null;
-            currency?: string | null;
-            settings?: any | null;
-            roles: RoleEnum[];
-          }
-        >
-      >((acc, r) => {
-        const s = r.store;
-        if (!acc[s.id]) {
-          acc[s.id] = {
-            id: s.id,
-            name: s.name,
-            slug: s.slug,
-            timezone: s.timezone,
-            currency: s.currency,
-            settings: s.settings ?? null,
-            roles: [r.role as RoleEnum],
-          };
-        } else {
-          if (!acc[s.id].roles.includes(r.role as RoleEnum))
-            acc[s.id].roles.push(r.role as RoleEnum);
-        }
-        return acc;
-      }, {});
-
-      const storesList = Object.values(stores);
-
-      // derived permissions
       const permissions = permissionsForRoles(roles);
 
-      // short cache hint - this metadata rarely changes for the session
       res.setHeader(
         "Cache-Control",
         "private, max-age=60, stale-while-revalidate=30"
@@ -171,6 +91,12 @@ dashboardRouter.get(
       return res.json({
         success: true,
         data: {
+          user: {
+            id: user.id,
+            username: user.username ?? null,
+            email: user.email ?? null,
+            globalRole: user.globalRole ?? null,
+          },
           store: {
             id: store.id,
             name: store.name,
@@ -180,14 +106,7 @@ dashboardRouter.get(
             settings: store.settings ?? null,
           },
           roles,
-          roleAssignedAt,
           permissions,
-          stores: storesList,
-          user: {
-            id: userId,
-            username: req.user?.username ?? null,
-            email: req.user?.email ?? null,
-          },
         },
       });
     } catch (err) {
@@ -196,30 +115,77 @@ dashboardRouter.get(
   }
 );
 
-/**
- * GET /v1/dashboard/overview
- * Returns small summary numbers for the dashboard header.
- */
+// add/replace in src/routes/v1/dashboard.ts
+
 dashboardRouter.get(
-  "/overview",
+  "/bootstrap",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const storeId = req.store.id as string;
+      const user = req.user;
+      if (!user)
+        return res
+          .status(401)
+          .json({ success: false, error: "unauthenticated" });
 
+      const store = req.store;
+      if (!store)
+        return res.status(403).json({
+          success: false,
+          error: "no_store_found",
+          needsStoreSetup: true,
+        });
+
+      const storeId = String(store.id);
+
+      // query params / limits
+      const days = Math.max(Number(req.query.days ?? 30), 7);
+      const topLimit = Math.min(Math.max(Number(req.query.top ?? 10), 1), 100);
+      const recentSalesLimit = Math.min(
+        Math.max(Number(req.query.recent ?? 20), 1),
+        200
+      );
+      const lowStockThreshold = Math.max(Number(req.query.threshold ?? 5), 1);
+      const expiriesDays = Math.max(Number(req.query.expiriesDays ?? 90), 1);
+      const agingBuckets = req.query.agingBuckets
+        ? String(req.query.agingBuckets)
+            .split(",")
+            .map((s) => Number(s))
+        : [30, 90, 180, 365]; // days
+      const salesWindowStart = new Date(
+        Date.now() - days * 24 * 60 * 60 * 1000
+      );
+      const expiriesHorizon = new Date(
+        Date.now() + expiriesDays * 24 * 60 * 60 * 1000
+      );
+
+      // parallel DB fetches (broad)
       const [
         totalMedicines,
         totalBatches,
         totalActiveAlerts,
         totalPendingReorders,
+        recentSalesCount,
+        recentRevenueAgg,
+        inventorySums,
+        lowStockBatches,
+        expiriesSoon,
+        topMoversRaw,
+        recentSales,
+        activity,
+        suppliers,
+        unreadNotifications,
+        webhookFailures,
+        saleRows,
+        saleItemsAll,
+        saleItemsSoldAgg,
+        medicinesAll,
+        reordersStats,
+        alertsByTypeRaw,
+        stockMovementsAgg,
       ] = await Promise.all([
         prisma.medicine.count({ where: { storeId } }),
         prisma.inventoryBatch.count({ where: { storeId } }),
-        prisma.alert.count({
-          where: {
-            storeId,
-            status: "ACTIVE",
-          },
-        }),
+        prisma.alert.count({ where: { storeId, status: "ACTIVE" } }),
         prisma.reorder.count({
           where: {
             storeId,
@@ -228,204 +194,450 @@ dashboardRouter.get(
             },
           },
         }),
+        prisma.sale.count({
+          where: { storeId, createdAt: { gte: salesWindowStart } },
+        }),
+        prisma.sale.aggregate({
+          where: {
+            storeId,
+            createdAt: { gte: salesWindowStart },
+            paymentStatus: "PAID",
+          },
+          _sum: { totalValue: true },
+        }),
+        prisma.inventoryBatch.aggregate({
+          where: { storeId },
+          _sum: { qtyAvailable: true, qtyReserved: true, qtyReceived: true },
+        }),
+        prisma.inventoryBatch.findMany({
+          where: { storeId, qtyAvailable: { lte: lowStockThreshold } },
+          orderBy: { qtyAvailable: "asc" },
+          take: 200,
+          select: {
+            id: true,
+            medicineId: true,
+            batchNumber: true,
+            qtyAvailable: true,
+            expiryDate: true,
+            receivedAt: true,
+          },
+        }),
+        prisma.inventoryBatch.findMany({
+          where: {
+            storeId,
+            expiryDate: { not: null, lte: expiriesHorizon },
+            qtyAvailable: { gt: 0 },
+          },
+          orderBy: { expiryDate: "asc" },
+          take: 500,
+          select: {
+            id: true,
+            medicineId: true,
+            batchNumber: true,
+            expiryDate: true,
+            qtyAvailable: true,
+          },
+        }),
+        prisma.saleItem.groupBy({
+          by: ["medicineId"],
+          where: {
+            sale: {
+              storeId,
+              createdAt: { gte: salesWindowStart },
+              paymentStatus: "PAID",
+            },
+          },
+          _sum: { qty: true, lineTotal: true },
+          orderBy: [{ _sum: { qty: "desc" } }],
+          take: topLimit,
+        }),
+        prisma.sale.findMany({
+          where: { storeId },
+          orderBy: { createdAt: "desc" },
+          take: recentSalesLimit,
+          include: {
+            items: {
+              select: {
+                id: true,
+                medicineId: true,
+                qty: true,
+                unitPrice: true,
+                lineTotal: true,
+              },
+            },
+          },
+        }),
+        prisma.activityLog.findMany({
+          where: { storeId },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          select: {
+            id: true,
+            userId: true,
+            action: true,
+            payload: true,
+            createdAt: true,
+          },
+        }),
+        prisma.supplier.findMany({
+          where: { storeId },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            contactName: true,
+            isActive: true,
+          },
+        }),
+        prisma.notification.count({ where: { storeId, status: "QUEUED" } }),
+        prisma.webhookDelivery.count({
+          where: { storeId, success: false, retryCount: { gt: 0 } },
+        }),
+        // extra data for richer permutations
+        prisma.sale.findMany({
+          where: { storeId, createdAt: { gte: salesWindowStart } },
+          select: {
+            id: true,
+            createdAt: true,
+            totalValue: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            patientID: true,
+            createdById: true,
+          },
+          take: 10000, // reasonable cap for client-side aggregations; tune as needed
+        }),
+        prisma.saleItem.findMany({
+          where: { sale: { storeId, createdAt: { gte: salesWindowStart } } },
+          select: {
+            id: true,
+            saleId: true,
+            medicineId: true,
+            qty: true,
+            lineTotal: true,
+            createdAt: true,
+          },
+          take: 20000,
+        }),
+        prisma.saleItem.groupBy({
+          by: ["medicineId"],
+          where: { sale: { storeId, paymentStatus: "PAID" } },
+          _sum: { qty: true },
+        }),
+        // medicines (meta)
+        prisma.medicine.findMany({
+          where: { storeId },
+          select: {
+            id: true,
+            brandName: true,
+            genericName: true,
+            category: true,
+            sku: true,
+            dosageForm: true,
+            strength: true,
+          },
+        }),
+        // reorders stats per supplier & status
+        prisma.reorder.groupBy({
+          by: ["supplierId", "status"],
+          where: { storeId },
+          _count: { _all: true },
+          _sum: { totalValue: true },
+        }),
+        prisma.alert.groupBy({
+          by: ["type"],
+          where: { storeId },
+          _count: { _all: true },
+        }),
+        // stock movements sums by reason (for stock turnover / inflows)
+        prisma.stockMovement.groupBy({
+          by: ["reason"],
+          where: { storeId },
+          _sum: { delta: true },
+        }),
       ]);
 
+      // basic conversions
+      const recentRevenue = Number(recentRevenueAgg._sum?.totalValue ?? 0);
+      const inventoryTotals = {
+        qtyAvailable: Number(inventorySums._sum.qtyAvailable ?? 0),
+        qtyReserved: Number(inventorySums._sum.qtyReserved ?? 0),
+        qtyReceived: Number(inventorySums._sum.qtyReceived ?? 0),
+      };
+
+      // medicine map
+      const medicinesById = Object.fromEntries(
+        medicinesAll.map((m) => [m.id, m])
+      );
+
+      // top movers enriched
+      const topMovers = topMoversRaw.map((t) => ({
+        medicineId: t.medicineId,
+        qtySold: Number(t._sum.qty ?? 0),
+        revenue: Number(t._sum.lineTotal ?? 0),
+        medicine: medicinesById[t.medicineId] ?? null,
+      }));
+
+      // category breakdown: combine saleItemsAll with medicine categories
+      const categoryAgg: Record<string, { qty: number; revenue: number }> = {};
+      for (const it of saleItemsAll) {
+        const med = medicinesById[it.medicineId];
+        const cat = med?.category ?? "unknown";
+        categoryAgg[cat] = categoryAgg[cat] || { qty: 0, revenue: 0 };
+        categoryAgg[cat].qty += it.qty ?? 0;
+        categoryAgg[cat].revenue += Number(it.lineTotal ?? 0);
+      }
+      const categoryBreakdown = Object.entries(categoryAgg)
+        .map(([category, v]) => ({ category, qty: v.qty, revenue: v.revenue }))
+        .sort((a, b) => b.revenue - a.revenue);
+
+      // payment method breakdown (from saleRows)
+      const paymentMethodAgg: Record<
+        string,
+        { count: number; revenue: number }
+      > = {};
+      for (const s of saleRows) {
+        const pm = String(s.paymentMethod ?? "UNKNOWN");
+        paymentMethodAgg[pm] = paymentMethodAgg[pm] || { count: 0, revenue: 0 };
+        paymentMethodAgg[pm].count += 1;
+        paymentMethodAgg[pm].revenue += Number(s.totalValue ?? 0);
+      }
+      const paymentMethods = Object.entries(paymentMethodAgg).map(
+        ([method, v]) => ({ method, ...v })
+      );
+
+      // hourly sales distribution
+      const hourAgg: Record<number, { count: number; revenue: number }> = {};
+      for (let h = 0; h < 24; h++) hourAgg[h] = { count: 0, revenue: 0 };
+      for (const s of saleRows) {
+        const h = new Date(s.createdAt).getHours();
+        hourAgg[h].count += 1;
+        hourAgg[h].revenue += Number(s.totalValue ?? 0);
+      }
+      const salesByHour = Object.entries(hourAgg).map(([h, v]) => ({
+        hour: Number(h),
+        ...v,
+      }));
+
+      // average order value & avg items per sale
+      const totalSalesCount = saleRows.length;
+      const totalSoldQty = saleItemsAll.reduce((a, b) => a + (b.qty ?? 0), 0);
+      const totalSoldRevenue = saleRows.reduce(
+        (a, b) => a + Number(b.totalValue ?? 0),
+        0
+      );
+      const avgOrderValue = totalSalesCount
+        ? totalSoldRevenue / totalSalesCount
+        : 0;
+      const avgItemsPerSale = totalSalesCount
+        ? totalSoldQty / totalSalesCount
+        : 0;
+
+      // repeat customer rate (distinct patientID)
+      const salesWithPatient = saleRows.filter((s) => s.patientID != null);
+      const uniquePatients = new Set(salesWithPatient.map((s) => s.patientID));
+      const repeatCustomerRate = salesWithPatient.length
+        ? uniquePatients.size / salesWithPatient.length
+        : 0;
+
+      // inventory aging buckets
+      const now = Date.now();
+      const agingBucketsResult: Record<string, number> = {};
+      for (const b of agingBuckets) agingBucketsResult[`${b}_days`] = 0;
+      agingBucketsResult[">365_days"] = 0;
+      for (const batch of await prisma.inventoryBatch.findMany({
+        where: { storeId, receivedAt: { not: null } },
+        select: { id: true, receivedAt: true, qtyAvailable: true },
+      })) {
+        const received = batch.receivedAt
+          ? new Date(batch.receivedAt).getTime()
+          : now;
+        const ageDays = Math.floor((now - received) / (24 * 3600 * 1000));
+        let placed = false;
+        for (const b of agingBuckets) {
+          if (ageDays <= b) {
+            agingBucketsResult[`${b}_days`] += batch.qtyAvailable ?? 0;
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) agingBucketsResult[">365_days"] += batch.qtyAvailable ?? 0;
+      }
+
+      // expiry heatmap: month-year -> count/qty
+      const expiryHeatmap: Record<string, { count: number; qty: number }> = {};
+      for (const b of expiriesSoon) {
+        const m = new Date(b.expiryDate!).toISOString().slice(0, 7); // YYYY-MM
+        expiryHeatmap[m] = expiryHeatmap[m] || { count: 0, qty: 0 };
+        expiryHeatmap[m].count += 1;
+        expiryHeatmap[m].qty += b.qtyAvailable ?? 0;
+      }
+      const expiryHeatmapArr = Object.entries(expiryHeatmap)
+        .map(([month, v]) => ({ month, ...v }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      // supplier performance (reorders)
+      const supplierPerf: Record<
+        string,
+        { supplierId: string; orders: number; totalValue: number }
+      > = {};
+      for (const r of reordersStats) {
+        const sup = r.supplierId ?? "unknown";
+        supplierPerf[sup] = supplierPerf[sup] || {
+          supplierId: sup,
+          orders: 0,
+          totalValue: 0,
+        };
+        supplierPerf[sup].orders += Number(r._count?._all ?? 0);
+        supplierPerf[sup].totalValue += Number(r._sum?.totalValue ?? 0);
+      }
+      const supplierPerformance = Object.values(supplierPerf);
+
+      // reorder lead times: approx using RECEIVED reorders (updatedAt - createdAt)
+      const receivedReorders = await prisma.reorder.findMany({
+        where: { storeId, status: "RECEIVED" },
+        select: {
+          id: true,
+          createdAt: true,
+          updatedAt: true,
+          supplierId: true,
+        },
+        take: 1000,
+      });
+      const leadTimes: Record<string, number[]> = {};
+      for (const r of receivedReorders) {
+        if (!r.updatedAt || !r.createdAt) continue;
+        const daysLead =
+          (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) /
+          (24 * 3600 * 1000);
+        if (!leadTimes[r.supplierId ?? "unknown"])
+          leadTimes[r.supplierId ?? "unknown"] = [];
+        leadTimes[r.supplierId ?? "unknown"].push(daysLead);
+      }
+      const reorderLeadTimeSummary = Object.entries(leadTimes).map(
+        ([supplierId, arr]) => ({
+          supplierId,
+          avgDays: arr.reduce((a, b) => a + b, 0) / arr.length,
+          samples: arr.length,
+        })
+      );
+
+      // alerts by type
+      const alertsByType = alertsByTypeRaw.map((r) => ({
+        type: r.type,
+        count: Number(r._count?._all ?? 0),
+      }));
+
+      // stock turnover approximation: soldQty / qtyReceived
+      const soldQtyTotal = saleItemsSoldAgg.reduce(
+        (a, b) => a + Number(b._sum?.qty ?? 0),
+        0
+      );
+      const qtyReceivedTotal = Number(inventorySums._sum.qtyReceived ?? 0) || 1;
+      const stockTurnover = soldQtyTotal / qtyReceivedTotal;
+
+      // reservation stats
+      const reservationsCount = await prisma.reservation.count({
+        where: { storeId },
+      });
+      const reservedQtyAgg = await prisma.reservationItem.aggregate({
+        where: { reservation: { storeId } },
+        _sum: { qty: true },
+      });
+
+      // final recentSales summary enrichment (medicine meta)
+      const recentSalesSummary = recentSales.map((s) => ({
+        id: s.id,
+        createdAt: s.createdAt,
+        totalValue: Number(s.totalValue ?? 0),
+        paymentStatus: s.paymentStatus,
+        items: s.items.map((it) => ({
+          ...it,
+          medicine: medicinesById[it.medicineId] ?? null,
+        })),
+      }));
+
+      // Final payload (very rich)
       return res.json({
         success: true,
         data: {
+          user: {
+            id: user.id,
+            username: user.username ?? null,
+            email: user.email ?? null,
+            globalRole: user.globalRole ?? null,
+          },
+          store: {
+            id: store.id,
+            name: store.name,
+            slug: store.slug,
+            timezone: store.timezone ?? null,
+            currency: store.currency ?? null,
+            settings: store.settings ?? null,
+          },
           overview: {
             totalMedicines,
             totalBatches,
             totalActiveAlerts,
             totalPendingReorders,
+            recentSalesCount,
+            recentRevenue,
+            unreadNotifications,
+            webhookFailures,
+            inventoryTotals,
+            reservationsCount,
+            reservedQty: Number(reservedQtyAgg._sum?.qty ?? 0),
           },
-        },
-      });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-/**
- * GET /v1/dashboard/alerts
- * Returns recent active alerts (paginated via ?limit=)
- */
-dashboardRouter.get(
-  "/alerts",
-  async (req: AuthRequest, res: Response, next: NextFunction) => {
-    try {
-      const storeId = req.store.id as string;
-      const limit = Math.min(Math.max(Number(req.query.limit ?? 10), 1), 100);
-
-      const alerts = await prisma.alert.findMany({
-        where: { storeId },
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        select: {
-          id: true,
-          type: true,
-          status: true,
-          severity: true,
-          metadata: true,
-          createdAt: true,
-        },
-      });
-
-      return res.json({ success: true, data: { alerts } });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-/**
- * GET /v1/dashboard/expiries
- * Soon-to-expire inventory batches.
- * query: days=30 (default)
- */
-dashboardRouter.get(
-  "/expiries",
-  async (req: AuthRequest, res: Response, next: NextFunction) => {
-    try {
-      const storeId = req.store.id as string;
-      const days = Math.max(Number(req.query.days ?? 30), 1);
-      const limit = Math.min(Math.max(Number(req.query.limit ?? 10), 1), 200);
-
-      const horizon = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-
-      const expiries = await prisma.inventoryBatch.findMany({
-        where: {
-          storeId,
-          expiryDate: { not: null, lte: horizon },
-          qtyAvailable: { gt: 0 },
-        },
-        orderBy: { expiryDate: "asc" },
-        take: limit,
-        select: {
-          id: true,
-          medicineId: true,
-          batchNumber: true,
-          expiryDate: true,
-          qtyAvailable: true,
-          mrp: true,
-          purchasePrice: true,
-          location: true,
-        },
-      });
-
-      const medicineIds = Array.from(
-        new Set(expiries.map((e) => e.medicineId))
-      );
-      const medicines =
-        medicineIds.length > 0
-          ? await prisma.medicine.findMany({
-              where: { id: { in: medicineIds } },
-              select: {
-                id: true,
-                brandName: true,
-                genericName: true,
-                sku: true,
-              },
-            })
-          : [];
-
-      const medMap = Object.fromEntries(medicines.map((m) => [m.id, m]));
-
-      const result = expiries.map((e) => ({
-        ...e,
-        medicine: medMap[e.medicineId] ?? null,
-      }));
-
-      return res.json({ success: true, data: { expiries: result } });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-/**
- * GET /v1/dashboard/activity
- * Recent activity log entries (timeline)
- * query: limit=20
- */
-dashboardRouter.get(
-  "/activity",
-  async (req: AuthRequest, res: Response, next: NextFunction) => {
-    try {
-      const storeId = req.store.id as string;
-      const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 200);
-
-      const activity = await prisma.activityLog.findMany({
-        where: { storeId },
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        select: {
-          id: true,
-          userId: true,
-          action: true,
-          payload: true,
-          createdAt: true,
-        },
-      });
-
-      return res.json({ success: true, data: { activity } });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-/**
- * GET /v1/dashboard/forecasts
- * recent forecasts (for UI sparkline / preview)
- */
-dashboardRouter.get(
-  "/forecasts",
-  async (req: AuthRequest, res: Response, next: NextFunction) => {
-    try {
-      const storeId = req.store.id as string;
-      const limit = Math.min(Math.max(Number(req.query.limit ?? 10), 1), 50);
-
-      const forecasts = await prisma.forecast.findMany({
-        where: { storeId },
-        orderBy: { computedAt: "desc" },
-        take: limit,
-        select: {
-          id: true,
-          medicineId: true,
-          model: true,
-          result: true,
-          computedAt: true,
-        },
-      });
-
-      return res.json({ success: true, data: { forecasts } });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-/**
- * GET /v1/dashboard/health
- * returns latest store health score and metrics
- */
-dashboardRouter.get(
-  "/health",
-  async (req: AuthRequest, res: Response, next: NextFunction) => {
-    try {
-      const storeId = req.store.id as string;
-
-      const health = await prisma.storeHealth.findUnique({
-        where: { storeId },
-        select: { score: true, metrics: true, computedAt: true },
-      });
-
-      return res.json({
-        success: true,
-        data: {
-          health: health ?? { score: 0, metrics: null, computedAt: null },
+          charts: {
+            salesByDay: (() => {
+              // build time-series daily from saleRows
+              const map: Record<
+                string,
+                { date: string; revenue: number; count: number }
+              > = {};
+              for (let i = 0; i < days; i++) {
+                const d = new Date(
+                  Date.now() - (days - 1 - i) * 24 * 3600 * 1000
+                );
+                const k = d.toISOString().slice(0, 10);
+                map[k] = { date: k, revenue: 0, count: 0 };
+              }
+              for (const s of saleRows) {
+                const k = new Date(s.createdAt).toISOString().slice(0, 10);
+                map[k] = map[k] ?? { date: k, revenue: 0, count: 0 };
+                map[k].revenue += Number(s.totalValue ?? 0);
+                map[k].count += 1;
+              }
+              return Object.values(map);
+            })(),
+            salesByHour,
+            paymentMethods,
+            categoryBreakdown,
+            topMovers,
+            supplierPerformance,
+            expiryHeatmap: expiryHeatmapArr,
+            inventoryAging: agingBucketsResult,
+            reorderLeadTimeSummary,
+            alertsByType,
+            stockTurnover,
+            avgOrderValue,
+            avgItemsPerSale,
+            repeatCustomerRate,
+          },
+          lists: {
+            lowStock: lowStockBatches.map((b) => ({
+              ...b,
+              medicine: medicinesById[b.medicineId] ?? null,
+            })),
+            expiries: expiriesSoon.map((b) => ({
+              ...b,
+              medicine: medicinesById[b.medicineId] ?? null,
+            })),
+            recentSales: recentSalesSummary,
+            activity,
+            suppliers,
+            recentReceivedReorders: receivedReorders.slice(0, 20),
+          },
         },
       });
     } catch (err) {
