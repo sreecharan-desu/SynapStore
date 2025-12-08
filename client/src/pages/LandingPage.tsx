@@ -12,73 +12,45 @@ const LandingPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-transparent">
       {/* Navigation */}
-      <nav
-        id="main-nav"
-        className="fixed top-0 left-0 right-0 z-50 bg-transparent backdrop-blur-sm border-b border-transparent transition-all duration-300"
+   <nav
+  id="main-nav"
+  className="fixed top-0 left-0 right-0 z-50 bg-transparent backdrop-blur-sm border-b border-transparent transition-all duration-300"
+>
+  <div className="max-w-7xl mx-auto px-8 py-5 flex items-center justify-between">
+    
+    {/* Logo */}
+    <div className="flex items-center gap-4">
+      <div className="w-16 h-16 flex items-center justify-center">
+        <img
+          src="./logo.svg"
+          alt="SynapStore Logo"
+          className="w-14 h-14 object-contain"
+          style={{
+            filter:
+              "invert(39%) sepia(98%) saturate(1000%) hue-rotate(190deg) brightness(90%) contrast(90%)",
+          }}
+        />
+      </div>
+
+      {/* Premium-looking text */}
+      <span className="text-2xl font-extrabold tracking-wide text-gray-900">
+        SynapStore
+      </span>
+    </div>
+
+    {/* Desktop Nav */}
+    <div className="hidden md:flex items-center">
+      <Link
+        to="/login"
+        className="px-7 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/25 hover:-translate-y-0.5"
       >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 flex items-center justify-center">
-              <img
-                src="./logo.svg"
-                alt="SynapStore Logo"
-                className="w-16 h-16 object-contain"
-                style={{
-                  filter:
-                    "invert(39%) sepia(98%) saturate(1000%) hue-rotate(190deg) brightness(90%) contrast(90%)",
-                }}
-              />
-            </div>
-            <span className="text-xl font-bold text-gray-900">SynapStore</span>
-          </div>
+        Get Started
+      </Link>
+    </div>
 
-          {/* Desktop Nav */}
-          <div className="hidden md:flex items-center gap-8">
-            <a
-              href="#features"
-              className="text-gray-700 hover:text-gray-900 transition-all duration-200 hover:-translate-y-0.5"
-            >
-              Features
-            </a>
+  </div>
+</nav>
 
-            <a
-              href="#how-it-works"
-              className="text-gray-700 hover:text-gray-900 transition-all duration-200 hover:-translate-y-0.5"
-            >
-              How it Works
-            </a>
-
-            <a
-              href="#pricing"
-              className="text-gray-700 hover:text-gray-900 transition-all duration-200 hover:-translate-y-0.5"
-            >
-              Pricing
-            </a>
-
-            <a
-              href="#faq"
-              className="text-gray-700 hover:text-gray-900 transition-all duration-200 hover:-translate-y-0.5"
-            >
-              FAQ
-            </a>
-
-            <Link
-              to="/login"
-              className="px-4 py-2 text-gray-700 hover:text-gray-900 font-medium transition-all hover:-translate-y-0.5"
-            >
-              Sign in
-            </Link>
-
-            <Link
-              to="/login"
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/25 hover:-translate-y-0.5"
-            >
-              Get Started
-            </Link>
-          </div>
-        </div>
-      </nav>
 
       {/* Hero Section */}
       <HeroSection />

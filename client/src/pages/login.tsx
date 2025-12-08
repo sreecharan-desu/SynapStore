@@ -1,21 +1,10 @@
 // src/components/Login.tsx
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { setCookie } from "../utils/cookieUtils";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useSetRecoilState } from "recoil";
+import { authState, type AuthUser, type EffectiveStore } from "../state/auth";
+import { jsonFetch } from "../utils/api";
 import { FcGoogle } from "react-icons/fc";
-
-/**
- * Uses global BASE_URL (try window.BASE_URL or import.meta/env)
- */
-const BASE_URL =
-  (window as any).BASE_URL ||
-  (typeof import.meta !== "undefined"
-    ? (import.meta as any).env?.VITE_BASE_URL
-    : undefined) ||
-  (typeof process !== "undefined"
-    ? (import.meta.env as any)?.REACT_APP_BASE_URL
-    : undefined) ||
-  "http://localhost:3000";
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60; // seconds fallback if server does not provide expiry
@@ -61,8 +50,19 @@ const getGoogleClientId = (): string => {
   return fromWindow || fromVite || fromCRA || PROVIDED_GOOGLE_CLIENT_ID;
 };
 
+type SigninResponse = {
+  token: string;
+  user: AuthUser;
+  effectiveStore: EffectiveStore | null;
+  needsStoreSetup?: boolean;
+  needsStoreSelection?: boolean;
+  suppliers?: any[];
+};
+
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const setAuth = useSetRecoilState(authState);
 
   // form state
   const [email, setEmail] = useState("");
@@ -98,20 +98,24 @@ const Login: React.FC = () => {
   }, [timer]);
 
   // Helpers
-  const jsonFetch = async (path: string, opts?: RequestInit) => {
-    const url = `${BASE_URL}${path}`;
-    const res = await fetch(url, {
-      headers: { "Content-Type": "application/json" },
-      ...opts,
+  const handleAuthSuccess = (body: SigninResponse) => {
+    setAuth({
+      token: body.token,
+      user: body.user,
+      effectiveStore: body.effectiveStore ?? null,
+      needsStoreSetup: Boolean(body.needsStoreSetup),
+      needsStoreSelection: Boolean(body.needsStoreSelection),
+      suppliers: body.suppliers ?? [],
     });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg =
-        (body && (body.error || body.message || JSON.stringify(body))) ||
-        res.statusText;
-      throw new Error(msg);
+
+    if (body.needsStoreSetup) {
+      navigate("/store/create");
+      return;
     }
-    return body;
+
+    const redirectTo =
+      (location.state as any)?.from?.pathname || "/dashboard";
+    navigate(redirectTo, { replace: true });
   };
 
   // Register - server sends OTP to email
@@ -147,14 +151,12 @@ const Login: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      const body = await jsonFetch("/api/v1/auth/signin", {
+      const body = await jsonFetch<SigninResponse>("/api/v1/auth/signin", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
       if (body.token) {
-        setCookie("token", body.token, 7);
-        setCookie("isLoggedIn", "true", 7);
-        navigate("/home");
+        handleAuthSuccess(body);
       } else {
         throw new Error("no token returned");
       }
@@ -173,14 +175,12 @@ const Login: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      const body = await jsonFetch("/api/v1/oauth/google", {
+      const body = await jsonFetch<SigninResponse>("/api/v1/oauth/google", {
         method: "POST",
         body: JSON.stringify({ idToken: credential }),
       });
       if (body.token) {
-        setCookie("token", body.token, 7);
-        setCookie("isLoggedIn", "true", 7);
-        navigate("/home");
+        handleAuthSuccess(body);
       } else {
         throw new Error("No token returned from Google auth endpoint");
       }
@@ -417,15 +417,17 @@ const Login: React.FC = () => {
 
   // UI
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white p-6">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 p-6">
+      <div className="w-full max-w-md bg-white/10 border border-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 text-white">
         {/* header - subtle product title */}
         <div className="mb-6 text-center">
-          <h1 className="text-xl font-bold">SynapStore</h1>
-          <p className="text-xs text-gray-400 mt-1">Accounts and access</p>
+          <h1 className="text-xl font-bold text-white">SynapStore</h1>
+          <p className="text-xs text-slate-200/70 mt-1">
+            Secure access & store setup
+          </p>
         </div>
 
-        <h2 className="text-2xl font-semibold text-center mb-4">
+        <h2 className="text-2xl font-semibold text-center mb-4 text-white">
           {isSignup ? "Create your account" : "Welcome Back"}
         </h2>
 
@@ -434,7 +436,7 @@ const Login: React.FC = () => {
           <div
             role="alert"
             aria-live="assertive"
-            className="mb-4 text-sm text-red-600 bg-red-50 p-2 rounded"
+            className="mb-4 text-sm text-red-100 bg-red-500/20 border border-red-500/40 p-2 rounded"
           >
             {error}
           </div>
@@ -443,7 +445,7 @@ const Login: React.FC = () => {
           <div
             role="status"
             aria-live="polite"
-            className="mb-4 text-sm text-green-700 bg-green-50 p-2 rounded"
+            className="mb-4 text-sm text-emerald-100 bg-emerald-500/10 border border-emerald-400/30 p-2 rounded"
           >
             {success}
           </div>
@@ -451,7 +453,7 @@ const Login: React.FC = () => {
 
         {showOtp ? (
           <div className="space-y-6">
-            <p className="text-center text-sm text-gray-600">
+            <p className="text-center text-sm text-slate-100">
               Check your mail for the OTP sent to{" "}
               <span className="font-medium">{email}</span>
             </p>
@@ -470,7 +472,7 @@ const Login: React.FC = () => {
                   onKeyDown={(e) => handleOtpKeyDown(e, i)}
                   onPaste={handleOtpPaste}
                   autoComplete="one-time-code"
-                  className="w-12 h-12 text-center border rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:shadow"
+                className="w-12 h-12 text-center border border-white/30 bg-white/10 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:shadow text-white placeholder:text-slate-300"
                   disabled={loading}
                 />
               ))}
@@ -481,7 +483,7 @@ const Login: React.FC = () => {
                 type="button"
                 onClick={verifyOtp}
                 disabled={loading}
-                className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-60"
+                className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-60 shadow-lg shadow-blue-500/20"
               >
                 {loading ? "Verifying..." : "Verify OTP"}
               </button>
@@ -492,8 +494,8 @@ const Login: React.FC = () => {
                 disabled={timer > 0 || loading}
                 className={`flex-1 py-2 rounded-lg font-medium transition ${
                   timer > 0
-                    ? "border border-gray-300 text-gray-400 cursor-not-allowed bg-gray-50"
-                    : "border hover:bg-gray-50"
+                    ? "border border-white/20 text-slate-300 cursor-not-allowed bg-white/5"
+                    : "border border-white/30 hover:bg-white/10 text-white"
                 }`}
               >
                 {timer > 0
@@ -507,7 +509,7 @@ const Login: React.FC = () => {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-100 mb-1">
                 Email
               </label>
               <input
@@ -517,13 +519,13 @@ const Login: React.FC = () => {
                 required
                 placeholder="you@company.com"
                 autoComplete="email"
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full px-4 py-2 border border-white/20 bg-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 text-white placeholder:text-slate-300"
                 disabled={loading}
               />
             </div>
 
             <div className="relative">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-100 mb-1">
                 Password
               </label>
               <input
@@ -533,26 +535,26 @@ const Login: React.FC = () => {
                 required
                 placeholder="Enter your password"
                 autoComplete={isSignup ? "new-password" : "current-password"}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full px-4 py-2 border border-white/20 bg-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 text-white placeholder:text-slate-300"
                 disabled={loading}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-2 inset-y-0 flex items-center text-sm text-gray-600 px-2 py-1 rounded"
+                className="absolute right-2 inset-y-0 flex items-center text-sm text-white px-2 py-1 rounded"
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
             </div>
 
             {!isSignup && (
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-sm text-slate-100">
                 <label className="flex items-center gap-2">
                   <input type="checkbox" className="h-4 w-4" />
                   Remember me
                 </label>
-                <button type="button" className="text-blue-600 hover:underline">
+                <button type="button" className="text-blue-300 hover:underline">
                   Forgot?
                 </button>
               </div>
@@ -560,7 +562,7 @@ const Login: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-60"
+              className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-60 shadow-lg shadow-blue-500/20"
               disabled={loading}
             >
               {loading
@@ -576,10 +578,10 @@ const Login: React.FC = () => {
             <div className="mt-4">
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300"></div>
+                  <div className="w-full border-t border-white/20"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">
+                  <span className="px-2 bg-transparent text-slate-200">
                     or continue with
                   </span>
                 </div>
@@ -596,7 +598,7 @@ const Login: React.FC = () => {
                     onClick={() => {
                       manualGoogleSignIn();
                     }}
-                    className="w-full mt-1 flex items-center justify-center gap-2 bg-white border border-gray-300 rounded-lg py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    className="w-full mt-1 flex items-center justify-center gap-2 bg-white/10 border border-white/20 rounded-lg py-2 text-sm font-medium text-white hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-slate-900"
                   >
                     <FcGoogle className="w-5 h-5" />
                     {loading
@@ -611,7 +613,7 @@ const Login: React.FC = () => {
           </form>
         )}
 
-        <p className="text-center text-sm text-gray-500 mt-6">
+        <p className="text-center text-sm text-slate-200 mt-6">
           {isSignup ? "Already have an account? " : "Don't have an account? "}
           <button
             type="button"
@@ -622,7 +624,7 @@ const Login: React.FC = () => {
               setError(null);
               setSuccess(null);
             }}
-            className="text-blue-600 hover:underline"
+            className="text-blue-300 hover:underline"
           >
             {isSignup ? "Sign in" : "Sign up"}
           </button>

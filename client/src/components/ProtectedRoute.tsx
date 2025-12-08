@@ -1,16 +1,17 @@
-import { Navigate } from "react-router-dom";
-import { getCookie } from "../utils/cookieUtils";
+import { Navigate, useLocation } from "react-router-dom";
+import { useRecoilValue } from "recoil";
+import { authStatus } from "../state/auth";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  // Check if user is logged in from cookies
-  const isLoggedIn = getCookie("isLoggedIn") === "true";
+  const { isAuthenticated } = useRecoilValue(authStatus);
+  const location = useLocation();
 
-  if (!isLoggedIn) {
-    return <Navigate to="/login" replace />;
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   return <>{children}</>;
