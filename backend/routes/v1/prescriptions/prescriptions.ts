@@ -94,7 +94,6 @@ router.get(
             id: true,
             patientID: true,
             physID: true,
-            medicineId: true,
             qty: true,
             days: true,
             refills: true,

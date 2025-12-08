@@ -10,14 +10,14 @@ import { generateOtp, getOtpExpiryDate } from "../../../lib/otp";
 import { sendOtpEmail } from "../../../lib/mailer";
 import { hashPassword } from "../../../lib/auth";
 
-const router = Router({ mergeParams: true });
+const UserStoreRouter = Router({ mergeParams: true });
 const respond = (res: any, status: number, body: object) =>
   res.status(status).json(body);
 
-const inviteSchema = z.object({
-  email: z.string().email(),
-  role: z.nativeEnum(require("../../prisma/schema").Role as any).optional(), // fallback - will validate below
-});
+// const inviteSchema = z.object({
+//   email: z.string().email(),
+//   role: z.nativeEnum(require("../../prisma/schema").Role as any).optional(), // fallback - will validate below
+// });
 
 // For simplicity - allowable role strings
 const ROLE_SET = [
@@ -35,7 +35,7 @@ const ROLE_SET = [
  * - if user doesn't exist: create user row with no password and send OTP invite
  * - if exists but not member: create UserStoreRole
  */
-router.post(
+UserStoreRouter.post(
   "/:id/users/invite",
   authenticate,
   storeContext,
@@ -148,7 +148,7 @@ router.post(
  * GET /v1/stores/:id/users
  * Allowed roles: STORE_OWNER, ADMIN, MANAGER, SUPERADMIN
  */
-router.get(
+UserStoreRouter.get(
   "/:id/users",
   authenticate,
   storeContext,
@@ -199,7 +199,7 @@ router.get(
  * PATCH /v1/stores/:id/users/:userId/role
  * Allowed roles: STORE_OWNER, ADMIN, SUPERADMIN
  */
-router.patch(
+UserStoreRouter.patch(
   "/:id/users/:userId/role",
   authenticate,
   storeContext,
@@ -247,7 +247,7 @@ router.patch(
  * Allowed: STORE_OWNER, ADMIN
  * Implementation: soft remove membership (delete UserStoreRole)
  */
-router.delete(
+UserStoreRouter.delete(
   "/:id/users/:userId",
   authenticate,
   storeContext,
@@ -270,4 +270,4 @@ router.delete(
   }
 );
 
-export default router;
+export default UserStoreRouter;

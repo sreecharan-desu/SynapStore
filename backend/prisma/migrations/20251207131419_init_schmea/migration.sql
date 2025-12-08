@@ -16,6 +16,15 @@ CREATE TYPE "StockMovementReason" AS ENUM ('SALE', 'ADJUSTMENT', 'RETURN', 'DAMA
 -- CreateEnum
 CREATE TYPE "ReorderStatus" AS ENUM ('DRAFT', 'SENT', 'CONFIRMED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED', 'FAILED');
 
+-- CreateEnum
+CREATE TYPE "NotificationStatus" AS ENUM ('QUEUED', 'SENT', 'FAILED');
+
+-- CreateEnum
+CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'CARD', 'UPI', 'INSURANCE', 'OTHER');
+
+-- CreateEnum
+CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'PAID', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED');
+
 -- CreateTable
 CREATE TABLE "Store" (
     "id" TEXT NOT NULL,
@@ -42,6 +51,8 @@ CREATE TABLE "User" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "isverified" BOOLEAN NOT NULL DEFAULT false,
+    "globalRole" "Role",
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -82,6 +93,8 @@ CREATE TABLE "Supplier" (
     "externalMeta" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "userId" TEXT,
 
     CONSTRAINT "Supplier_pkey" PRIMARY KEY ("id")
 );
@@ -99,6 +112,7 @@ CREATE TABLE "Medicine" (
     "uom" TEXT,
     "category" TEXT,
     "taxInfo" JSONB,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -119,6 +133,7 @@ CREATE TABLE "InventoryBatch" (
     "mrp" DECIMAL(12,2),
     "receivedAt" TIMESTAMP(3),
     "location" TEXT,
+    "version" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -135,6 +150,7 @@ CREATE TABLE "StockMovement" (
     "reason" "StockMovementReason" NOT NULL,
     "note" TEXT,
     "performedById" TEXT,
+    "saleItemId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "StockMovement_pkey" PRIMARY KEY ("id")
@@ -192,7 +208,6 @@ CREATE TABLE "Reorder" (
     "storeId" TEXT NOT NULL,
     "supplierId" TEXT NOT NULL,
     "createdById" TEXT,
-    "items" JSONB NOT NULL,
     "totalValue" DECIMAL(12,2),
     "status" "ReorderStatus" NOT NULL DEFAULT 'DRAFT',
     "externalRef" TEXT,
@@ -200,6 +215,19 @@ CREATE TABLE "Reorder" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Reorder_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ReorderItem" (
+    "id" TEXT NOT NULL,
+    "reorderId" TEXT NOT NULL,
+    "medicineId" TEXT NOT NULL,
+    "qty" INTEGER NOT NULL,
+    "price" DECIMAL(12,2),
+    "sku" TEXT,
+    "batchPref" TEXT,
+
+    CONSTRAINT "ReorderItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -262,7 +290,7 @@ CREATE TABLE "Notification" (
     "subject" TEXT,
     "body" TEXT,
     "metadata" JSONB,
-    "status" TEXT NOT NULL DEFAULT 'queued',
+    "status" "NotificationStatus" NOT NULL DEFAULT 'QUEUED',
     "providerResp" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "sentAt" TIMESTAMP(3),
@@ -283,6 +311,24 @@ CREATE TABLE "WebhookRegistration" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "WebhookRegistration_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "WebhookDelivery" (
+    "id" TEXT NOT NULL,
+    "webhookId" TEXT NOT NULL,
+    "storeId" TEXT,
+    "event" TEXT NOT NULL,
+    "payload" JSONB NOT NULL,
+    "headers" JSONB,
+    "responseCode" INTEGER,
+    "responseBody" TEXT,
+    "retryCount" INTEGER NOT NULL DEFAULT 0,
+    "success" BOOLEAN NOT NULL DEFAULT false,
+    "nextRetryAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "WebhookDelivery_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -331,15 +377,83 @@ CREATE TABLE "Prescription" (
     "id" SERIAL NOT NULL,
     "storeId" TEXT,
     "patientID" INTEGER NOT NULL,
-    "physID" INTEGER NOT NULL,
+    "physID" INTEGER,
+    "status" TEXT,
+    "issuedAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
+    "externalRef" TEXT,
+
+    CONSTRAINT "Prescription_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PrescriptionItem" (
+    "id" TEXT NOT NULL,
+    "prescriptionId" INTEGER NOT NULL,
     "medicineId" TEXT NOT NULL,
     "qty" INTEGER NOT NULL,
     "days" INTEGER,
     "refills" INTEGER,
-    "status" TEXT,
-    "issuedAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
+    "instructions" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "Prescription_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "PrescriptionItem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Sale" (
+    "id" TEXT NOT NULL,
+    "storeId" TEXT NOT NULL,
+    "createdById" TEXT,
+    "patientID" INTEGER,
+    "prescriptionId" INTEGER,
+    "subtotal" DECIMAL(12,2),
+    "tax" DECIMAL(12,2),
+    "discounts" DECIMAL(12,2),
+    "totalValue" DECIMAL(12,2),
+    "paymentMethod" "PaymentMethod",
+    "paymentStatus" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
+    "externalRef" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Sale_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SaleItem" (
+    "id" TEXT NOT NULL,
+    "saleId" TEXT NOT NULL,
+    "medicineId" TEXT NOT NULL,
+    "inventoryBatchId" TEXT,
+    "qty" INTEGER NOT NULL,
+    "unitPrice" DECIMAL(12,2),
+    "lineTotal" DECIMAL(12,2),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "SaleItem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Reservation" (
+    "id" TEXT NOT NULL,
+    "storeId" TEXT NOT NULL,
+    "createdById" TEXT,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "status" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Reservation_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ReservationItem" (
+    "id" TEXT NOT NULL,
+    "reservationId" TEXT NOT NULL,
+    "inventoryBatchId" TEXT NOT NULL,
+    "qty" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ReservationItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -372,10 +486,10 @@ CREATE INDEX "UserStoreRole_storeId_idx" ON "UserStoreRole"("storeId");
 CREATE INDEX "UserStoreRole_userId_idx" ON "UserStoreRole"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UserStoreRole_userId_storeId_role_key" ON "UserStoreRole"("userId", "storeId", "role");
+CREATE UNIQUE INDEX "UserStoreRole_userId_storeId_key" ON "UserStoreRole"("userId", "storeId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Medicine_ndc_key" ON "Medicine"("ndc");
+CREATE UNIQUE INDEX "Supplier_userId_key" ON "Supplier"("userId");
 
 -- CreateIndex
 CREATE INDEX "Medicine_storeId_brandName_idx" ON "Medicine"("storeId", "brandName");
@@ -393,7 +507,13 @@ CREATE INDEX "InventoryBatch_storeId_batchNumber_idx" ON "InventoryBatch"("store
 CREATE INDEX "InventoryBatch_storeId_expiryDate_idx" ON "InventoryBatch"("storeId", "expiryDate");
 
 -- CreateIndex
+CREATE INDEX "InventoryBatch_storeId_expiryDate_medicineId_idx" ON "InventoryBatch"("storeId", "expiryDate", "medicineId");
+
+-- CreateIndex
 CREATE INDEX "StockMovement_storeId_medicineId_idx" ON "StockMovement"("storeId", "medicineId");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_storeId_createdAt_idx" ON "StockMovement"("storeId", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "Upload_storeId_status_idx" ON "Upload"("storeId", "status");
@@ -412,6 +532,9 @@ CREATE INDEX "Alert_storeId_status_idx" ON "Alert"("storeId", "status");
 
 -- CreateIndex
 CREATE INDEX "Reorder_storeId_status_idx" ON "Reorder"("storeId", "status");
+
+-- CreateIndex
+CREATE INDEX "Reorder_supplierId_status_idx" ON "Reorder"("supplierId", "status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "FeatureFlag_storeId_key_key" ON "FeatureFlag"("storeId", "key");
@@ -435,6 +558,12 @@ CREATE INDEX "Notification_storeId_status_idx" ON "Notification"("storeId", "sta
 CREATE INDEX "WebhookRegistration_storeId_isActive_idx" ON "WebhookRegistration"("storeId", "isActive");
 
 -- CreateIndex
+CREATE INDEX "WebhookDelivery_webhookId_success_idx" ON "WebhookDelivery"("webhookId", "success");
+
+-- CreateIndex
+CREATE INDEX "WebhookDelivery_storeId_event_idx" ON "WebhookDelivery"("storeId", "event");
+
+-- CreateIndex
 CREATE INDEX "Otp_phone_idx" ON "Otp"("phone");
 
 -- CreateIndex
@@ -447,7 +576,25 @@ CREATE INDEX "Prescription_patientID_idx" ON "Prescription"("patientID");
 CREATE INDEX "Prescription_physID_idx" ON "Prescription"("physID");
 
 -- CreateIndex
-CREATE INDEX "Prescription_medicineId_idx" ON "Prescription"("medicineId");
+CREATE INDEX "PrescriptionItem_prescriptionId_idx" ON "PrescriptionItem"("prescriptionId");
+
+-- CreateIndex
+CREATE INDEX "PrescriptionItem_medicineId_idx" ON "PrescriptionItem"("medicineId");
+
+-- CreateIndex
+CREATE INDEX "Sale_storeId_paymentStatus_idx" ON "Sale"("storeId", "paymentStatus");
+
+-- CreateIndex
+CREATE INDEX "SaleItem_saleId_idx" ON "SaleItem"("saleId");
+
+-- CreateIndex
+CREATE INDEX "SaleItem_medicineId_idx" ON "SaleItem"("medicineId");
+
+-- CreateIndex
+CREATE INDEX "ReservationItem_reservationId_idx" ON "ReservationItem"("reservationId");
+
+-- CreateIndex
+CREATE INDEX "ReservationItem_inventoryBatchId_idx" ON "ReservationItem"("inventoryBatchId");
 
 -- CreateIndex
 CREATE INDEX "_MedicineToSupplier_B_index" ON "_MedicineToSupplier"("B");
@@ -463,6 +610,9 @@ ALTER TABLE "Doctor" ADD CONSTRAINT "Doctor_storeId_fkey" FOREIGN KEY ("storeId"
 
 -- AddForeignKey
 ALTER TABLE "Supplier" ADD CONSTRAINT "Supplier_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Supplier" ADD CONSTRAINT "Supplier_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Medicine" ADD CONSTRAINT "Medicine_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -484,6 +634,9 @@ ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_medicineId_fkey" FOREI
 
 -- AddForeignKey
 ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_performedById_fkey" FOREIGN KEY ("performedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_saleItemId_fkey" FOREIGN KEY ("saleItemId") REFERENCES "SaleItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Upload" ADD CONSTRAINT "Upload_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -513,6 +666,12 @@ ALTER TABLE "Reorder" ADD CONSTRAINT "Reorder_supplierId_fkey" FOREIGN KEY ("sup
 ALTER TABLE "Reorder" ADD CONSTRAINT "Reorder_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "ReorderItem" ADD CONSTRAINT "ReorderItem_reorderId_fkey" FOREIGN KEY ("reorderId") REFERENCES "Reorder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ReorderItem" ADD CONSTRAINT "ReorderItem_medicineId_fkey" FOREIGN KEY ("medicineId") REFERENCES "Medicine"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "FeatureFlag" ADD CONSTRAINT "FeatureFlag_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -534,6 +693,12 @@ ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY
 ALTER TABLE "WebhookRegistration" ADD CONSTRAINT "WebhookRegistration_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "WebhookDelivery" ADD CONSTRAINT "WebhookDelivery_webhookId_fkey" FOREIGN KEY ("webhookId") REFERENCES "WebhookRegistration"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WebhookDelivery" ADD CONSTRAINT "WebhookDelivery_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Otp" ADD CONSTRAINT "Otp_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -549,10 +714,46 @@ ALTER TABLE "Prescription" ADD CONSTRAINT "Prescription_storeId_fkey" FOREIGN KE
 ALTER TABLE "Prescription" ADD CONSTRAINT "Prescription_patientID_fkey" FOREIGN KEY ("patientID") REFERENCES "Patient"("patientID") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Prescription" ADD CONSTRAINT "Prescription_physID_fkey" FOREIGN KEY ("physID") REFERENCES "Doctor"("physID") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Prescription" ADD CONSTRAINT "Prescription_physID_fkey" FOREIGN KEY ("physID") REFERENCES "Doctor"("physID") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Prescription" ADD CONSTRAINT "Prescription_medicineId_fkey" FOREIGN KEY ("medicineId") REFERENCES "Medicine"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PrescriptionItem" ADD CONSTRAINT "PrescriptionItem_prescriptionId_fkey" FOREIGN KEY ("prescriptionId") REFERENCES "Prescription"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PrescriptionItem" ADD CONSTRAINT "PrescriptionItem_medicineId_fkey" FOREIGN KEY ("medicineId") REFERENCES "Medicine"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Sale" ADD CONSTRAINT "Sale_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Sale" ADD CONSTRAINT "Sale_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Sale" ADD CONSTRAINT "Sale_patientID_fkey" FOREIGN KEY ("patientID") REFERENCES "Patient"("patientID") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Sale" ADD CONSTRAINT "Sale_prescriptionId_fkey" FOREIGN KEY ("prescriptionId") REFERENCES "Prescription"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SaleItem" ADD CONSTRAINT "SaleItem_saleId_fkey" FOREIGN KEY ("saleId") REFERENCES "Sale"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SaleItem" ADD CONSTRAINT "SaleItem_medicineId_fkey" FOREIGN KEY ("medicineId") REFERENCES "Medicine"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SaleItem" ADD CONSTRAINT "SaleItem_inventoryBatchId_fkey" FOREIGN KEY ("inventoryBatchId") REFERENCES "InventoryBatch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Reservation" ADD CONSTRAINT "Reservation_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Reservation" ADD CONSTRAINT "Reservation_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ReservationItem" ADD CONSTRAINT "ReservationItem_reservationId_fkey" FOREIGN KEY ("reservationId") REFERENCES "Reservation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ReservationItem" ADD CONSTRAINT "ReservationItem_inventoryBatchId_fkey" FOREIGN KEY ("inventoryBatchId") REFERENCES "InventoryBatch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "_MedicineToSupplier" ADD CONSTRAINT "_MedicineToSupplier_A_fkey" FOREIGN KEY ("A") REFERENCES "Medicine"("id") ON DELETE CASCADE ON UPDATE CASCADE;

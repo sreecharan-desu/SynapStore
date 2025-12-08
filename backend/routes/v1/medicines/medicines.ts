@@ -162,7 +162,10 @@ router.get("/:id/medicines", async (req: any, res) => {
 
     const [items, total] = await Promise.all([
       prisma.medicine.findMany({
-        where,
+        where: {
+          isActive: true,
+          ...where,
+        },
         orderBy: { brandName: "asc" },
         take: limit,
         skip: offset,
@@ -183,7 +186,7 @@ router.get("/:id/medicines", async (req: any, res) => {
           updatedAt: true,
         },
       }),
-      prisma.medicine.count({ where }),
+      prisma.medicine.count({ where: { isActive: true, ...where } }),
     ]);
 
     return respond(res, 200, {
@@ -315,13 +318,13 @@ router.delete(
       const medicineId = String(req.params.medicineId);
 
       const existing = await prisma.medicine.findFirst({
-        where: { id: medicineId, storeId },
-        select: { id: true },
+        where: { id: medicineId, storeId, isActive: true },
+        select: { id: true, isActive: true },
       });
-      if (!existing)
+      if (!existing || existing.isActive !== true)
         return respond(res, 404, {
           success: false,
-          error: "medicine_not_found",
+          error: "medicine_not_found or already_deleted",
         });
 
       const deleted = await prisma.medicine.update({

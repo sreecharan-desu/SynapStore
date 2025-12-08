@@ -6,7 +6,7 @@ import { authenticate } from "../../../middleware/authenticate";
 import { requireRole } from "../../../middleware/requireRole";
 import { crypto$ } from "../../../lib/crypto";
 
-const router = Router();
+const StoreRouter = Router();
 
 const respond = (res: any, status: number, body: object) =>
   res.status(status).json(body);
@@ -31,7 +31,7 @@ const patchStoreSchema = z.object({
 /* Routes */
 
 // GET /v1/stores/my - list stores current user belongs to
-router.get("/my", authenticate, async (req: any, res) => {
+StoreRouter.get("/my", authenticate, async (req: any, res) => {
   try {
     const userId = req.user?.id;
     if (!userId)
@@ -75,7 +75,7 @@ router.get("/my", authenticate, async (req: any, res) => {
 });
 
 // POST /v1/stores - create store (SUPERADMIN only)
-router.post(
+StoreRouter.post(
   "/",
   authenticate,
   requireRole("SUPERADMIN"),
@@ -123,7 +123,7 @@ router.post(
 );
 
 // GET /v1/stores/:id - get store (requires membership or SUPERADMIN)
-router.get("/:id", authenticate, async (req: any, res) => {
+StoreRouter.get("/:id", authenticate, async (req: any, res) => {
   try {
     const storeId = String(req.params.id);
     const userId = req.user?.id;
@@ -166,7 +166,7 @@ router.get("/:id", authenticate, async (req: any, res) => {
 });
 
 // PATCH /v1/stores/:id - update store (OWNER/ADMIN/SUPERADMIN)
-router.patch("/:id", authenticate, async (req: any, res) => {
+StoreRouter.patch("/:id", authenticate, async (req: any, res) => {
   try {
     const parsed = patchStoreSchema.safeParse(req.body);
     if (!parsed.success)
@@ -206,7 +206,7 @@ router.patch("/:id", authenticate, async (req: any, res) => {
 });
 
 // DELETE /v1/stores/:id - soft delete (SUPERADMIN)
-router.delete(
+StoreRouter.delete(
   "/:id",
   authenticate,
   requireRole("SUPERADMIN"),
@@ -230,4 +230,4 @@ router.delete(
   }
 );
 
-export default router;
+export default StoreRouter;

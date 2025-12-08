@@ -65,6 +65,22 @@ enum NotificationStatus {
   FAILED
 }
 
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  INSURANCE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
 model Store {
   id            String    @id @default(uuid())
   name          String
@@ -76,25 +92,28 @@ model Store {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  users         UserStoreRole[]
-  medicines     Medicine[]
-  suppliers     Supplier[]
-  inventory     InventoryBatch[]
-  uploads       Upload[]
-  forecasts     Forecast[]
-  alerts        Alert[]
-  reorders      Reorder[]
-  featureFlags  FeatureFlag[]
-  health        StoreHealth?
-  activityLogs  ActivityLog[]
-  notifications Notification[]
+  users                 UserStoreRole[]
+  medicines             Medicine[]
+  suppliers             Supplier[]
+  inventory             InventoryBatch[]
+  uploads               Upload[]
+  forecasts             Forecast[]
+  alerts                Alert[]
+  reorders              Reorder[]
+  featureFlags          FeatureFlag[]
+  health                StoreHealth?
+  activityLogs          ActivityLog[]
+  notifications         Notification[]
+  doctors               Doctor[]
+  stockMovements        StockMovement[]
+  webhookRegistrations  WebhookRegistration[]
+  webhookDeliveries     WebhookDelivery[]
+  otps                  Otp[]
+  prescriptions         Prescription[]          // header
+  sales                 Sale[]
+  reservations          Reservation[]
 
   @@index([slug])
-  doctors       Doctor[]
-  stockMovements StockMovement[]
-  webhookRegistrations WebhookRegistration[]
-  otps          Otp[]
-  prescriptions Prescription[]
 }
 
 model User {
@@ -109,7 +128,6 @@ model User {
   updatedAt    DateTime  @updatedAt
   isverified   Boolean   @default(false)
 
-  // Global role for system-level permissions - use SUPERADMIN here for global admin users
   globalRole   Role?
 
   stores       UserStoreRole[]
@@ -125,9 +143,11 @@ model User {
 
   notifications Notification[]
 
-  // remove supplierRefId from User (Supplier owns the relation)
-
   suppliers Supplier[]
+
+  reservations Reservation[]
+
+  sales Sale[]
 }
 
 model UserStoreRole {
@@ -139,7 +159,6 @@ model UserStoreRole {
   role      Role
   createdAt DateTime @default(now())
 
-  // single role per user per store
   @@unique([userId, storeId])
   @@index([storeId])
   @@index([userId])
@@ -151,15 +170,15 @@ model Doctor {
   address   String?
   phone     String?
 
-  // optional store-scoping - a prescription belongs to a store
   store     Store?   @relation(fields: [storeId], references: [id])
   storeId   String?
 
   prescriptions Prescription[]
 }
+
 model Supplier {
   id               String   @id @default(uuid())
-  supLegacyId      Int?     // keep legacy reference if needed
+  supLegacyId      Int?
   store            Store?   @relation(fields: [storeId], references: [id])
   storeId          String?
   name             String
@@ -173,26 +192,23 @@ model Supplier {
   updatedAt        DateTime @updatedAt
   isActive         Boolean  @default(true)
 
-  // Supplier optionally maps to a User account
   user             User?    @relation(fields: [userId], references: [id])
   userId           String?  @unique
 
-  medicines        Medicine[] 
+  medicines        Medicine[]
   reorders         Reorder[]
 }
 
-
 model Medicine {
   id            String    @id @default(uuid())
-  // keep legacy NDC if available
-  ndc           String?   
+  ndc           String?
   store         Store     @relation(fields: [storeId], references: [id])
   storeId       String
-  sku           String?   
+  sku           String?
   brandName     String
   genericName   String?
-  dosageForm    String?   // tablet, syrup, injection
-  strength      String?   // "500 mg"
+  dosageForm    String?
+  strength      String?
   uom           String?
   category      String?
   taxInfo       Json?
@@ -203,12 +219,13 @@ model Medicine {
   inventory     InventoryBatch[]
   forecasts     Forecast[]
   stockMovements StockMovement[]
-  prescriptions Prescription[]
+  prescriptionItems PrescriptionItem[]
   suppliers     Supplier[]
+  reorderItems  ReorderItem[]
+  saleItems     SaleItem[]
 
   @@index([storeId, brandName])
   @@index([storeId, ndc])
-  reorderItems ReorderItem[]
 }
 
 model InventoryBatch {
@@ -226,15 +243,18 @@ model InventoryBatch {
   mrp           Decimal?  @db.Decimal(12, 2)
   receivedAt    DateTime?
   location      String?
+  version       Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   movements     StockMovement[]
+  saleItems     SaleItem[]
+  reservationItems ReservationItem[]
 
   @@index([storeId, medicineId])
   @@index([storeId, batchNumber])
   @@index([storeId, expiryDate])
-  @@index([storeId, expiryDate, medicineId]) // composite index for expiry queries per store and medicine
+  @@index([storeId, expiryDate, medicineId])
 }
 
 model StockMovement {
@@ -250,6 +270,8 @@ model StockMovement {
   note          String?
   performedBy   User?     @relation(fields: [performedById], references: [id])
   performedById String?
+  saleItem      SaleItem? @relation(fields: [saleItemId], references: [id])
+  saleItemId    String?
   createdAt     DateTime  @default(now())
 
   @@index([storeId, medicineId])
@@ -315,7 +337,6 @@ model Reorder {
   supplierId   String
   createdBy    User?    @relation(fields: [createdById], references: [id])
   createdById  String?
-  // items moved into ReorderItem for relational queries
   totalValue   Decimal? @db.Decimal(12, 2)
   status       ReorderStatus @default(DRAFT)
   externalRef  String?
@@ -420,7 +441,29 @@ model WebhookRegistration {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  deliveries   WebhookDelivery[]
+
   @@index([storeId, isActive])
+}
+
+model WebhookDelivery {
+  id            String   @id @default(uuid())
+  webhook       WebhookRegistration @relation(fields: [webhookId], references: [id])
+  webhookId     String
+  store         Store?   @relation(fields: [storeId], references: [id])
+  storeId       String?
+  event         String
+  payload       Json
+  headers       Json?
+  responseCode  Int?
+  responseBody  String?
+  retryCount    Int      @default(0)
+  success       Boolean  @default(false)
+  nextRetryAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([webhookId, success])
+  @@index([storeId, event])
 }
 
 model Otp {
@@ -455,6 +498,8 @@ model Patient {
 
   insuranceProvider Insurance? @relation(fields: [insuranceId], references: [name])
   prescriptions     Prescription[]
+
+  sales Sale[]
 }
 
 model Insurance {
@@ -470,17 +515,99 @@ model Prescription {
   storeId     String?
   patient     Patient @relation(fields: [patientID], references: [patientID])
   patientID   Int
-  doctor      Doctor  @relation(fields: [physID], references: [physID])
-  physID      Int
-  medicine    Medicine @relation(fields: [medicineId], references: [id])
-  medicineId  String
-  qty         Int
-  days        Int?
-  refills     Int?
+  doctor      Doctor?  @relation(fields: [physID], references: [physID])
+  physID      Int?
   status      String?
   issuedAt    DateTime? @default(now())
+  externalRef String?
+
+  items       PrescriptionItem[]
 
   @@index([patientID])
   @@index([physID])
+  sales Sale[]
+}
+
+model PrescriptionItem {
+  id            String   @id @default(uuid())
+  prescription  Prescription @relation(fields: [prescriptionId], references: [id])
+  prescriptionId Int
+  medicine      Medicine @relation(fields: [medicineId], references: [id])
+  medicineId    String
+  qty           Int
+  days          Int?
+  refills       Int?
+  instructions  String?
+  createdAt     DateTime @default(now())
+
+  @@index([prescriptionId])
   @@index([medicineId])
+}
+
+model Sale {
+  id            String   @id @default(uuid())
+  store         Store    @relation(fields: [storeId], references: [id])
+  storeId       String
+  createdBy     User?    @relation(fields: [createdById], references: [id])
+  createdById   String?
+  patient       Patient? @relation(fields: [patientID], references: [patientID])
+  patientID     Int?
+  prescription  Prescription? @relation(fields: [prescriptionId], references: [id])
+  prescriptionId Int?
+  subtotal      Decimal? @db.Decimal(12, 2)
+  tax           Decimal? @db.Decimal(12, 2)
+  discounts     Decimal? @db.Decimal(12, 2)
+  totalValue    Decimal? @db.Decimal(12, 2)
+  paymentMethod PaymentMethod?
+  paymentStatus PaymentStatus @default(PENDING)
+  externalRef   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items         SaleItem[]
+  @@index([storeId, paymentStatus])
+}
+
+model SaleItem {
+  id               String   @id @default(uuid())
+  sale             Sale     @relation(fields: [saleId], references: [id])
+  saleId           String
+  medicine         Medicine @relation(fields: [medicineId], references: [id])
+  medicineId       String
+  inventoryBatch   InventoryBatch? @relation(fields: [inventoryBatchId], references: [id])
+  inventoryBatchId String?
+  qty              Int
+  unitPrice        Decimal? @db.Decimal(12, 2)
+  lineTotal        Decimal? @db.Decimal(12, 2)
+  createdAt        DateTime @default(now())
+
+  stockMovements   StockMovement[]
+  @@index([saleId])
+  @@index([medicineId])
+}
+
+model Reservation {
+  id          String   @id @default(uuid())
+  store       Store    @relation(fields: [storeId], references: [id])
+  storeId     String
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdById String?
+  expiresAt   DateTime
+  status      String
+  createdAt   DateTime @default(now())
+
+  items       ReservationItem[]
+}
+
+model ReservationItem {
+  id              String   @id @default(uuid())
+  reservation     Reservation @relation(fields: [reservationId], references: [id])
+  reservationId   String
+  inventoryBatch  InventoryBatch @relation(fields: [inventoryBatchId], references: [id])
+  inventoryBatchId String
+  qty             Int
+  createdAt       DateTime @default(now())
+
+  @@index([reservationId])
+  @@index([inventoryBatchId])
 }
