@@ -4,8 +4,12 @@ import prisma from "../lib/prisma";
 import type { Role, Store } from "@prisma/client";
 
 export type RequestWithUser = Request & {
-  user?: { id: string; globalRole?: Role | null };
-  store?: Partial<Store> | null;
+  user?: {
+    username: string;
+    id: string;
+    globalRole?: Role | null;
+  };
+  store?: Partial<Store> | null | any;
   userStoreRoles?: Role[];
 };
 
