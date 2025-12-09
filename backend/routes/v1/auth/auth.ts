@@ -256,7 +256,7 @@ router.post(
         message: "registered - otp sent",
         user: {
           id: decrypted.id,
-          username: decrypted.username,
+          username: decrypted.username, // username is decrypted
           email: decrypted.email,
         },
       });
@@ -408,7 +408,7 @@ router.post(
           token,
           user: {
             id: user.id,
-            username: user.username,
+            username: crypto$.decryptCell(user.username), // decrypt username
             email,
             globalRole: "SUPERADMIN",
           },
@@ -421,7 +421,7 @@ router.post(
           token,
           user: {
             id: user.id,
-            username: user.username,
+            username: crypto$.decryptCell(user.username), // decrypt username
             email,
             globalRole: "SUPPLIER",
           },
@@ -461,7 +461,7 @@ router.post(
           token,
           user: {
             id: user.id,
-            username: user.username,
+            username: crypto$.decryptCell(user.username), // decrypt username
             email,
             globalRole: user.globalRole, // expose global role
           },
@@ -477,7 +477,7 @@ router.post(
           token,
           user: {
             id: user.id,
-            username: user.username,
+            username: crypto$.decryptCell(user.username), // decrypt username
             email,
             globalRole: user.globalRole, // expose global role (e.g. SUPPLIER)
           },
@@ -498,7 +498,7 @@ router.post(
         token,
         user: {
           id: user.id,
-          username: user.username,
+          username: crypto$.decryptCell(user.username), // decrypt username
           email,
           globalRole: user.globalRole, // expose global role
         },

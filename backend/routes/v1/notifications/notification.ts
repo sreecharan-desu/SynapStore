@@ -9,6 +9,7 @@ import {
 } from "../../../middleware/store";
 import { notificationQueue } from "../../../lib/queue";
 import { z } from "zod";
+import { crypto$ } from "../../../lib/crypto";
 
 const router = Router();
 
@@ -80,8 +81,32 @@ router.get(
           where: { userId: req.user.id },
           orderBy: { createdAt: "desc" },
           take: 50,
+          include: {
+            user: {
+              select: {
+                username: true,
+                email: true
+              }
+            }
+          }
         });
-        return res.json({ success: true, rows });
+
+        // Decrypt user details in the rows
+        const decryptedRows = rows.map((row) => {
+          if (row.user) {
+            return {
+              ...row,
+              user: {
+                ...row.user,
+                username: crypto$.decryptCell(row.user.username),
+                email: crypto$.decryptCell(row.user.email)
+              }
+            };
+          }
+          return row;
+        });
+
+        return res.json({ success: true, rows: decryptedRows });
       }
 
       return res.status(400).json({ error: "store context required" });
@@ -91,8 +116,32 @@ router.get(
       where: { storeId },
       orderBy: { createdAt: "desc" },
       take: 200,
+      include: {
+        user: {
+          select: {
+            username: true,
+            email: true
+          }
+        }
+      }
     });
-    return res.json({ success: true, rows });
+
+    // Decrypt user details in the rows
+    const decryptedRows = rows.map((row) => {
+        if (row.user) {
+          return {
+            ...row,
+            user: {
+              ...row.user,
+              username: crypto$.decryptCell(row.user.username),
+              email: crypto$.decryptCell(row.user.email)
+            }
+          };
+        }
+        return row;
+      });
+
+    return res.json({ success: true, rows: decryptedRows });
   }
 );
 
