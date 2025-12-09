@@ -12,7 +12,7 @@ const getBaseUrl = () =>
   (typeof process !== "undefined"
     ? (import.meta.env as any)?.REACT_APP_BASE_URL
     : undefined) ||
-  "http://localhost:3000";
+  "http://192.168.48.210:3000";
 
 export const jsonFetch = async <T = any>(path: string, opts: FetchOpts = {}) => {
   const baseUrl = getBaseUrl();

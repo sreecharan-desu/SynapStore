@@ -10,6 +10,7 @@ import Home from "./pages/Home";
 import RequireAuth from "./routes/RequireAuth";
 import { AuthProvider } from "./auth/AuthContext";
 import LoginGuard from "./components/AuthRouteGuards/LoginGuard";
+import RoleGuard from "./components/AuthRouteGuards/RoleGuard";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
 import InventoryPage from "./pages/inventory/InventoryPage";
 import SalesPage from "./pages/sales/SalesPage";
@@ -38,7 +39,9 @@ createRoot(document.getElementById("root")!).render(
             path="/admin/dashboard"
             element={
               <RequireAuth>
-                <SuperAdminDashboard />
+                <RoleGuard allowedRoles={["SUPERADMIN"]}>
+                  <SuperAdminDashboard />
+                </RoleGuard>
               </RequireAuth>
             }
           />
@@ -47,7 +50,9 @@ createRoot(document.getElementById("root")!).render(
             path="/supplier/dashboard"
             element={
               <RequireAuth>
-                <SupplierDashboard />
+                <RoleGuard allowedRoles={["SUPPLIER"]}>
+                  <SupplierDashboard />
+                </RoleGuard>
               </RequireAuth>
             }
           />
@@ -56,7 +61,9 @@ createRoot(document.getElementById("root")!).render(
             path="/store/dashboard"
             element={
               <RequireAuth>
-                <StoreOwnerDashboard />
+                <RoleGuard allowedRoles={["STORE_OWNER"]}>
+                  <StoreOwnerDashboard />
+                </RoleGuard>
               </RequireAuth>
             }
           />
@@ -66,7 +73,9 @@ createRoot(document.getElementById("root")!).render(
             path="/dashboard"
             element={
               <RequireAuth>
-                <DashboardLayout />
+                <RoleGuard allowedRoles={["STORE_OWNER", "USER", "MANAGER"]}>
+                  <DashboardLayout />
+                </RoleGuard>
               </RequireAuth>
             }
           >
