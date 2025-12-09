@@ -85,17 +85,17 @@ const ReviewCard = ({
       viewport={{ once: true, margin: "-100px 0px" }}
       className="h-full"
     >
-      <div className="h-full bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border border-gray-100 overflow-hidden flex flex-col">
+      <div className="h-full bg-white/60 backdrop-blur-lg rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-white/40 overflow-hidden flex flex-col ring-1 ring-white/50">
         <div className="p-6 flex-1">
           <div className="flex items-center gap-3 mb-4">
             <img
-              className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
+              className="w-12 h-12 rounded-full object-cover border-2 border-white/60 shadow-sm"
               src={img}
               alt={name}
             />
             <div>
-              <h4 className="font-medium text-gray-900">{name}</h4>
-              <p className="text-sm text-gray-500">{role}</p>
+              <h4 className="font-medium text-brand-text">{name}</h4>
+              <p className="text-sm text-brand-text-muted">{role}</p>
             </div>
           </div>
 
@@ -103,22 +103,21 @@ const ReviewCard = ({
             {[...Array(5)].map((_, i) => (
               <Star
                 key={i}
-                className={`w-4 h-4 ${
-                  i < rating ? "text-yellow-400 fill-current" : "text-gray-300"
-                }`}
+                className={`w-4 h-4 ${i < rating ? "text-brand-highlight fill-current" : "text-brand-border"
+                  }`}
               />
             ))}
           </div>
 
-          <blockquote className="text-gray-600 text-sm leading-relaxed">
+          <blockquote className="text-brand-text-muted text-sm leading-relaxed">
             "{body}"
           </blockquote>
         </div>
 
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+        <div className="px-6 py-4 bg-white/40 border-t border-white/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-brand-pale flex items-center justify-center">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="16"
@@ -129,14 +128,15 @@ const ReviewCard = ({
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  className="text-brand-primary"
                 >
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                   <polyline points="22 4 12 14.01 9 11.01"></polyline>
                 </svg>
               </div>
-              <span className="text-sm text-gray-500">Verified User</span>
+              <span className="text-sm text-brand-text-muted">Verified User</span>
             </div>
-            <div className="text-xs text-gray-400">2 days ago</div>
+            <div className="text-xs text-brand-text-muted/60">2 days ago</div>
           </div>
         </div>
       </div>
@@ -159,7 +159,10 @@ export function Testimonials() {
   }, []);
 
   return (
-    <section className="py-20 bg-gray-50" id="testimonials">
+    <section className="py-24 bg-background-page relative overflow-hidden" id="testimonials">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute bottom-20 left-10 w-64 h-64 bg-brand-primary/5 rounded-full blur-[80px]" />
+      </div>
       <div className="max-w-7xl mx-auto px-6">
         <motion.div
           className="text-center mb-12"
@@ -218,7 +221,7 @@ export function Testimonials() {
           <p className="text-sm text-gray-500 mb-6">
             Join our growing community of satisfied customers
           </p>
-        
+
         </motion.div>
       </div>
     </section>

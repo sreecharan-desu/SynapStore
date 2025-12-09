@@ -1,4 +1,4 @@
-import { useState } from "react";
+
 
 // Simple icon component
 const ArrowRight = () => (
@@ -9,16 +9,17 @@ const ArrowRight = () => (
     fill="none"
     stroke="currentColor"
     strokeWidth="2"
+    className="transform transition-transform group-hover:translate-x-1"
   >
     <path d="M5 12h14M12 5l7 7-7 7" />
   </svg>
 );
 
-export default function CTAAndFooter() {
-  const [, setHoveredSocial] = useState(null);
 
+
+export default function CTAAndFooter() {
   return (
-    <div className="w-full bg-gray-50">
+    <div className="w-full bg-background-page">
       <style>{`
         @keyframes fadeInUp {
           from {
@@ -96,7 +97,7 @@ export default function CTAAndFooter() {
         }
 
         .gradient-animated {
-          background: linear-gradient(-45deg, #2563eb, #3b82f6, #4f46e5, #6366f1);
+          background: linear-gradient(-45deg, var(--brand-primary), var(--brand-primary-dark), var(--brand-primary-light), var(--brand-primary));
           background-size: 400% 400%;
           animation: gradient-shift 8s ease infinite;
         }
@@ -163,32 +164,28 @@ export default function CTAAndFooter() {
       <section className="relative py-24 gradient-animated overflow-hidden">
         {/* Animated Background Orbs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-24 -right-24 w-96 h-96 bg-blue-400/20 rounded-full blur-3xl animate-float" />
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-brand-primary-light/20 rounded-full blur-3xl animate-float" />
           <div
-            className="absolute -bottom-24 -left-24 w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl animate-float"
-            style={{ animationDelay: "1s" }}
-          />
-          <div
-            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-purple-400/10 rounded-full blur-3xl animate-float"
+            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-brand-highlight/10 rounded-full blur-3xl animate-float"
             style={{ animationDelay: "2s" }}
           />
         </div>
 
         <div className="max-w-5xl mx-auto px-6 text-center relative z-10">
-          <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight animate-fadeInUp stagger-1">
+          <h2 className="text-4xl md:text-6xl font-bold text-brand-text mb-6 leading-tight animate-fadeInUp stagger-1">
             Ready to transform your pharmacy?
           </h2>
 
-          <p className="text-xl md:text-2xl text-blue-50 mb-10 max-w-3xl mx-auto leading-relaxed animate-fadeInUp stagger-2">
+          <p className="text-xl md:text-2xl text-brand-text-muted mb-10 max-w-3xl mx-auto leading-relaxed animate-fadeInUp stagger-2">
             Join thousands of pharmacies already using{" "}
-            <span className="font-semibold text-white">SynapStore</span> to
+            <span className="font-semibold text-brand-primary">SynapStore</span> to
             streamline operations and save time.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fadeInUp stagger-3">
             <a
               href="/login"
-              className="cta-button inline-flex items-center justify-center gap-2 px-10 py-5 bg-white text-blue-600 rounded-xl font-semibold text-lg shadow-2xl focus:outline-none focus:ring-4 focus:ring-white/30"
+              className="cta-button group inline-flex items-center justify-center gap-2 px-10 py-5 bg-brand-primary text-white rounded-xl font-semibold text-lg shadow-2xl shadow-brand-primary/30 hover:bg-brand-primary-dark focus:outline-none focus:ring-4 focus:ring-brand-primary/30"
             >
               <span>Get Started</span>
               <ArrowRight />
@@ -198,16 +195,16 @@ export default function CTAAndFooter() {
       </section>
 
       {/* FOOTER - Minimal & Professional (removed product/support lists and social icons) */}
-      <footer className="bg-white border-t border-gray-200">
+      <footer className="bg-white border-t border-brand-border">
         <div className="max-w-7xl mx-auto px-6 py-16">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 mb-8 items-start">
             {/* Brand Column */}
             <div className="animate-fadeInUp stagger-1">
               <div className="flex items-center gap-3 mb-4">
-                <div className="logo-container w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg">
-                  <img src="/logo.svg" alt="SynapStore Logo" />
+                <div className="logo-container w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center shadow-sm border border-brand-primary/10">
+                  <img src="/logo.svg" alt="SynapStore Logo" className="w-8 h-8" />
                 </div>
-                <span className="text-2xl font-bold text-gray-900">
+                <span className="text-2xl font-bold text-brand-text">
                   SynapStore
                 </span>
               </div>
@@ -215,37 +212,37 @@ export default function CTAAndFooter() {
 
             {/* Description Column (moved here, improved wording) */}
             <div className="md:col-span-2 animate-fadeInUp stagger-2 flex items-center">
-              <p className="text-gray-700 leading-relaxed text-base md:text-lg max-w-3xl">
+              <p className="text-brand-text-muted leading-relaxed text-base md:text-lg max-w-3xl">
                 Smart pharmacy inventory management trusted by pharmacies nationwide.
               </p>
             </div>
           </div>
 
           {/* Bottom Bar */}
-         {/* Bottom Bar */}
-<div className="border-t border-gray-200 pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
-  <p className="text-sm text-gray-600">
-    &copy; {new Date().getFullYear()} SynapStore. All rights reserved.
-  </p>
+          {/* Bottom Bar */}
+          <div className="border-t border-brand-border pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-sm text-brand-text-muted">
+              &copy; {new Date().getFullYear()} SynapStore. All rights reserved.
+            </p>
 
-  <div className="flex items-center gap-6 text-sm">
-    {/* Pulsing Status Dot Only */}
-    <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse-status" />
+            <div className="flex items-center gap-6 text-sm">
+              {/* Pulsing Status Dot Only */}
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-brand-primary animate-pulse-status" />
 
-    <a
-      href="#"
-      className="link-hover text-gray-600 hover:text-blue-600"
-    >
-      Status
-    </a>
-    <a
-      href="#"
-      className="link-hover text-gray-600 hover:text-blue-600"
-    >
-      Security
-    </a>
-  </div>
-</div>
+              <a
+                href="#"
+                className="link-hover text-brand-text-muted hover:text-brand-primary"
+              >
+                Status
+              </a>
+              <a
+                href="#"
+                className="link-hover text-brand-text-muted hover:text-brand-primary"
+              >
+                Security
+              </a>
+            </div>
+          </div>
 
         </div>
       </footer>

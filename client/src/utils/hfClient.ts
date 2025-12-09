@@ -12,7 +12,7 @@ const isAuthenticated = () => {
   }
 };
 
-export async function sendChatMessage(threadId: string, message: string) {
+export async function sendChatMessage(thread_id: string, message: string) {
   if (!isAuthenticated()) {
     throw new Error("Unauthenticated: please sign in to use the chatbot.");
   }
@@ -23,7 +23,7 @@ export async function sendChatMessage(threadId: string, message: string) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${hfToken}`,
     },
-    body: JSON.stringify({ threadId, message }),
+    body: JSON.stringify({ thread_id, message }),
   });
 
   if (!res.ok) {

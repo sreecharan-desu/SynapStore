@@ -1,10 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/theme.css";
 
 @keyframes marquee {
   from {
     transform: translateX(0);
   }
+
   to {
     transform: translateX(calc(-100% - var(--gap)));
   }
@@ -14,6 +16,7 @@
   from {
     transform: translateY(0);
   }
+
   to {
     transform: translateY(calc(-100% - var(--gap)));
   }
@@ -42,4 +45,24 @@ html {
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-page, #FFFFFF);
+  color: var(--text-default, #374151);
+}
+
+/* For components still using CSS variables rather than Tailwind classes */
+.bg-brand-primary {
+  background-color: var(--brand-primary) !important;
+}
+
+.text-brand-primary {
+  color: var(--brand-primary) !important;
+}
+
+.border-brand {
+  border-color: var(--border) !important;
+}
+
+/* Example gradient helper */
+.bg-brand-gradient {
+  background: linear-gradient(90deg, var(--brand-primary), var(--brand-primary-dark));
 }
