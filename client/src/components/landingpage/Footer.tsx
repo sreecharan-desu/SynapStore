@@ -1,5 +1,4 @@
 // CTAAndFooter.tsx
-import React from "react";
 
 /* Simple icon component — marked aria-hidden and with improved className handling */
 const ArrowRight = () => (

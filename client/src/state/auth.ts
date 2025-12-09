@@ -24,6 +24,7 @@ export type AuthState = {
   needsStoreSetup: boolean;
   needsStoreSelection?: boolean;
   suppliers?: Array<{ id: string; storeId: string | null; name: string; isActive: boolean }>;
+  supplierId?: { id: string } | null;
 };
 
 const STORAGE_KEY = "synapstore:auth";
@@ -53,30 +54,30 @@ const getStorage = () => {
 
 const persistenceEffect =
   (key: string) =>
-  ({ setSelf, onSet }: any) => {
-    const storage = getStorage();
-    if (storage) {
-      const stored = storage.getItem(key);
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          setSelf(parsed);
-        } catch {
-          storage.removeItem(key);
+    ({ setSelf, onSet }: any) => {
+      const storage = getStorage();
+      if (storage) {
+        const stored = storage.getItem(key);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            setSelf(parsed);
+          } catch {
+            storage.removeItem(key);
+          }
         }
       }
-    }
 
-    onSet((newValue: AuthState, _: AuthState, isReset: boolean) => {
-      const s = getStorage();
-      if (!s) return;
-      if (isReset) {
-        s.removeItem(key);
-      } else {
-        s.setItem(key, JSON.stringify(newValue));
-      }
-    });
-  };
+      onSet((newValue: AuthState, _: AuthState, isReset: boolean) => {
+        const s = getStorage();
+        if (!s) return;
+        if (isReset) {
+          s.removeItem(key);
+        } else {
+          s.setItem(key, JSON.stringify(newValue));
+        }
+      });
+    };
 
 export const authState = atom<AuthState>({
   key: "authState",
@@ -87,6 +88,7 @@ export const authState = atom<AuthState>({
     needsStoreSetup: false,
     needsStoreSelection: false,
     suppliers: [],
+    supplierId: null,
   },
   effects: [persistenceEffect(STORAGE_KEY)],
 });
@@ -108,14 +110,14 @@ export const authStatus = selector({
 });
 
 export const clearAuthState = () =>
-  ({
-    token: null,
-    user: null,
-    effectiveStore: null,
-    needsStoreSetup: false,
-    needsStoreSelection: false,
-    suppliers: [],
-  } satisfies AuthState);
+({
+  token: null,
+  user: null,
+  effectiveStore: null,
+  needsStoreSetup: false,
+  needsStoreSelection: false,
+  suppliers: [],
+  supplierId: null,
+} satisfies AuthState);
 
 export const isTokenExpiredSafe = isTokenExpired;
-

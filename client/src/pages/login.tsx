@@ -59,6 +59,8 @@ type SigninResponse = {
   needsStoreSetup?: boolean;
   needsStoreSelection?: boolean;
   suppliers?: any[];
+  supplierId?: { id: string } | null;
+  stores?: any[];
 };
 
 const Login: React.FC = () => {
@@ -108,13 +110,37 @@ const Login: React.FC = () => {
       needsStoreSetup: Boolean(body.needsStoreSetup),
       needsStoreSelection: Boolean(body.needsStoreSelection),
       suppliers: body.suppliers ?? [],
+      supplierId: body.supplierId ?? null,
     });
 
-    if (body.needsStoreSetup) {
-      navigate("/store/create");
+    // Role-based redirects
+    const globalRole = body.user?.globalRole;
+
+    // SUPERADMIN → SuperAdminDashboard
+    if (globalRole === "SUPERADMIN") {
+      navigate("/admin/dashboard", { replace: true });
       return;
     }
 
+    // SUPPLIER → SupplierDashboard
+    if (globalRole === "SUPPLIER") {
+      navigate("/supplier/dashboard", { replace: true });
+      return;
+    }
+
+    // STORE_OWNER → needs store setup or store dashboard
+    if (body.needsStoreSetup) {
+      navigate("/store/create", { replace: true });
+      return;
+    }
+
+    // STORE_OWNER with store(s) → StoreOwnerDashboard
+    if (globalRole === "STORE_OWNER" || body.effectiveStore) {
+      navigate("/store/dashboard", { replace: true });
+      return;
+    }
+
+    // Default fallback
     const redirectTo =
       (location.state as any)?.from?.pathname || "/dashboard";
     navigate(redirectTo, { replace: true });

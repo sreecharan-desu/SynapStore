@@ -14,6 +14,9 @@ import { DashboardLayout } from "./components/layout/DashboardLayout";
 import InventoryPage from "./pages/inventory/InventoryPage";
 import SalesPage from "./pages/sales/SalesPage";
 import SuppliersPage from "./pages/suppliers/SuppliersPage";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import SupplierDashboard from "./pages/SupplierDashboard";
+import StoreOwnerDashboard from "./pages/StoreOwnerDashboard";
 
 createRoot(document.getElementById("root")!).render(
   <RecoilRoot>
@@ -27,6 +30,34 @@ createRoot(document.getElementById("root")!).render(
               <LoginGuard>
                 <Login />
               </LoginGuard>
+            }
+          />
+
+          {/* Role-Specific Dashboards */}
+          <Route
+            path="/admin/dashboard"
+            element={
+              <RequireAuth>
+                <SuperAdminDashboard />
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/supplier/dashboard"
+            element={
+              <RequireAuth>
+                <SupplierDashboard />
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/store/dashboard"
+            element={
+              <RequireAuth>
+                <StoreOwnerDashboard />
+              </RequireAuth>
             }
           />
 
