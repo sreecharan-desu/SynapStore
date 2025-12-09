@@ -53,6 +53,10 @@ process.on("SIGTERM", shutdown);
 
 // Start server
 const PORT = Number(process.env.PORT) || 3000;
-app.listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
+import { ensureAdmin } from "./lib/init-admin";
+
+ensureAdmin().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Listening on port ${PORT}`);
+  });
 });

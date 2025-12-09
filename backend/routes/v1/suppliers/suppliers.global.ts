@@ -158,4 +158,31 @@ router.get(
   }
 );
 
+/**
+ * GET /v1/suppliers/discovery
+ * - Authenticated user can see list of active stores
+ */
+router.get(
+  "/discovery",
+  authenticate,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const stores = await prisma.store.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          currency: true,
+          timezone: true,
+        },
+        take: 100,
+      });
+      return res.json({ success: true, data: { stores } });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 export default router;

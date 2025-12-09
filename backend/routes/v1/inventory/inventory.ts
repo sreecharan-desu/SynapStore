@@ -3,7 +3,10 @@ import { Router, Request, Response } from "express";
 import prisma from "../../../lib/prisma";
 import { authenticate } from "../../../middleware/authenticate";
 import { storeContext, requireStore, RequestWithUser } from "../../../middleware/store";
+
 import { z } from "zod";
+import { sendMail } from "../../../lib/mailer";
+import { crypto$ } from "../../../lib/crypto";
 
 const router = Router();
 
@@ -34,6 +37,7 @@ router.post(
       const upload = await prisma.upload.create({
         data: {
           storeId: store.id,
+          // @ts-ignore
           filename: parsed.data.filename ?? null,
           status: "PENDING",
           metadata: parsed.data.metadata ?? {},
@@ -62,7 +66,7 @@ router.get(
       const { id } = req.params;
       const store = req.store!;
 
-      const upload = await prisma.upload.findUnique({
+      const upload :any= await prisma.upload.findUnique({
         where: { id },
       });
 
@@ -107,13 +111,50 @@ router.patch(
              return res.status(404).json({ error: "not_found" });
         }
 
+        const previousStatus = upload.status;
+
         const updated = await prisma.upload.update({
             where: { id },
             data: {
-                status: status ?? undefined,
+              status: status ?? undefined,
+              // @ts-ignore
                 metadata: metadata ?? undefined
             }
         });
+
+        // If status changed to APPLIED, trigger receipt email
+        if (status === "APPLIED" && previousStatus !== "APPLIED") {
+             const owners = await prisma.userStoreRole.findMany({
+               where: { storeId: store.id, role: { in: ["STORE_OWNER", "ADMIN"] } },
+               include: { user: { select: { email: true, username: true } } }
+             });
+             
+             // @ts-ignore
+             const meta = metadata || upload.metadata || upload.preview || {};
+             const emailSubject = `Inventory Receipt: Upload ${upload.filename || upload.id}`;
+             const emailBody = `Your inventory upload has been successfully applied.\n\nDetails:\n${JSON.stringify(meta, null, 2)}`;
+
+             for (const owner of owners) {
+                 const email = crypto$.decryptCell(owner.user.email);
+                 if (email) {
+                    await sendMail({
+                        to: email,
+                        subject: emailSubject,
+                        text: emailBody
+                    }).catch(console.error);
+                 }
+             }
+             
+             // Log
+             await prisma.activityLog.create({
+                 data: {
+                   storeId: store.id,
+                   userId: req.user?.id,
+                   action: "inventory_receipt_generated",
+                   payload: { uploadId: upload.id }
+                 }
+             }).catch(() => {});
+        }
         
         return res.json({ success: true, upload: updated });
       } catch (err) {

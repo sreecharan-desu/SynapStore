@@ -40,6 +40,9 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
       prisma.upload.count(),
     ]);
 
+    // Reorder model was removed, defaulting to 0
+    const reordersCount = 0;
+
     // Recent activity: last 20 activity logs
     const recentActivity = await prisma.activityLog.findMany({
       orderBy: { createdAt: "desc" },
@@ -62,6 +65,7 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
           stores: storeCount,
           medicines: medicineCount,
           batches: inventoryBatches,
+          reorders: reordersCount,
           uploads: uploadsCount,
         },
         recentActivity,
@@ -281,5 +285,59 @@ router.patch("/suppliers/:id/suspend", requireRole("SUPERADMIN"), async (req: an
     return respond(res, 500, { error: "internal_error" });
   }
 });
+
+/* -----------------------
+   Admin - POST /v1/admin/users/:userId/convert-to-supplier
+   - role: SUPERADMIN
+   - converts user to supplier role
+   - ensures supplier profile exists
+*/
+router.post(
+  "/users/:userId/convert-to-supplier",
+  requireRole("SUPERADMIN"),
+  async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return respond(res, 404, { error: "user_not_found" });
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { globalRole: "SUPPLIER" },
+      });
+
+      // Ensure supplier profile exists
+      const existingProfile = await prisma.supplier.findUnique({
+        where: { userId },
+      });
+
+      if (!existingProfile) {
+        // Create default profile
+        await prisma.supplier.create({
+          data: {
+            name: `Supplier ${user.username || "User"}`, // rudimentary name
+            userId,
+          },
+        });
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          actorId: req.user?.id,
+          actorType: "ADMIN",
+          action: "CONVERT_TO_SUPPLIER",
+          resource: "User",
+          resourceId: userId,
+        },
+      });
+
+      return respond(res, 200, { success: true });
+    } catch (err) {
+      console.error("Convert user to supplier error:", err);
+      return respond(res, 500, { error: "internal_error" });
+    }
+  }
+);
 
 export default router;
