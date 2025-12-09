@@ -31,14 +31,12 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
       storeCount,
       medicineCount,
       inventoryBatches,
-      reordersCount,
       uploadsCount,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.store.count({ where: { isActive: true } }),
       prisma.medicine.count(),
       prisma.inventoryBatch.count(),
-      prisma.reorder.count(),
       prisma.upload.count(),
     ]);
 
@@ -64,7 +62,6 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
           stores: storeCount,
           medicines: medicineCount,
           batches: inventoryBatches,
-          reorders: reordersCount,
           uploads: uploadsCount,
         },
         recentActivity,

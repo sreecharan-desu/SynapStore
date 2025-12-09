@@ -100,8 +100,6 @@ model Store {
   activityLogs          ActivityLog[]
   notifications         Notification[]
   stockMovements        StockMovement[]
-  webhookRegistrations  WebhookRegistration[]
-  webhookDeliveries     WebhookDelivery[]
   otps                  Otp[]
   sales                 Sale[]
 
@@ -315,42 +313,7 @@ model Notification {
   @@index([storeId, status])
 }
 
-model WebhookRegistration {
-  id           String   @id @default(uuid())
-  store        Store    @relation(fields: [storeId], references: [id])
-  storeId      String
-  name         String
-  url          String
-  secret       String?
-  events       String[]
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
-  deliveries   WebhookDelivery[]
-
-  @@index([storeId, isActive])
-}
-
-model WebhookDelivery {
-  id            String   @id @default(uuid())
-  webhook       WebhookRegistration @relation(fields: [webhookId], references: [id])
-  webhookId     String
-  store         Store?   @relation(fields: [storeId], references: [id])
-  storeId       String?
-  event         String
-  payload       Json
-  headers       Json?
-  responseCode  Int?
-  responseBody  String?
-  retryCount    Int      @default(0)
-  success       Boolean  @default(false)
-  nextRetryAt   DateTime?
-  createdAt     DateTime @default(now())
-
-  @@index([webhookId, success])
-  @@index([storeId, event])
-}
 
 model Otp {
   id           String   @id @default(uuid())
