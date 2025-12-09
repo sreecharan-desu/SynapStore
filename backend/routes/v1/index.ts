@@ -5,7 +5,8 @@ import authRouter from "./auth/auth";
 import googleRouter from "./auth/google";
 import storeRouter from "./store/store";
 import dashboardRouter from "./dashboard/dashboard";
-import inventoryRouter from "./inventory/inventory";
+import suppliersGlobalRouter from "./suppliers/suppliers.global";
+import supplierRequestsRouter from "./suppliers/supplierrequest";
 
 const v1Router = Router();
 
@@ -17,9 +18,9 @@ v1Router.use("/auth", authRouter);
 v1Router.use("/oauth/google", googleRouter);
 
 v1Router.use("/dashboard", dashboardRouter);
-// newly added
 v1Router.use("/store", storeRouter);
 
-v1Router.use("/inventory", inventoryRouter);
+v1Router.use("/suppliers", suppliersGlobalRouter);
+v1Router.use("/supplier-requests", supplierRequestsRouter);
 
 export default v1Router;

@@ -53,10 +53,6 @@ function permissionsForRoles(roles: RoleEnum[] = []) {
   };
 }
 
-/**
- * GET /v1/dashboard/store
- * single-store mode - return store id, store meta, user info, roles and permissions
- */
 dashboardRouter.get(
   "/store",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -114,8 +110,6 @@ dashboardRouter.get(
     }
   }
 );
-
-// add/replace in src/routes/v1/dashboard.ts
 
 dashboardRouter.get(
   "/bootstrap",

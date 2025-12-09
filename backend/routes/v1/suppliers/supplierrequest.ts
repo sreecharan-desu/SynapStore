@@ -1,0 +1,325 @@
+// src/routes/v1/supplierRequests.ts
+import { Router, Request, Response, NextFunction } from "express";
+import prisma from "../../../lib/prisma";
+import { authenticate } from "../../../middleware/authenticate";
+import {
+  storeContext,
+  requireStore,
+  RequestWithUser,
+} from "../../../middleware/store";
+import { z } from "zod";
+import { requireRole } from "../../../middleware/requireRole"; // your requireRole file
+
+const router = Router();
+
+const createReqSchema = z.object({
+  storeId: z.string().uuid(),
+  supplierId: z.string().uuid(),
+  message: z.string().optional(),
+});
+
+/**
+ * POST /v1/supplier-requests
+ * - Authenticated user with globalRole SUPPLIER creates a request for a store
+ */
+router.post(
+  "/",
+  authenticate,
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const parsed = createReqSchema.safeParse(req.body);
+      if (!parsed.success)
+        return res.status(400).json({
+          success: false,
+          error: "validation_failed",
+          details: parsed.error.issues,
+        });
+
+      const user = req.user!;
+      if (!user)
+        return res
+          .status(401)
+          .json({ success: false, error: "unauthenticated" });
+      if (user.globalRole !== "SUPPLIER")
+        return res.status(403).json({ success: false, error: "only_supplier" });
+
+      const { storeId, supplierId, message } = parsed.data;
+
+      const store = await prisma.store.findUnique({
+        where: { id: storeId },
+        select: { id: true, name: true },
+      });
+      if (!store)
+        return res
+          .status(404)
+          .json({ success: false, error: "store_not_found" });
+
+      const supplier = await prisma.supplier.findUnique({
+        where: { id: supplierId },
+      });
+      if (!supplier)
+        return res
+          .status(404)
+          .json({ success: false, error: "supplier_not_found" });
+
+      // prevent duplicate pending requests
+      const existing = await prisma.supplierRequest.findFirst({
+        where: { supplierId, storeId, status: "PENDING" },
+      });
+      if (existing)
+        return res
+          .status(409)
+          .json({ success: false, error: "already_requested" });
+
+      const reqRow = await prisma.supplierRequest.create({
+        data: {
+          supplierId,
+          storeId,
+          message: message ?? undefined,
+          createdById: user.id,
+        },
+      });
+
+      // notify store owners/admins (create Notification row)
+      await prisma.notification
+        .create({
+          data: {
+            storeId,
+            channel: "IN_APP",
+            recipient: "store_admins", // worker interprets this
+            subject: "Supplier Request",
+            body: message ?? `Supplier ${supplier.name} requested access`,
+            metadata: {
+              supplierRequestId: reqRow.id,
+              supplierId,
+              supplierName: supplier.name,
+            },
+            status: "QUEUED",
+          },
+        })
+        .catch(() => {});
+
+      await prisma.activityLog
+        .create({
+          data: {
+            storeId,
+            userId: user.id,
+            action: "supplier_request_created",
+            payload: { requestId: reqRow.id, supplierId },
+          },
+        })
+        .catch(() => {});
+
+      return res.status(201).json({ success: true, data: { request: reqRow } });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /v1/supplier-requests?storeId=
+ * - If storeId provided and caller has storeContext + requireStore, return requests for that store
+ * - Otherwise if user is supplier, return their requests
+ */
+router.get(
+  "/",
+  authenticate,
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const storeIdQuery =
+        typeof req.query.storeId === "string" ? req.query.storeId : undefined;
+      const user = req.user!;
+      // If storeId provided: ensure user is part of store (storeContext can be used by client)
+      if (storeIdQuery) {
+        // lightweight check: query store roles
+        const hasAccess = await prisma.userStoreRole.findFirst({
+          where: { userId: user.id, storeId: storeIdQuery },
+        });
+        if (!hasAccess && user.globalRole !== "SUPERADMIN")
+          return res
+            .status(403)
+            .json({ success: false, error: "insufficient_role" });
+
+        const rows = await prisma.supplierRequest.findMany({
+          where: { storeId: storeIdQuery },
+          orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+          include: { supplier: true },
+          take: 200,
+        });
+        return res.json({ success: true, data: { requests: rows } });
+      }
+
+      // else supply-side: return requests created by supplier user (use supplier.userId mapping if exists)
+      // find supplier profiles mapped to this user
+      const supplierRows = await prisma.supplier.findMany({
+        where: { userId: user.id },
+        select: { id: true },
+      });
+      const supplierIds = supplierRows.map((s) => s.id);
+      const queries = [];
+
+      if (supplierIds.length) {
+        const rows = await prisma.supplierRequest.findMany({
+          where: { supplierId: { in: supplierIds } },
+          orderBy: { createdAt: "desc" },
+          take: 200,
+          include: { store: true },
+        });
+        return res.json({ success: true, data: { requests: rows } });
+      }
+
+      return res.json({ success: true, data: { requests: [] } });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /v1/supplier-requests/:id/accept
+ * - storeContext + requireStore required (owner/admin role)
+ */
+router.post(
+  "/:id/accept",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "ADMIN"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const id = String(req.params.id);
+      const store = req.store!;
+      const user = req.user!;
+
+      const reqRow = await prisma.supplierRequest.findUnique({ where: { id } });
+      if (!reqRow || reqRow.storeId !== store.id)
+        return res
+          .status(404)
+          .json({ success: false, error: "request_not_found" });
+
+      if (reqRow.status !== "PENDING")
+        return res.status(400).json({ success: false, error: "invalid_state" });
+
+      await prisma.$transaction([
+        prisma.supplierRequest.update({
+          where: { id },
+          data: { status: "ACCEPTED" },
+        }),
+        prisma.supplierStore.upsert({
+          where: {
+            supplierId_storeId: {
+              supplierId: reqRow.supplierId,
+              storeId: store.id,
+            },
+          },
+          create: {
+            supplierId: reqRow.supplierId,
+            storeId: store.id,
+            linkedAt: new Date(),
+          },
+          update: { linkedAt: new Date() },
+        }),
+        prisma.activityLog.create({
+          data: {
+            storeId: store.id,
+            userId: user.id,
+            action: "supplier_request_accepted",
+            payload: { requestId: id, supplierId: reqRow.supplierId },
+          },
+        }),
+      ]);
+
+      // notify supplier (if supplier.userId exists)
+      const sup = await prisma.supplier.findUnique({
+        where: { id: reqRow.supplierId },
+      });
+      if (sup?.userId) {
+        await prisma.notification
+          .create({
+            data: {
+              storeId: store.id,
+              userId: sup.userId,
+              channel: "IN_APP",
+              recipient: sup.userId,
+              subject: "Supplier request accepted",
+              body: `Your request to supply ${store.name} was accepted`,
+              metadata: { supplierRequestId: id },
+              status: "QUEUED",
+            },
+          })
+          .catch(() => {});
+      }
+
+      return res.json({ success: true, message: "accepted" });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /v1/supplier-requests/:id/reject
+ */
+router.post(
+  "/:id/reject",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "ADMIN"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const id = String(req.params.id);
+      const store = req.store!;
+      const user = req.user!;
+
+      const reqRow = await prisma.supplierRequest.findUnique({ where: { id } });
+      if (!reqRow || reqRow.storeId !== store.id)
+        return res
+          .status(404)
+          .json({ success: false, error: "request_not_found" });
+
+      if (reqRow.status !== "PENDING")
+        return res.status(400).json({ success: false, error: "invalid_state" });
+
+      await prisma.supplierRequest.update({
+        where: { id },
+        data: { status: "REJECTED" },
+      });
+      await prisma.activityLog.create({
+        data: {
+          storeId: store.id,
+          userId: user.id,
+          action: "supplier_request_rejected",
+          payload: { requestId: id },
+        },
+      });
+
+      const sup = await prisma.supplier.findUnique({
+        where: { id: reqRow.supplierId },
+      });
+      if (sup?.userId) {
+        await prisma.notification
+          .create({
+            data: {
+              storeId: store.id,
+              userId: sup.userId,
+              channel: "IN_APP",
+              recipient: sup.userId,
+              subject: "Supplier request rejected",
+              body: `Request rejected for ${store.name}`,
+              metadata: { supplierRequestId: id },
+              status: "QUEUED",
+            },
+          })
+          .catch(() => {});
+      }
+
+      return res.json({ success: true, message: "rejected" });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+export default router;

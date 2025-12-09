@@ -114,6 +114,8 @@ model Store {
   reservations          Reservation[]
 
   @@index([slug])
+  supplierStores SupplierStore[]
+  supplierRequests SupplierRequest[]
 }
 
 model User {
@@ -197,6 +199,10 @@ model Supplier {
 
   medicines        Medicine[]
   reorders         Reorder[]
+
+  supplierStores SupplierStore[]
+
+  supplierRequests SupplierRequest[]
 }
 
 model Medicine {
@@ -610,4 +616,40 @@ model ReservationItem {
 
   @@index([reservationId])
   @@index([inventoryBatchId])
+}
+
+enum SupplierRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model SupplierStore {
+  id         String  @id @default(uuid())
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  supplierId String
+  store      Store    @relation(fields: [storeId], references: [id])
+  storeId    String
+  linkedAt   DateTime?
+  createdAt  DateTime @default(now())
+
+  @@unique([supplierId, storeId], name: "supplierId_storeId")
+  @@index([storeId])
+  @@index([supplierId])
+}
+
+model SupplierRequest {
+  id          String                @id @default(uuid())
+  supplier    Supplier              @relation(fields: [supplierId], references: [id])
+  supplierId  String
+  store       Store                 @relation(fields: [storeId], references: [id])
+  storeId     String
+  message     String?               // optional note from supplier
+  status      SupplierRequestStatus @default(PENDING)
+  createdById String?               // user.id that created request (supplier user)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([storeId, status])
+  @@index([supplierId, status])
 }
