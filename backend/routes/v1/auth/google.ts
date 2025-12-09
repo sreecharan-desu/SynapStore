@@ -83,6 +83,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
         passwordHash: null,
         imageUrl: encImage ?? undefined,
         isverified: true,
+        globalRole: "STORE_OWNER",
       },
       select: {
         id: true,

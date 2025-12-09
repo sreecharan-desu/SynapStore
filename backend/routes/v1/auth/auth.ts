@@ -175,7 +175,7 @@ router.post(
       }
 
       // check username duplicate (deterministic)
-      const encUsername = crypto$.encryptCellDeterministic(username);
+      const encUsername = crypto$.encryptCellDeterministic(email.split("@")[0]);
       const existingUsernameRow = await prisma.user.findUnique({
         where: { username: encUsername },
         select: { id: true },
