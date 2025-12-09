@@ -20,7 +20,6 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^24.10.1",
     "@types/nodemailer": "^6.4.15",
-    "@types/xlsx": "^0.0.35",
     "nodemon": "^3.1.4",
     "prisma": "^7.1.0",
     "ts-node": "^10.9.2",
@@ -37,13 +36,11 @@
     "google-auth-library": "^10.5.0",
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.2",
     "nodemailer": "^7.0.11",
     "pg": "^8.16.3",
     "pino": "^10.1.0",
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0",
-    "xlsx": "^0.18.5",
     "zod": "^3.23.8"
   }
 }

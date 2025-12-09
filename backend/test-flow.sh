@@ -136,8 +136,7 @@ MED_ID=$(npx ts-node -e "
       data: {
         storeId: '$STORE_ID',
         brandName: 'Test Paracetamol',
-        sku: 'TEST-SKU-001',
-        brandName: 'Test Medicine'
+        sku: 'TEST-SKU-001'
       }
     });
     // Create Batch
