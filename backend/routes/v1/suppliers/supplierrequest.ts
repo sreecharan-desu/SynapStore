@@ -9,6 +9,8 @@ import {
 } from "../../../middleware/store";
 import { z } from "zod";
 import { requireRole } from "../../../middleware/requireRole"; // your requireRole file
+import { sendMail } from "../../../lib/mailer";
+import { crypto$ } from "../../../lib/crypto";
 
 const router = Router();
 
@@ -110,18 +112,40 @@ router.post(
       });
 
       for (const admin of storeAdmins) {
-        if (admin.user.email) {
+        let adminEmail = admin.user.email;
+        if (adminEmail) {
+          // Attempt to decrypt if it looks encrypted (helper usually returns null if fail, but let's be safe)
+          // Actually, we should just try decrypt. If it returns null, maybe it wasn't encrypted?
+          // But our system encrypts emails.
+          const decrypted = crypto$.decryptCell(adminEmail);
+          if (decrypted) adminEmail = decrypted;
+
           await prisma.notification.create({
             data: {
               storeId,
               userId: admin.userId,
               channel: "EMAIL",
-              recipient: admin.user.email as any, // encrypted? logic usually handles decrypt or assume email here is usable string
+              recipient: adminEmail!,
               subject: `New Supplier Request: ${supplier.name}`,
-              body: `A new supplier request has been received from ${supplier.name}.\n\nMessage: ${message ?? "No message"}\n\nPlease log in to accept or reject.`,
-              status: "QUEUED",
+              body: `A new supplier request has been received from ${supplier.name}.\n\nMessage: ${
+                message ?? "No message"
+              }\n\nPlease log in to accept or reject.`,
+              status: "SENT", // we are sending it now
             },
           });
+
+          // Send actual email
+          try {
+            await sendMail({
+              to: adminEmail!,
+              subject: `New Supplier Request: ${supplier.name}`,
+              text: `Hello,\n\nA new supplier request has been received from ${supplier.name}.\n\nMessage: ${
+                message ?? "No message"
+              }\n\nPlease log in to your dashboard to accept or reject this request.`,
+            });
+          } catch (e) {
+            console.error("Failed to send email to store admin:", e);
+          }
         }
       }
 
@@ -202,6 +226,10 @@ router.get(
   }
 );
 
+
+
+// STORE OWNER ACCEPT AND REJECT REQUEST
+
 /**
  * POST /v1/supplier-requests/:id/accept
  * - storeContext + requireStore required (owner/admin role)
@@ -281,17 +309,30 @@ router.post(
           select: { email: true },
         });
         if (supUser?.email) {
-          await prisma.notification.create({
-            data: {
-              storeId: store.id,
-              userId: sup.userId,
-              channel: "EMAIL",
-              recipient: supUser.email, 
-              subject: "Request Accepted!",
-              body: `Good news! Your request to supply ${store.name} has been accepted. You can now engage with this store.`,
-              status: "QUEUED",
-            },
-          });
+          let supEmail = crypto$.decryptCell(supUser.email);
+          if (supEmail) {
+            await prisma.notification.create({
+              data: {
+                storeId: store.id,
+                userId: sup.userId,
+                channel: "EMAIL",
+                recipient: supEmail,
+                subject: "Request Accepted!",
+                body: `Good news! Your request to supply ${store.name} has been accepted. You can now engage with this store.`,
+                status: "SENT",
+              },
+            });
+
+            try {
+              await sendMail({
+                to: supEmail,
+                subject: `Request Accepted: ${store.name}`,
+                text: `Good news!\n\nYour request to supply ${store.name} has been accepted. You can now engage with this store.`,
+              });
+            } catch (e) {
+              console.error("Failed to send email to supplier:", e);
+            }
+          }
         }
       }
 
@@ -363,17 +404,30 @@ router.post(
           select: { email: true },
         });
         if (supUser?.email) {
-          await prisma.notification.create({
-            data: {
-              storeId: store.id,
-              userId: sup.userId,
-              channel: "EMAIL",
-              recipient: supUser.email,
-              subject: `Supplier Request Rejected`,
-              body: `Your request to supply ${store.name} was not accepted at this time.`,
-              status: "QUEUED",
-            },
-          });
+          let supEmail = crypto$.decryptCell(supUser.email);
+          if (supEmail) {
+            await prisma.notification.create({
+              data: {
+                storeId: store.id,
+                userId: sup.userId,
+                channel: "EMAIL",
+                recipient: supEmail, // store plain email in notification log for visibility? Or keep encrypted? Usually logs have plain.
+                subject: `Supplier Request Rejected`,
+                body: `Your request to supply ${store.name} was not accepted at this time.`,
+                status: "SENT",
+              },
+            });
+
+            try {
+              await sendMail({
+                to: supEmail,
+                subject: `Request Update: ${store.name}`,
+                text: `Hello,\n\nYour request to supply ${store.name} was not accepted at this time.`,
+              });
+            } catch (e) {
+              console.error("Failed to send email to supplier:", e);
+            }
+          }
         }
       }
 

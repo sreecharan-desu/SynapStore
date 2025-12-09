@@ -66,6 +66,7 @@ async function findUserByEmail(email: string) {
       isverified: true,
       createdAt: true,
       updatedAt: true,
+      globalRole: true,
     },
   });
   if (!row) return null;
@@ -198,6 +199,7 @@ router.post(
             username: encUsername,
             email: encEmail,
             passwordHash: hashed,
+            globalRole : "STORE_OWNER"
             // isverified defaults to false per schema
           },
           select: { id: true, username: true, email: true },
@@ -400,7 +402,6 @@ router.post(
         email,
         globalRole: user.globalRole ?? null,
       });
-
       // if SUPERADMIN, bypass store checks and return global admin context
       if (user.globalRole === "SUPERADMIN") {
         return respond(res, 200, {
@@ -415,7 +416,27 @@ router.post(
           stores: [],
         });
       }
-
+      else if (user.globalRole === "SUPPLIER") {
+        return respond(res, 200, {
+          token,
+          user: {
+            id: user.id,
+            username: user.username,
+            email,
+            globalRole: "SUPPLIER",
+          },
+          supplierId: await prisma.supplier.findFirst({
+            where: {
+              userId : user.id
+            },
+            select: {
+              id: true,
+            }
+          })
+        });
+      }
+      else {
+        
       // fetch store roles for this user
       const stores = await prisma.userStoreRole.findMany({
         where: { userId: user.id },
@@ -485,6 +506,9 @@ router.post(
         stores,
         needsStoreSelection: true,
       });
+
+      }
+
     } catch (err: any) {
       console.error("Signin error:", err);
       next(err);
