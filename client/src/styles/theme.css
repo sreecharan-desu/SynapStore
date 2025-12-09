@@ -1,0 +1,81 @@
+:root {
+  --app-bg: #FFFFFF;
+  --green-600: #3AA18A; /* brand primary */
+  --green-300: #79D3B6; /* brand light */
+  --panel-white: #E6F6F1; /* brand pale */
+  --text-900: #374151; /* text default */
+  --text-600: #6B7280; /* text muted */
+  
+  /* Brand Tokens mirroring Tailwind */
+  --brand-primary: #3AA18A;
+  --brand-primary-dark: #2E7D73;
+  --brand-primary-light: #79D3B6;
+  --brand-pale: #E6F6F1;
+  --brand-highlight: #F6C867;
+  --bg-page: #FFFFFF;
+  --text-default: #374151;
+  --text-muted: #6B7280;
+  --border: #E5E7EB;
+
+  /* Optional utility tokens */
+  --btn-radius: 8px;
+  --card-radius: 12px;
+}
+
+/* Page background (apply to body / root element) */
+html, body, #root {
+  height: 100%;
+  background: var(--app-bg);
+  color: var(--text-900);
+}
+
+/* Panels / Cards */
+.app-panel, .card, .panel {
+  background: var(--panel-white);
+  border-radius: var(--card-radius);
+  color: var(--text-900);
+}
+
+/* Primary buttons */
+.btn, button, .btn-primary {
+  background-color: var(--green-600);
+  color: #fff;
+  border: none;
+  border-radius: var(--btn-radius);
+  padding: 0.6rem 1rem;
+}
+
+.btn-primary:hover, .btn-primary:focus {
+  background-color: #276b47; /* slightly darker for hover */
+}
+
+/* Secondary / light green accents */
+.badge, .accent {
+  background-color: var(--green-300);
+  color: var(--text-900);
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+}
+
+/* Links & small interactive text */
+a, .link {
+  color: var(--green-600);
+}
+
+/* Input / form backgrounds (login form etc.) */
+.input, input, textarea, select {
+  background: #fff;
+  border: 1px solid #e6eef0;
+  color: var(--text-900);
+}
+
+/* Chatbot container (ensure contrast and visible on white background) */
+.chatbot, .chat-widget, .chat-panel {
+  background: linear-gradient(180deg, var(--panel-white), #ffffff);
+  border: 1px solid rgba(47, 133, 90, 0.08);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+}
+
+/* Small helpers */
+.text-muted { color: var(--text-600); }
+

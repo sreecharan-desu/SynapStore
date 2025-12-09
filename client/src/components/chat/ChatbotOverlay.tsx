@@ -28,7 +28,7 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
   const overlayRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const threadId = auth.user?.id || "default";
+  const thread_id = auth.user?.id || "default";
 
   // Focus management
   useEffect(() => {
@@ -76,7 +76,7 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
     setInput("");
     setLoading(true);
     try {
-      const data = await sendChatMessage(threadId, userMsg.content || "");
+      const data = await sendChatMessage(thread_id, userMsg.content || "");
       let markdown = "";
       if (typeof data === "object" && data.reply_markdown) {
         markdown = data.reply_markdown;
@@ -108,7 +108,7 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -117,18 +117,18 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
       <div
         ref={overlayRef}
         tabIndex={-1}
-        className="w-full max-w-2xl max-h-[80vh] mx-4 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl flex flex-col focus:outline-none"
+        className="w-full max-w-2xl max-h-[80vh] mx-4 bg-panel-white backdrop-blur-xl border border-slate-200 rounded-2xl shadow-2xl flex flex-col focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
-          <h2 id="chatbot-title" className="text-lg font-semibold text-white">
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+          <h2 id="chatbot-title" className="text-lg font-semibold text-slate-900">
             Assistant
           </h2>
           <button
             onClick={onClose}
             aria-label="Close chat"
-            className="p-1 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-green-600"
           >
             <X className="w-5 h-5" />
           </button>
@@ -137,7 +137,7 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
           {messages.length === 0 && (
-            <div className="text-center text-white/60 py-8">
+            <div className="text-center text-slate-600 py-8">
               <p className="text-sm">Ask anything about your store.</p>
             </div>
           )}
@@ -151,8 +151,8 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
               <div
                 className={`max-w-[80%] rounded-lg p-3 text-sm ${
                   m.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white/10 text-white border border-white/10"
+                    ? "bg-green-600 text-white"
+                    : "bg-white text-slate-900 border border-slate-200"
                 }`}
               >
                 {m.role === "bot" ? (
@@ -165,15 +165,15 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
                           <code
                             className={`${
                               inline
-                                ? "bg-white/20 px-1 rounded text-pink-200"
-                                : "block bg-slate-800 p-2 rounded my-2 overflow-x-auto"
+                                ? "bg-green-100 px-1 rounded text-green-800"
+                                : "block bg-slate-100 p-2 rounded my-2 overflow-x-auto text-slate-900"
                             }`}
                             {...props}
                           />
                         ),
                         a: ({ node, ...props }: any) => (
                           <a
-                            className="text-blue-400 hover:text-blue-300 underline"
+                            className="text-green-600 hover:text-green-700 underline"
                             target="_blank"
                             rel="noopener noreferrer"
                             {...props}
@@ -192,7 +192,7 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
           ))}
           {loading && (
             <div className="flex justify-start">
-              <div className="bg-white/10 text-white/60 rounded-lg p-3 text-sm">
+              <div className="bg-slate-100 text-slate-600 rounded-lg p-3 text-sm">
                 Thinking…
               </div>
             </div>
@@ -201,11 +201,11 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
         </div>
 
         {/* Input */}
-        <div className="p-4 border-t border-white/10">
+        <div className="p-4 border-t border-slate-200">
           <div className="flex gap-2">
             <input
               ref={inputRef}
-              className="flex-1 px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="flex-1 px-4 py-2 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-600"
               placeholder="Type a message..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -215,7 +215,7 @@ const ChatbotOverlay = ({ open, onClose, iconButtonRef }: ChatbotOverlayProps) =
             <button
               onClick={send}
               disabled={loading || !input.trim()}
-              className="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="px-6 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-green-400"
             >
               Send
             </button>

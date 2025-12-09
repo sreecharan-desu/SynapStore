@@ -70,7 +70,7 @@ export default function WhyChooseUs() {
 
   return (
     <section
-      className="relative py-24 bg-slate-50 overflow-hidden"
+      className="relative py-24 bg-background-page overflow-hidden"
       aria-labelledby="why-heading"
       ref={containerRef}
     >
@@ -91,14 +91,12 @@ export default function WhyChooseUs() {
       {/* floating gradient blobs */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
-          className={`absolute top-8 -right-20 w-96 h-96 rounded-full blur-3xl bg-linear-to-br from-blue-300/30 to-emerald-300/20 ${
-            reduced ? "" : "wc-float"
-          }`}
+          className={`absolute top-8 -right-20 w-96 h-96 rounded-full blur-3xl bg-linear-to-br from-blue-300/30 to-emerald-300/20 ${reduced ? "" : "wc-float"
+            }`}
         />
         <div
-          className={`absolute -left-12 bottom-8 w-80 h-80 rounded-full blur-3xl bg-linear-to-br from-pink-300/20 to-violet-300/10 ${
-            reduced ? "" : "wc-float"
-          }`}
+          className={`absolute -left-12 bottom-8 w-80 h-80 rounded-full blur-3xl bg-linear-to-br from-pink-300/20 to-violet-300/10 ${reduced ? "" : "wc-float"
+            }`}
           style={{ animationDelay: "800ms" }}
         />
       </div>
@@ -107,21 +105,19 @@ export default function WhyChooseUs() {
         <div className="text-center mb-12">
           <h2
             id="why-heading"
-            className={`text-4xl md:text-5xl font-extrabold text-slate-900 leading-tight ${
-              inView ? "wc-fade" : "opacity-0"
-            }`}
+            className={`text-4xl md:text-5xl font-extrabold text-slate-900 leading-tight ${inView ? "wc-fade" : "opacity-0"
+              }`}
             style={{ animationDelay: "60ms" }}
           >
             Why choose{" "}
-            <span className="bg-clip-text text-transparent bg-linear-to-r from-blue-600 to-emerald-500">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-brand-primary to-brand-primary-dark">
               SynapStore
             </span>
             ?
           </h2>
           <p
-            className={`mt-4 text-lg text-slate-600 max-w-2xl mx-auto ${
-              inView ? "wc-fade" : "opacity-0"
-            }`}
+            className={`mt-4 text-lg text-slate-600 max-w-2xl mx-auto ${inView ? "wc-fade" : "opacity-0"
+              }`}
             style={{ animationDelay: "140ms" }}
           >
             See how we outperform traditional inventory management — faster
@@ -132,17 +128,16 @@ export default function WhyChooseUs() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Traditional card */}
           <article
-            className={`relative bg-white rounded-2xl p-8 border border-slate-200 shadow-sm transform transition-transform hover:-translate-y-1 focus-within:-translate-y-1 ${
-              inView ? "wc-fade" : "opacity-0"
-            }`}
+            className={`relative bg-white/60 backdrop-blur-xl rounded-2xl p-8 border border-white/50 shadow-lg ring-1 ring-white/50 transform transition-transform hover:-translate-y-1 focus-within:-translate-y-1 ${inView ? "wc-fade" : "opacity-0"
+              }`}
             style={{ animationDelay: "220ms" }}
             aria-label="Traditional inventory methods"
           >
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-semibold text-slate-900">
+              <h3 className="text-2xl font-semibold text-brand-text">
                 Traditional Methods
               </h3>
-              <div className="text-sm text-slate-500">Slow & manual</div>
+              <div className="text-sm text-brand-text-muted">Slow & manual</div>
             </div>
 
             <ul className="space-y-3">
@@ -153,9 +148,8 @@ export default function WhyChooseUs() {
                   style={{
                     animation:
                       inView && !reduced
-                        ? `fadeSlideUp .5s cubic-bezier(.2,.9,.3,1) both ${
-                            0.18 + i * 0.06
-                          }s`
+                        ? `fadeSlideUp .5s cubic-bezier(.2,.9,.3,1) both ${0.18 + i * 0.06
+                        }s`
                         : undefined,
                     // fallback for reduced motion / not inView
                     opacity: inView || reduced ? 1 : 0,
@@ -177,12 +171,11 @@ export default function WhyChooseUs() {
 
           {/* SynapStore card */}
           <article
-            className={`relative rounded-2xl p-8 text-white shadow-xl overflow-hidden transform transition-transform hover:-translate-y-1 focus-within:-translate-y-1 ${
-              inView ? "wc-fade" : "opacity-0"
-            }`}
+            className={`relative rounded-2xl p-8 text-white shadow-xl overflow-hidden transform transition-transform hover:-translate-y-1 focus-within:-translate-y-1 ${inView ? "wc-fade" : "opacity-0"
+              }`}
             style={{
               animationDelay: "260ms",
-              background: "linear-gradient(135deg,#2563eb 0%,#059669 100%)",
+              background: "linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%)",
             }}
             aria-label="SynapStore benefits"
           >
@@ -202,9 +195,8 @@ export default function WhyChooseUs() {
                   style={{
                     animation:
                       inView && !reduced
-                        ? `fadeSlideUp .5s cubic-bezier(.2,.9,.3,1) both ${
-                            0.18 + i * 0.06
-                          }s`
+                        ? `fadeSlideUp .5s cubic-bezier(.2,.9,.3,1) both ${0.18 + i * 0.06
+                        }s`
                         : undefined,
                     opacity: inView || reduced ? 1 : 0,
                     transform: inView || reduced ? "translateY(0)" : undefined,

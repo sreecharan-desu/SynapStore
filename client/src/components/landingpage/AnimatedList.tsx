@@ -40,7 +40,7 @@ const notifications = [
     description: "New shipment of 150 items processed",
     time: "8m ago",
     icon: Package,
-    color: "#10B981",
+    color: "#3AA18A",
     badge: "Success",
   },
   {
@@ -48,7 +48,7 @@ const notifications = [
     description: "₹2,450 sale completed - 8 items sold",
     time: "12m ago",
     icon: ShoppingCart,
-    color: "#3B82F6",
+    color: "#2E7D73",
     badge: "Completed",
   },
   {
@@ -56,7 +56,7 @@ const notifications = [
     description: "Metformin tablets reordered automatically",
     time: "15m ago",
     icon: Zap,
-    color: "#8B5CF6",
+    color: "#79D3B6",
     badge: "Automated",
   },
   {
@@ -64,7 +64,7 @@ const notifications = [
     description: "Stock levels synced across 3 locations",
     time: "18m ago",
     icon: CheckCircle2,
-    color: "#06B6D4",
+    color: "#3AA18A",
     badge: "Synced",
   },
 ];
@@ -75,15 +75,15 @@ const ExcelUploadAnimation = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
 
-const steps = [
-  { label: "Uploading file", icon: Upload },
-  { label: "Parsing data", icon: FileSpreadsheet },
-  { label: "Validating entries", icon: CheckCircle2 },
-  { label: "Deduplicating records", icon: Check },
-  { label: "Mapping columns", icon: Zap },
-  { label: "Syncing inventory", icon: Package },
-  { label: "Finalizing", icon: Download },
-];
+  const steps = [
+    { label: "Uploading file", icon: Upload },
+    { label: "Parsing data", icon: FileSpreadsheet },
+    { label: "Validating entries", icon: CheckCircle2 },
+    { label: "Deduplicating records", icon: Check },
+    { label: "Mapping columns", icon: Zap },
+    { label: "Syncing inventory", icon: Package },
+    { label: "Finalizing", icon: Download },
+  ];
 
 
   useEffect(() => {
@@ -107,27 +107,27 @@ const steps = [
     <div className="space-y-6 h-full">
       {/* Upload Card */}
       <div className="relative group">
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-emerald-600 rounded-2xl opacity-75 group-hover:opacity-100 blur transition duration-500"></div>
+        <div className="absolute -inset-0.5 bg-brand-gradient rounded-2xl opacity-75 group-hover:opacity-100 blur transition duration-500"></div>
         <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center shadow-lg">
+              <div className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-lg">
                 <FileSpreadsheet className="w-5 h-5 text-white" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-gray-900">
                   Inventory_Data.xlsx
                 </h3>
-                <p className="text-xs text-gray-500">2.4 MB • 1,250 items</p>
+                <p className="text-xs text-brand-text-muted">2.4 MB • 1,250 items</p>
               </div>
             </div>
-            <Upload className="w-5 h-5 text-blue-600 animate-bounce" />
+            <Upload className="w-5 h-5 text-brand-primary animate-bounce" />
           </div>
 
           {/* Progress Bar */}
           <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
             <div
-              className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-600 to-emerald-600 transition-all duration-300 rounded-full"
+              className="absolute inset-y-0 left-0 bg-brand-gradient transition-all duration-300 rounded-full"
               style={{ width: `${uploadProgress}%` }}
             >
               <div className="absolute inset-0 bg-white/30 animate-shimmer"></div>
@@ -135,10 +135,10 @@ const steps = [
           </div>
 
           <div className="flex items-center justify-between text-xs">
-            <span className="text-gray-600 font-medium">
+            <span className="text-brand-text-muted font-medium">
               {uploadProgress}% Complete
             </span>
-            <span className="text-blue-600 font-semibold">
+            <span className="text-brand-primary font-semibold">
               {currentStep + 1}/{steps.length} Steps
             </span>
           </div>
@@ -164,23 +164,23 @@ const steps = [
                 className={cn(
                   "absolute -inset-0.5 rounded-xl opacity-0 blur transition duration-500",
                   isActive &&
-                    "opacity-75 bg-gradient-to-r from-blue-400 to-emerald-400"
+                  "opacity-75 bg-brand-gradient"
                 )}
               ></div>
               <div
                 className={cn(
                   "relative flex items-center gap-3 p-3 rounded-xl border backdrop-blur-sm transition-all duration-500",
-                  isComplete && "bg-emerald-50/80 border-emerald-200",
-                  isActive && "bg-white/90 border-blue-200 shadow-lg",
-                  !isActive && !isComplete && "bg-white/50 border-gray-200"
+                  isComplete && "bg-brand-pale/80 border-brand-primary/20",
+                  isActive && "bg-white/90 border-brand-primary/50 shadow-lg",
+                  !isActive && !isComplete && "bg-white/50 border-brand-border"
                 )}
               >
                 <div
                   className={cn(
                     "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-500",
-                    isComplete && "bg-emerald-500",
+                    isComplete && "bg-brand-primary",
                     isActive &&
-                      "bg-gradient-to-br from-blue-500 to-emerald-500 animate-pulse",
+                    "bg-brand-gradient animate-pulse",
                     !isActive && !isComplete && "bg-gray-200"
                   )}
                 >
@@ -208,15 +208,15 @@ const steps = [
                 {isActive && (
                   <div className="ml-auto flex gap-1">
                     <div
-                      className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"
+                      className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce"
                       style={{ animationDelay: "0ms" }}
                     ></div>
                     <div
-                      className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"
+                      className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce"
                       style={{ animationDelay: "150ms" }}
                     ></div>
                     <div
-                      className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"
+                      className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce"
                       style={{ animationDelay: "300ms" }}
                     ></div>
                   </div>
@@ -237,7 +237,7 @@ const steps = [
             <div
               className={cn(
                 "absolute -inset-0.5 rounded-xl opacity-0 group-hover:opacity-75 blur transition duration-500",
-                stat.color === "blue" ? "bg-blue-400" : "bg-emerald-400"
+                stat.color === "blue" ? "bg-brand-primary" : "bg-brand-primary-light"
               )}
             ></div>
             <div className="relative bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-white/20 shadow-lg">
@@ -531,7 +531,7 @@ export default function AnimatedInventoryShowcase() {
   }, []);
 
   return (
-    <section className="relative min-h-screen py-12 sm:py-16 md:py-24 overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/30">
+    <section className="relative min-h-screen py-12 sm:py-16 md:py-24 overflow-hidden bg-background-page">
       <style>{`
         @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
         @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -544,15 +544,15 @@ export default function AnimatedInventoryShowcase() {
         }
       `}</style>
 
-   {/* Background Elements */}
+      {/* Background Elements */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-10 sm:top-20 right-10 sm:right-20 w-48 h-48 sm:w-96 sm:h-96 bg-blue-400/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute top-10 sm:top-20 right-10 sm:right-20 w-48 h-48 sm:w-96 sm:h-96 bg-brand-primary/10 rounded-full blur-3xl animate-pulse" />
         <div
-          className="absolute bottom-10 sm:bottom-20 left-10 sm:left-20 w-40 h-40 sm:w-80 sm:h-80 bg-purple-400/10 rounded-full blur-3xl animate-pulse"
+          className="absolute bottom-10 sm:bottom-20 left-10 sm:left-20 w-40 h-40 sm:w-80 sm:h-80 bg-brand-primary-light/10 rounded-full blur-3xl animate-pulse"
           style={{ animationDelay: "1s" }}
         />
         <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 sm:w-96 sm:h-96 bg-emerald-400/10 rounded-full blur-3xl animate-pulse"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 sm:w-96 sm:h-96 bg-brand-primary-dark/10 rounded-full blur-3xl animate-pulse"
           style={{ animationDelay: "2s" }}
         />
       </div>
@@ -560,27 +560,27 @@ export default function AnimatedInventoryShowcase() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8 sm:mb-12 lg:mb-16">
-          <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/80 backdrop-blur-xl border border-blue-200/50 shadow-lg mb-3 sm:mb-4 animate-float">
-            <Bell className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
-            <span className="text-xs sm:text-sm font-semibold text-blue-700">
+          <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/80 backdrop-blur-xl border border-brand-primary/20 shadow-lg mb-3 sm:mb-4 animate-float">
+            <Bell className="w-3 h-3 sm:w-4 sm:h-4 text-brand-primary" />
+            <span className="text-xs sm:text-sm font-semibold text-brand-primary-dark">
               Live Activity Feed
             </span>
           </div>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-3 sm:mb-4 px-4">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-brand-text mb-3 sm:mb-4 px-4">
             Real-time Inventory Intelligence
           </h2>
-          <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed px-4">
+          <p className="text-base sm:text-lg md:text-xl text-brand-text-muted max-w-3xl mx-auto leading-relaxed px-4">
             Watch your pharmacy operations come alive with instant uploads,
             smart alerts, and automated receipt generation
           </p>
         </div>
-	
-	
-        
+
+
+
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    
+
 
         {/* Three Column Layout - UPDATED: items-stretch, consistent heights */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12 max-w-6xl mx-auto items-stretch">

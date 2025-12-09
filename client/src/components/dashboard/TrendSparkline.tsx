@@ -9,7 +9,7 @@ export const TrendSparkline = ({
   points,
   width = 160,
   height = 60,
-  color = "#60a5fa",
+  color = "#3AA18A",
 }: SparklineProps) => {
   if (!points.length) return null;
   const xs = points.map((p) => p.x);
