@@ -62,10 +62,22 @@ router.post(
         where: { name: { equals: payload.name, mode: "insensitive" } },
       });
 
+      // Check if the user is already associated with ANY supplier to avoid unique constraint violation
+      // on userId. A user can only be linked to ONE supplier profile.
+      const existingMap = user?.id
+        ? await prisma.supplier.findUnique({ where: { userId: user.id } })
+        : null;
+
       let supplier;
       if (existing) {
-        // optionally attach user if not mapped
-        if (!existing.userId && user?.id) {
+        // optionally attach user if not mapped AND user is not mapped to another supplier
+        // If existing.userId is null, we can attach IF existingMap is null.
+        // If existing.userId is set, we don't overwrite it here (only update other fields).
+        // Actually, if existing.userId is set, we just update fields.
+        
+        const canAttachUser = !existing.userId && user?.id && !existingMap;
+
+        if (canAttachUser) {
           supplier = await prisma.supplier.update({
             where: { id: existing.id },
             data: {
@@ -101,6 +113,9 @@ router.post(
         }
       } else {
         // create new global supplier (storeId left null)
+        // only attach userId if they are not already attached to another supplier
+        const userIdToLink = (!existingMap && user?.id) ? user.id : undefined;
+
         supplier = await prisma.supplier.create({
           data: {
             name: payload.name,
@@ -109,7 +124,7 @@ router.post(
             contactName: payload.contactName ?? undefined,
             defaultLeadTime: payload.defaultLeadTime ?? undefined,
             defaultMOQ: payload.defaultMOQ ?? undefined,
-            userId: user?.id ?? undefined,
+            userId: userIdToLink,
           },
         });
       }
@@ -348,65 +363,30 @@ router.post(
   }
 );
 
-/**
- * GET /v1/supplier-requests?storeId=
- * - If storeId provided and caller has storeContext + requireStore, return requests for that store
- * - Otherwise if user is supplier, return their requests
- */
 router.get(
   "/",
   authenticate,
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
-      const storeIdQuery =
-        typeof req.query.storeId === "string" ? req.query.storeId : undefined;
-      const user = req.user!;
-      // If storeId provided: ensure user is part of store (storeContext can be used by client)
-      if (storeIdQuery) {
-        // lightweight check: query store roles
-        const hasAccess = await prisma.userStoreRole.findFirst({
-          where: { userId: user.id, storeId: storeIdQuery },
-        });
-        if (!hasAccess && user.globalRole !== "SUPERADMIN")
-          return res
-            .status(403)
-            .json({ success: false, error: "insufficient_role" });
+  
+      const supplierId =
+        typeof req.query.supplierId === "string"
+          ? req.query.supplierId
+          : undefined;
 
-        const rows = await prisma.supplierRequest.findMany({
-          where: { storeId: storeIdQuery },
-          orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-          include: { supplier: true },
-          take: 200,
-        });
-        return res.json({ success: true, data: { requests: rows } });
-      }
-
-      // else supply-side: return requests created by supplier user (use supplier.userId mapping if exists)
-      // find supplier profiles mapped to this user
-      const supplierRows = await prisma.supplier.findMany({
-        where: { userId: user.id },
-        select: { id: true },
+      const supplier = await prisma.supplier.findUnique({
+        where: { id: supplierId },
       });
-      const supplierIds = supplierRows.map((s) => s.id);
-      const queries = [];
 
-      if (supplierIds.length) {
-        const rows = await prisma.supplierRequest.findMany({
-          where: { supplierId: { in: supplierIds } },
-          orderBy: { createdAt: "desc" },
-          take: 200,
-          include: { store: true },
-        });
-        return res.json({ success: true, data: { requests: rows } });
-      }
-
-      return res.json({ success: true, data: { requests: [] } });
+      const requests = await prisma.supplierRequest.findMany({
+        where: { supplierId },
+      });
+      return res.json({ success: true, data: { supplier, requests } });
     } catch (err) {
       next(err);
     }
   }
 );
-
 
 
 
