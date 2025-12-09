@@ -110,7 +110,7 @@ export default function WhyChooseUs() {
             style={{ animationDelay: "60ms" }}
           >
             Why choose{" "}
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-brand-primary to-brand-primary-dark">
+            <span className="bg-clip-text text-black bg-gradient-to-r from-brand-primary to-brand-primary-dark">
               SynapStore
             </span>
             ?
