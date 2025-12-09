@@ -394,6 +394,13 @@ router.post(
         });
       }
 
+      if (!user.isActive) {
+        return respond(res, 403, {
+          error: "This account has been temprarily disabled/suspended",
+          code: "user_not_active",
+        });
+      }
+
       const ok = await comparePassword(password, user.passwordHash);
       if (!ok) return respond(res, 401, { error: "invalid credentials" });
 

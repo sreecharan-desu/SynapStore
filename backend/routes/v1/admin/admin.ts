@@ -270,6 +270,13 @@ router.patch("/suppliers/:id/suspend", requireRole("SUPERADMIN"), async (req: an
       data: { isActive },
     });
 
+    await prisma.user.update({
+      where: {
+        id : supplier.userId ?? ""
+      },
+      data: {isActive: isActive }
+    })
+
     await prisma.auditLog.create({
       data: {
         actorId: req.user?.id,

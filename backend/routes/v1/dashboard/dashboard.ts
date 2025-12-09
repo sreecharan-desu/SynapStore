@@ -1,9 +1,13 @@
 // src/routes/v1/dashboard.ts
 import { Router, Request, Response, NextFunction } from "express";
-import { storeContext, requireStore } from "../../../middleware/store";
+import { storeContext, requireStore, RequestWithUser } from "../../../middleware/store";
 import { authenticate } from "../../../middleware/authenticate";
 import type { Role } from "@prisma/client";
 import prisma from "../../../lib/prisma";
+import { requireRole } from "../../../middleware/requireRole";
+import { crypto$ } from "../../../lib/crypto";
+import { sendMail } from "../../../lib/mailer";
+import router from "../auth/auth";
 
 type RoleEnum = Role;
 
@@ -546,6 +550,219 @@ dashboardRouter.get(
           },
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+
+
+
+// STORE OWNER ACCEPT AND REJECT REQUEST
+
+/**
+ * POST /v1/supplier-requests/:id/accept
+ * - storeContext + requireStore required (owner/admin role)
+ */
+dashboardRouter.post(
+  "/:id/accept",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "ADMIN"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const id = String(req.params.id);
+      const store = req.store!;
+      const user = req.user!;
+
+      const reqRow = await prisma.supplierRequest.findUnique({ where: { id } });
+      if (!reqRow || reqRow.storeId !== store.id)
+        return res
+          .status(404)
+          .json({ success: false, error: "request_not_found" });
+
+      if (reqRow.status !== "PENDING")
+        return res.status(400).json({ success: false, error: "invalid_state" });
+
+      await prisma.$transaction([
+        prisma.supplierRequest.update({
+          where: { id },
+          data: { status: "ACCEPTED" },
+        }),
+        prisma.supplierStore.upsert({
+          where: {
+            supplierId_storeId: {
+              supplierId: reqRow.supplierId,
+              storeId: store.id,
+            },
+          },
+          create: {
+            supplierId: reqRow.supplierId,
+            storeId: store.id,
+            linkedAt: new Date(),
+          },
+          update: { linkedAt: new Date() },
+        }),
+        prisma.activityLog.create({
+          data: {
+            storeId: store.id,
+            userId: user.id,
+            action: "supplier_request_accepted",
+            payload: { requestId: id, supplierId: reqRow.supplierId },
+          },
+        }),
+      ]);
+
+      // notify supplier (if supplier.userId exists)
+      const sup = await prisma.supplier.findUnique({
+        where: { id: reqRow.supplierId },
+      });
+      if (sup?.userId) {
+        // IN_APP
+        await prisma.notification.create({
+          data: {
+            storeId: store.id,
+            userId: sup.userId,
+            channel: "IN_APP",
+            recipient: sup.userId,
+            subject: "Supplier request accepted",
+            body: `Your request to supply ${store.name} was accepted`,
+            metadata: { supplierRequestId: id },
+            status: "QUEUED",
+          },
+        });
+
+        // EMAIL - need to fetch user email (encrypted?)
+        const supUser = await prisma.user.findUnique({
+          where: { id: sup.userId },
+          select: { email: true },
+        });
+        if (supUser?.email) {
+          let supEmail = crypto$.decryptCell(supUser.email);
+          if (supEmail) {
+            await prisma.notification.create({
+              data: {
+                storeId: store.id,
+                userId: sup.userId,
+                channel: "EMAIL",
+                recipient: supEmail,
+                subject: "Request Accepted!",
+                body: `Good news! Your request to supply ${store.name} has been accepted. You can now engage with this store.`,
+                status: "SENT",
+              },
+            });
+
+            try {
+              await sendMail({
+                to: supEmail,
+                subject: `Request Accepted: ${store.name}`,
+                text: `Good news!\n\nYour request to supply ${store.name} has been accepted. You can now engage with this store.`,
+              });
+            } catch (e) {
+              console.error("Failed to send email to supplier:", e);
+            }
+          }
+        }
+      }
+
+      return res.json({ success: true, message: "accepted" });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /v1/supplier-requests/:id/reject
+ */
+router.post(
+  "/:id/reject",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "ADMIN"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const id = String(req.params.id);
+      const store = req.store!;
+      const user = req.user!;
+
+      const reqRow = await prisma.supplierRequest.findUnique({ where: { id } });
+      if (!reqRow || reqRow.storeId !== store.id)
+        return res
+          .status(404)
+          .json({ success: false, error: "request_not_found" });
+
+      if (reqRow.status !== "PENDING")
+        return res.status(400).json({ success: false, error: "invalid_state" });
+
+      await prisma.supplierRequest.update({
+        where: { id },
+        data: { status: "REJECTED" },
+      });
+      await prisma.activityLog.create({
+        data: {
+          storeId: store.id,
+          userId: user.id,
+          action: "supplier_request_rejected",
+          payload: { requestId: id },
+        },
+      });
+
+      const sup = await prisma.supplier.findUnique({
+        where: { id: reqRow.supplierId },
+      });
+      if (sup?.userId) {
+        // IN_APP
+        await prisma.notification.create({
+          data: {
+            storeId: store.id,
+            userId: sup.userId,
+            channel: "IN_APP",
+            recipient: sup.userId,
+            subject: "Supplier request rejected",
+            body: `Request rejected for ${store.name}`,
+            metadata: { supplierRequestId: id },
+            status: "QUEUED",
+          },
+        });
+
+        // EMAIL
+        const supUser = await prisma.user.findUnique({
+          where: { id: sup.userId },
+          select: { email: true },
+        });
+        if (supUser?.email) {
+          let supEmail = crypto$.decryptCell(supUser.email);
+          if (supEmail) {
+            await prisma.notification.create({
+              data: {
+                storeId: store.id,
+                userId: sup.userId,
+                channel: "EMAIL",
+                recipient: supEmail, // store plain email in notification log for visibility? Or keep encrypted? Usually logs have plain.
+                subject: `Supplier Request Rejected`,
+                body: `Your request to supply ${store.name} was not accepted at this time.`,
+                status: "SENT",
+              },
+            });
+
+            try {
+              await sendMail({
+                to: supEmail,
+                subject: `Request Update: ${store.name}`,
+                text: `Hello,\n\nYour request to supply ${store.name} was not accepted at this time.`,
+              });
+            } catch (e) {
+              console.error("Failed to send email to supplier:", e);
+            }
+          }
+        }
+      }
+
+      return res.json({ success: true, message: "rejected" });
     } catch (err) {
       next(err);
     }
