@@ -4,6 +4,7 @@ import prisma from "../lib/prisma";
 import { deliverWebhook } from "../adapters/webhookAdapter";
 import { sendEmail } from "../adapters/emailAdapter";
 import { ioSingleton } from "./socketSingleton"; // helper below
+import { crypto$ } from "../lib/crypto";
 // import { WebhookDeliveryStatus } from "@prisma/client"; // optional enum usage
 import pino from "pino";
 
@@ -29,11 +30,28 @@ async function processJob(job: any) {
 
   // Simple in-progress guard - set status to SENT/FAILED later
   try {
+    log.info({ notificationId, type, channel: notif.channel }, "Processing notification job");
+
     if (notif.channel === "email") {
-      const to = notif.recipient;
+      let to = notif.recipient;
+      // If 'to' looks like hex (encrypted), try to decrypt
+      if (to && /^[0-9a-fA-F]+$/.test(to) && to.length > 32) {
+        try {
+           const decrypted = crypto$.decryptCell(to);
+           if (decrypted) to = decrypted;
+        } catch (e) {
+           // ignore, maybe it wasn't encrypted or different key
+           log.warn({ to }, "failed to decrypt recipient email, using as-is");
+        }
+      }
+      
       const subject = notif.subject ?? "(no subject)";
       const body = notif.body ?? "";
+      log.info({ notificationId, to, subject }, "Sending email...");
+
       const info = await sendEmail(to, subject, body, notif.body ?? undefined);
+      log.info({ notificationId, messageId: info.messageId }, "Email sent successfully");
+
       await prisma.notification.update({
         where: { id: notificationId },
         data: {
@@ -51,20 +69,27 @@ async function processJob(job: any) {
     }
 
     if (notif.channel === "in-app") {
+      log.info({ notificationId, userId: notif.userId, storeId: notif.storeId }, "Processing IN-APP notification");
       // mark sent and push to socket room
       await prisma.notification.update({
         where: { id: notificationId },
         data: { status: "SENT" },
       });
       // Emit to store or user rooms
-      if (notif.storeId)
+      if (notif.storeId) {
+        const room = `store:${notif.storeId}`;
+        log.info({ room }, "Emitting to store room");
         ioSingleton()
-          .to(`store:${notif.storeId}`)
+          .to(room)
           .emit("notification", { notificationId, payload: notif });
-      if (notif.userId)
+      }
+      if (notif.userId) {
+        const room = `user:${notif.userId}`;
+        log.info({ room }, "Emitting to user room");
         ioSingleton()
-          .to(`user:${notif.userId}`)
+          .to(room)
           .emit("notification", { notificationId, payload: notif });
+      }
       return;
     }
 

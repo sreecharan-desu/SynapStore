@@ -10,7 +10,6 @@ import { crypto$ } from "../../../lib/crypto";
 const GoogleRouter = Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-/* request schema */
 const googleSchema = z.object({
   idToken: z.string().min(20, "idToken is required"),
 });
@@ -18,6 +17,9 @@ const googleSchema = z.object({
 function respond(res: Response, status: number, body: object) {
   return res.status(status).json(body);
 }
+
+// Block google signin for these global roles
+const RESTRICTED_GOOGLE_ROLES = ["SUPPLIER", "ADMIN", "SUPERADMIN"];
 
 GoogleRouter.post("/", async (req: Request, res: Response) => {
   const parsed = googleSchema.safeParse(req.body);
@@ -51,6 +53,21 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
     const usernamePlain = name || email.split("@")[0];
     const encUsername = crypto$.encryptCellDeterministic(usernamePlain);
     const encImage = picture ? crypto$.encryptCell(picture) : undefined;
+
+    // check existing user for restricted roles
+    const existingUser = await prisma.user.findUnique({
+      where: { email: encEmail },
+      select: { globalRole: true },
+    });
+
+    if (
+      existingUser?.globalRole &&
+      RESTRICTED_GOOGLE_ROLES.includes(existingUser.globalRole)
+    ) {
+      return respond(res, 403, {
+        error: "google login not allowed for this account type",
+      });
+    }
 
     // upsert user (google-verified => isverified true)
     const userRow = await prisma.user.upsert({

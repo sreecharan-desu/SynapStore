@@ -61,9 +61,32 @@ router.get(
   "/",
   authenticate,
   storeContext,
-  requireStore,
   async (req: RequestWithUser, res) => {
-    const storeId = req.store!.id;
+    // If global admin, maybe allow listing everything? But for now stick to store context if provided
+    const storeId = req.store?.id;
+    if (!storeId) {
+      if (req.user?.globalRole === "SUPERADMIN") {
+        // superadmin sees all recent?
+        const rows = await prisma.notification.findMany({
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        });
+        return res.json({ success: true, rows });
+      }
+
+      // If Supplier (or any user) wants to see their own personal notifications (system-wide or cross-store)
+      if (req.user) {
+        const rows = await prisma.notification.findMany({
+          where: { userId: req.user.id },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        });
+        return res.json({ success: true, rows });
+      }
+
+      return res.status(400).json({ error: "store context required" });
+    }
+
     const rows = await prisma.notification.findMany({
       where: { storeId },
       orderBy: { createdAt: "desc" },

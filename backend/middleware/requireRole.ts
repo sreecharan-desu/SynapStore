@@ -26,13 +26,14 @@ export function requireRole(allowed: Role | Role[]) {
       // global SUPERADMIN bypass
       if (req.user?.globalRole === "SUPERADMIN") return next();
 
+      // check global role (e.g. SUPPLIER)
+      if (req.user?.globalRole && allowedArr.includes(req.user.globalRole)) {
+        return next();
+      }
+
       const storeRoles = req.userStoreRoles ?? [];
 
-      // if no store roles and allowed includes SUPPLIER but user has global SUPPLIER, allow
       if (storeRoles.length === 0) {
-        if (req.user?.globalRole && allowedArr.includes(req.user.globalRole)) {
-          return next();
-        }
         return res.status(403).json({ error: "insufficient role" });
       }
 

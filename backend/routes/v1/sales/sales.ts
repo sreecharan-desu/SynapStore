@@ -126,8 +126,6 @@ router.post(
           data: {
             storeId: store.id,
             createdById: user.id,
-            patientID: body.patientID ?? undefined,
-            prescriptionId: body.prescriptionId ?? undefined,
             subtotal,
             tax,
             discounts,
@@ -374,8 +372,6 @@ router.get(
               inventoryBatch: { select: { batchNumber: true } },
             },
           },
-          patient: { select: { firstName: true, lastName: true, phone: true } },
-          prescription: { select: { id: true, externalRef: true } },
           createdBy: { select: { id: true, username: true } },
         },
       });
@@ -413,12 +409,6 @@ router.get(
         })
         .join("");
 
-      const patientName = sale.patient
-        ? `${sale.patient.firstName ?? ""} ${
-            sale.patient.lastName ?? ""
-          }`.trim()
-        : "";
-
       const html = `<!doctype html>
 <html>
 <head>
@@ -441,7 +431,7 @@ td, th { padding:6px; border-bottom:1px solid #eee }
   </div>
 
   <div style="margin-top:12px">
-    <strong>Customer:</strong> ${patientName || "Walk-in"}<br/>
+    <strong>Customer:</strong> Walk-in<br/>
     <strong>Cashier:</strong> ${
       sale.createdBy?.username ?? user.username ?? "system"
     }

@@ -38,6 +38,11 @@ Storerouter.post(
         currency = "INR",
       } = parsed.data;
 
+
+      if (await prisma.store.findUnique({ where: { slug } })) {
+        return res.status(400).json({ error: "store already exists" ,success: false});
+      }
+
       // 1) Create store
       const store = await prisma.store.create({
         data: {

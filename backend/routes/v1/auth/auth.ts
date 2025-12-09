@@ -395,7 +395,26 @@ router.post(
       const ok = await comparePassword(password, user.passwordHash);
       if (!ok) return respond(res, 401, { error: "invalid credentials" });
 
-      const token = signJwt({ sub: user.id, email });
+      const token = signJwt({
+        sub: user.id,
+        email,
+        globalRole: user.globalRole ?? null,
+      });
+
+      // if SUPERADMIN, bypass store checks and return global admin context
+      if (user.globalRole === "SUPERADMIN") {
+        return respond(res, 200, {
+          token,
+          user: {
+            id: user.id,
+            username: user.username,
+            email,
+            globalRole: "SUPERADMIN",
+          },
+          effectiveStore: null, // superadmin sees global view
+          stores: [],
+        });
+      }
 
       // fetch store roles for this user
       const stores = await prisma.userStoreRole.findMany({
@@ -419,7 +438,12 @@ router.post(
       if (stores.length === 0) {
         return respond(res, 200, {
           token,
-          user: { id: user.id, username: user.username, email },
+          user: {
+            id: user.id,
+            username: user.username,
+            email,
+            globalRole: user.globalRole, // expose global role
+          },
           effectiveStore: null,
           needsStoreSetup: true,
         });
@@ -430,7 +454,12 @@ router.post(
         const s = stores[0];
         return respond(res, 200, {
           token,
-          user: { id: user.id, username: user.username, email },
+          user: {
+            id: user.id,
+            username: user.username,
+            email,
+            globalRole: user.globalRole, // expose global role (e.g. SUPPLIER)
+          },
           effectiveStore: {
             id: s.store.id,
             name: s.store.name,
@@ -446,7 +475,12 @@ router.post(
       // (future support) MULTIPLE STORES → frontend must show switcher
       return respond(res, 200, {
         token,
-        user: { id: user.id, username: user.username, email },
+        user: {
+          id: user.id,
+          username: user.username,
+          email,
+          globalRole: user.globalRole, // expose global role
+        },
         effectiveStore: null,
         stores,
         needsStoreSelection: true,

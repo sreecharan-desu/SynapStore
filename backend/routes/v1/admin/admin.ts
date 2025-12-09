@@ -149,4 +149,140 @@ router.post(
   }
 );
 
+/* -----------------------
+   Admin - GET /v1/admin/stores
+   - role: SUPERADMIN
+   - list stores with pagination and search
+*/
+router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+    const q = req.query.q ? String(req.query.q).trim() : "";
+    const showInactive = req.query.showInactive === "true";
+    
+    const where: any = {};
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: "insensitive" } },
+        { slug: { contains: q, mode: "insensitive" } },
+      ];
+    }
+    if (!showInactive) {
+      where.isActive = true;
+    }
+
+    const stores = await prisma.store.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        users: {
+          where: { role: "STORE_OWNER" },
+          take: 1,
+          select: { userId: true, user: { select: { email: true } } }
+        }
+      }
+    });
+
+    return respond(res, 200, { success: true, data: { stores } });
+  } catch (err) {
+    return respond(res, 500, { error: "internal_error" });
+  }
+});
+
+/* -----------------------
+   Admin - PATCH /v1/admin/stores/:id/suspend
+   - role: SUPERADMIN
+   - toggle isActive
+*/
+router.patch("/stores/:id/suspend", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+    const id = req.params.id;
+    const body = req.body; // { isActive: boolean }
+    const isActive = body.isActive ?? false;
+
+    const store = await prisma.store.update({
+      where: { id },
+      data: { isActive },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user?.id,
+        actorType: "ADMIN",
+        action: isActive ? "ACTIVATE_STORE" : "SUSPEND_STORE",
+        resource: "Store",
+        resourceId: id,
+      }
+    });
+
+    return respond(res, 200, { success: true, data: { store } });
+  } catch (err) {
+    return respond(res, 500, { error: "internal_error" });
+  }
+});
+
+/* -----------------------
+   Admin - GET /v1/admin/suppliers
+   - role: SUPERADMIN
+   - list global suppliers
+*/
+router.get("/suppliers", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+    const q = req.query.q ? String(req.query.q).trim() : "";
+    
+    const where: any = {};
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: "insensitive" } },
+        { contactName: { contains: q, mode: "insensitive" } },
+      ];
+    }
+
+    const suppliers = await prisma.supplier.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        user: { select: { id: true, email: true, username: true } }
+      }
+    });
+
+    return respond(res, 200, { success: true, data: { suppliers } });
+  } catch (err) {
+    return respond(res, 500, { error: "internal_error" });
+  }
+});
+
+/* -----------------------
+   Admin - PATCH /v1/admin/suppliers/:id/suspend
+   - role: SUPERADMIN
+   - toggle isActive
+*/
+router.patch("/suppliers/:id/suspend", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+    const id = req.params.id;
+    const body = req.body; // { isActive: boolean }
+    const isActive = body.isActive ?? false;
+
+    const supplier = await prisma.supplier.update({
+      where: { id },
+      data: { isActive },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user?.id,
+        actorType: "ADMIN",
+        action: isActive ? "ACTIVATE_SUPPLIER" : "SUSPEND_SUPPLIER",
+        resource: "Supplier",
+        resourceId: id,
+      }
+    });
+
+    return respond(res, 200, { success: true, data: { supplier } });
+  } catch (err) {
+    return respond(res, 500, { error: "internal_error" });
+  }
+});
+
 export default router;

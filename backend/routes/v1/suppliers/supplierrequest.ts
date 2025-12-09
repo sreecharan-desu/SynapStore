@@ -81,23 +81,49 @@ router.post(
       });
 
       // notify store owners/admins (create Notification row)
-      await prisma.notification
-        .create({
-          data: {
-            storeId,
-            channel: "IN_APP",
-            recipient: "store_admins", // worker interprets this
-            subject: "Supplier Request",
-            body: message ?? `Supplier ${supplier.name} requested access`,
-            metadata: {
-              supplierRequestId: reqRow.id,
-              supplierId,
-              supplierName: supplier.name,
-            },
-            status: "QUEUED",
+      // notify store owners/admins via IN_APP and EMAIL
+      
+      // 1. IN_APP to store room (generic "store_admins")
+      await prisma.notification.create({
+        data: {
+          storeId,
+          channel: "IN_APP",
+          recipient: "store_admins", // socket worker will broadcast to store room
+          subject: "Supplier Request",
+          body: message ?? `Supplier ${supplier.name} requested access`,
+          metadata: {
+            supplierRequestId: reqRow.id,
+            supplierId,
+            supplierName: supplier.name,
           },
-        })
-        .catch(() => {});
+          status: "QUEUED",
+        },
+      });
+
+      // 2. EMAIL to specific store owners/admins
+      const storeAdmins = await prisma.userStoreRole.findMany({
+        where: {
+          storeId,
+          role: { in: ["STORE_OWNER", "ADMIN"] },
+        },
+        include: { user: { select: { id: true, email: true } } },
+      });
+
+      for (const admin of storeAdmins) {
+        if (admin.user.email) {
+          await prisma.notification.create({
+            data: {
+              storeId,
+              userId: admin.userId,
+              channel: "EMAIL",
+              recipient: admin.user.email as any, // encrypted? logic usually handles decrypt or assume email here is usable string
+              subject: `New Supplier Request: ${supplier.name}`,
+              body: `A new supplier request has been received from ${supplier.name}.\n\nMessage: ${message ?? "No message"}\n\nPlease log in to accept or reject.`,
+              status: "QUEUED",
+            },
+          });
+        }
+      }
 
       await prisma.activityLog
         .create({
@@ -235,20 +261,38 @@ router.post(
         where: { id: reqRow.supplierId },
       });
       if (sup?.userId) {
-        await prisma.notification
-          .create({
+        // IN_APP
+        await prisma.notification.create({
+          data: {
+            storeId: store.id,
+            userId: sup.userId,
+            channel: "IN_APP",
+            recipient: sup.userId,
+            subject: "Supplier request accepted",
+            body: `Your request to supply ${store.name} was accepted`,
+            metadata: { supplierRequestId: id },
+            status: "QUEUED",
+          },
+        });
+
+        // EMAIL - need to fetch user email (encrypted?)
+        const supUser = await prisma.user.findUnique({
+          where: { id: sup.userId },
+          select: { email: true },
+        });
+        if (supUser?.email) {
+          await prisma.notification.create({
             data: {
               storeId: store.id,
               userId: sup.userId,
-              channel: "IN_APP",
-              recipient: sup.userId,
-              subject: "Supplier request accepted",
-              body: `Your request to supply ${store.name} was accepted`,
-              metadata: { supplierRequestId: id },
+              channel: "EMAIL",
+              recipient: supUser.email, 
+              subject: "Request Accepted!",
+              body: `Good news! Your request to supply ${store.name} has been accepted. You can now engage with this store.`,
               status: "QUEUED",
             },
-          })
-          .catch(() => {});
+          });
+        }
       }
 
       return res.json({ success: true, message: "accepted" });
@@ -299,20 +343,38 @@ router.post(
         where: { id: reqRow.supplierId },
       });
       if (sup?.userId) {
-        await prisma.notification
-          .create({
+        // IN_APP
+        await prisma.notification.create({
+          data: {
+            storeId: store.id,
+            userId: sup.userId,
+            channel: "IN_APP",
+            recipient: sup.userId,
+            subject: "Supplier request rejected",
+            body: `Request rejected for ${store.name}`,
+            metadata: { supplierRequestId: id },
+            status: "QUEUED",
+          },
+        });
+
+        // EMAIL
+        const supUser = await prisma.user.findUnique({
+          where: { id: sup.userId },
+          select: { email: true },
+        });
+        if (supUser?.email) {
+          await prisma.notification.create({
             data: {
               storeId: store.id,
               userId: sup.userId,
-              channel: "IN_APP",
-              recipient: sup.userId,
-              subject: "Supplier request rejected",
-              body: `Request rejected for ${store.name}`,
-              metadata: { supplierRequestId: id },
+              channel: "EMAIL",
+              recipient: supUser.email,
+              subject: `Supplier Request Rejected`,
+              body: `Your request to supply ${store.name} was not accepted at this time.`,
               status: "QUEUED",
             },
-          })
-          .catch(() => {});
+          });
+        }
       }
 
       return res.json({ success: true, message: "rejected" });

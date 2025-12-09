@@ -97,21 +97,13 @@ model Store {
   suppliers             Supplier[]
   inventory             InventoryBatch[]
   uploads               Upload[]
-  forecasts             Forecast[]
-  alerts                Alert[]
-  reorders              Reorder[]
-  featureFlags          FeatureFlag[]
-  health                StoreHealth?
   activityLogs          ActivityLog[]
   notifications         Notification[]
-  doctors               Doctor[]
   stockMovements        StockMovement[]
   webhookRegistrations  WebhookRegistration[]
   webhookDeliveries     WebhookDelivery[]
   otps                  Otp[]
-  prescriptions         Prescription[]          // header
   sales                 Sale[]
-  reservations          Reservation[]
 
   @@index([slug])
   supplierStores SupplierStore[]
@@ -135,19 +127,14 @@ model User {
   stores       UserStoreRole[]
   otps         Otp[]
   activityLogs ActivityLog[]
-  uploads      Upload[]
 
   stockMovements StockMovement[]
 
-  alerts       Alert[]
-
-  reorders     Reorder[]
 
   notifications Notification[]
 
   suppliers Supplier[]
 
-  reservations Reservation[]
 
   sales Sale[]
 }
@@ -166,17 +153,7 @@ model UserStoreRole {
   @@index([userId])
 }
 
-model Doctor {
-  physID    Int      @id @default(autoincrement())
-  name      String
-  address   String?
-  phone     String?
 
-  store     Store?   @relation(fields: [storeId], references: [id])
-  storeId   String?
-
-  prescriptions Prescription[]
-}
 
 model Supplier {
   id               String   @id @default(uuid())
@@ -198,7 +175,6 @@ model Supplier {
   userId           String?  @unique
 
   medicines        Medicine[]
-  reorders         Reorder[]
 
   supplierStores SupplierStore[]
 
@@ -223,11 +199,8 @@ model Medicine {
   updatedAt     DateTime  @updatedAt
 
   inventory     InventoryBatch[]
-  forecasts     Forecast[]
   stockMovements StockMovement[]
-  prescriptionItems PrescriptionItem[]
   suppliers     Supplier[]
-  reorderItems  ReorderItem[]
   saleItems     SaleItem[]
 
   @@index([storeId, brandName])
@@ -255,12 +228,24 @@ model InventoryBatch {
 
   movements     StockMovement[]
   saleItems     SaleItem[]
-  reservationItems ReservationItem[]
 
   @@index([storeId, medicineId])
   @@index([storeId, batchNumber])
   @@index([storeId, expiryDate])
   @@index([storeId, expiryDate, medicineId])
+}
+
+model Upload {
+  id            String     @id @default(uuid())
+  store         Store      @relation(fields: [storeId], references: [id])
+  storeId       String
+  filename      String?
+  status        UploadStatus @default(PENDING)
+  metadata      Json?      // for ML feedback/errors
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([storeId, status])
 }
 
 model StockMovement {
@@ -282,111 +267,6 @@ model StockMovement {
 
   @@index([storeId, medicineId])
   @@index([storeId, createdAt])
-}
-
-model Upload {
-  id            String     @id @default(uuid())
-  store         Store      @relation(fields: [storeId], references: [id])
-  storeId       String
-  filename      String
-  fileRef       String
-  mimeType      String
-  status        UploadStatus @default(PENDING)
-  rowsProcessed Int?
-  errorsCount   Int?
-  preview       Json?
-  createdBy     User?      @relation(fields: [createdById], references: [id])
-  createdById   String?
-  createdAt     DateTime   @default(now())
-  processedAt   DateTime?
-
-  @@index([storeId, status])
-}
-
-model Forecast {
-  id           String   @id @default(uuid())
-  store        Store    @relation(fields: [storeId], references: [id])
-  storeId      String
-  medicine     Medicine @relation(fields: [medicineId], references: [id])
-  medicineId   String
-  model        String
-  params       Json?
-  result       Json
-  computedAt   DateTime @default(now())
-
-  @@index([storeId, medicineId])
-  @@index([storeId, computedAt])
-}
-
-model Alert {
-  id             String    @id @default(uuid())
-  store          Store     @relation(fields: [storeId], references: [id])
-  storeId        String
-  type           AlertType
-  status         AlertStatus @default(ACTIVE)
-  metadata       Json?
-  severity       Int?
-  createdAt      DateTime   @default(now())
-  acknowledgedBy User?     @relation(fields: [ackById], references: [id])
-  ackById        String?
-  acknowledgedAt DateTime?
-
-  @@index([storeId, type])
-  @@index([storeId, status])
-}
-
-model Reorder {
-  id           String   @id @default(uuid())
-  store        Store    @relation(fields: [storeId], references: [id])
-  storeId      String
-  supplier     Supplier @relation(fields: [supplierId], references: [id])
-  supplierId   String
-  createdBy    User?    @relation(fields: [createdById], references: [id])
-  createdById  String?
-  totalValue   Decimal? @db.Decimal(12, 2)
-  status       ReorderStatus @default(DRAFT)
-  externalRef  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  items        ReorderItem[]
-  @@index([storeId, status])
-  @@index([supplierId, status])
-}
-
-model ReorderItem {
-  id         String   @id @default(uuid())
-  reorder    Reorder  @relation(fields: [reorderId], references: [id])
-  reorderId  String
-  medicine   Medicine @relation(fields: [medicineId], references: [id])
-  medicineId String
-  qty        Int
-  price      Decimal? @db.Decimal(12,2)
-  sku        String?
-  batchPref  String?
-}
-
-model FeatureFlag {
-  id        String   @id @default(uuid())
-  store     Store    @relation(fields: [storeId], references: [id])
-  storeId   String
-  key       String
-  enabled   Boolean  @default(false)
-  config    Json?
-  createdAt DateTime @default(now())
-
-  @@unique([storeId, key])
-}
-
-model StoreHealth {
-  id         String   @id @default(uuid())
-  store      Store    @relation(fields: [storeId], references: [id])
-  storeId    String   @unique
-  score      Float    @default(0.0)
-  metrics    Json?
-  computedAt DateTime @default(now())
-
-  @@index([computedAt])
 }
 
 model ActivityLog {
@@ -490,76 +370,13 @@ model Otp {
   @@index([storeId])
 }
 
-model Patient {
-  patientID   Int       @id @default(autoincrement())
-  firstName   String
-  lastName    String
-  birthdate   DateTime?
-  address     String?
-  phone       String?
-  gender      String?
-  insuranceId String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  insuranceProvider Insurance? @relation(fields: [insuranceId], references: [name])
-  prescriptions     Prescription[]
-
-  sales Sale[]
-}
-
-model Insurance {
-  name        String   @id
-  phone       String?
-  coPay       String?
-  patients    Patient[]
-}
-
-model Prescription {
-  id          Int      @id @default(autoincrement())
-  store       Store?   @relation(fields: [storeId], references: [id])
-  storeId     String?
-  patient     Patient @relation(fields: [patientID], references: [patientID])
-  patientID   Int
-  doctor      Doctor?  @relation(fields: [physID], references: [physID])
-  physID      Int?
-  status      String?
-  issuedAt    DateTime? @default(now())
-  externalRef String?
-
-  items       PrescriptionItem[]
-
-  @@index([patientID])
-  @@index([physID])
-  sales Sale[]
-}
-
-model PrescriptionItem {
-  id            String   @id @default(uuid())
-  prescription  Prescription @relation(fields: [prescriptionId], references: [id])
-  prescriptionId Int
-  medicine      Medicine @relation(fields: [medicineId], references: [id])
-  medicineId    String
-  qty           Int
-  days          Int?
-  refills       Int?
-  instructions  String?
-  createdAt     DateTime @default(now())
-
-  @@index([prescriptionId])
-  @@index([medicineId])
-}
-
 model Sale {
   id            String   @id @default(uuid())
   store         Store    @relation(fields: [storeId], references: [id])
   storeId       String
   createdBy     User?    @relation(fields: [createdById], references: [id])
   createdById   String?
-  patient       Patient? @relation(fields: [patientID], references: [patientID])
-  patientID     Int?
-  prescription  Prescription? @relation(fields: [prescriptionId], references: [id])
-  prescriptionId Int?
+  // No patient/prescription relation
   subtotal      Decimal? @db.Decimal(12, 2)
   tax           Decimal? @db.Decimal(12, 2)
   discounts     Decimal? @db.Decimal(12, 2)
@@ -592,31 +409,7 @@ model SaleItem {
   @@index([medicineId])
 }
 
-model Reservation {
-  id          String   @id @default(uuid())
-  store       Store    @relation(fields: [storeId], references: [id])
-  storeId     String
-  createdBy   User?    @relation(fields: [createdById], references: [id])
-  createdById String?
-  expiresAt   DateTime
-  status      String
-  createdAt   DateTime @default(now())
 
-  items       ReservationItem[]
-}
-
-model ReservationItem {
-  id              String   @id @default(uuid())
-  reservation     Reservation @relation(fields: [reservationId], references: [id])
-  reservationId   String
-  inventoryBatch  InventoryBatch @relation(fields: [inventoryBatchId], references: [id])
-  inventoryBatchId String
-  qty             Int
-  createdAt       DateTime @default(now())
-
-  @@index([reservationId])
-  @@index([inventoryBatchId])
-}
 
 enum SupplierRequestStatus {
   PENDING

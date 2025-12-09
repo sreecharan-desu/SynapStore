@@ -156,8 +156,6 @@ dashboardRouter.get(
       const [
         totalMedicines,
         totalBatches,
-        totalActiveAlerts,
-        totalPendingReorders,
         recentSalesCount,
         recentRevenueAgg,
         inventorySums,
@@ -173,21 +171,10 @@ dashboardRouter.get(
         saleItemsAll,
         saleItemsSoldAgg,
         medicinesAll,
-        reordersStats,
-        alertsByTypeRaw,
         stockMovementsAgg,
       ] = await Promise.all([
         prisma.medicine.count({ where: { storeId } }),
         prisma.inventoryBatch.count({ where: { storeId } }),
-        prisma.alert.count({ where: { storeId, status: "ACTIVE" } }),
-        prisma.reorder.count({
-          where: {
-            storeId,
-            status: {
-              in: ["DRAFT", "SENT", "CONFIRMED", "PARTIALLY_RECEIVED"],
-            },
-          },
-        }),
         prisma.sale.count({
           where: { storeId, createdAt: { gte: salesWindowStart } },
         }),
@@ -296,7 +283,6 @@ dashboardRouter.get(
             totalValue: true,
             paymentMethod: true,
             paymentStatus: true,
-            patientID: true,
             createdById: true,
           },
           take: 10000, // reasonable cap for client-side aggregations; tune as needed
@@ -330,18 +316,6 @@ dashboardRouter.get(
             dosageForm: true,
             strength: true,
           },
-        }),
-        // reorders stats per supplier & status
-        prisma.reorder.groupBy({
-          by: ["supplierId", "status"],
-          where: { storeId },
-          _count: { _all: true },
-          _sum: { totalValue: true },
-        }),
-        prisma.alert.groupBy({
-          by: ["type"],
-          where: { storeId },
-          _count: { _all: true },
         }),
         // stock movements sums by reason (for stock turnover / inflows)
         prisma.stockMovement.groupBy({
@@ -427,12 +401,8 @@ dashboardRouter.get(
         ? totalSoldQty / totalSalesCount
         : 0;
 
-      // repeat customer rate (distinct patientID)
-      const salesWithPatient = saleRows.filter((s) => s.patientID != null);
-      const uniquePatients = new Set(salesWithPatient.map((s) => s.patientID));
-      const repeatCustomerRate = salesWithPatient.length
-        ? uniquePatients.size / salesWithPatient.length
-        : 0;
+      // repeat customer rate (removed patient support)
+      const repeatCustomerRate = 0;
 
       // inventory aging buckets
       const now = Date.now();
@@ -470,57 +440,9 @@ dashboardRouter.get(
         .map(([month, v]) => ({ month, ...v }))
         .sort((a, b) => a.month.localeCompare(b.month));
 
-      // supplier performance (reorders)
-      const supplierPerf: Record<
-        string,
-        { supplierId: string; orders: number; totalValue: number }
-      > = {};
-      for (const r of reordersStats) {
-        const sup = r.supplierId ?? "unknown";
-        supplierPerf[sup] = supplierPerf[sup] || {
-          supplierId: sup,
-          orders: 0,
-          totalValue: 0,
-        };
-        supplierPerf[sup].orders += Number(r._count?._all ?? 0);
-        supplierPerf[sup].totalValue += Number(r._sum?.totalValue ?? 0);
-      }
-      const supplierPerformance = Object.values(supplierPerf);
-
-      // reorder lead times: approx using RECEIVED reorders (updatedAt - createdAt)
-      const receivedReorders = await prisma.reorder.findMany({
-        where: { storeId, status: "RECEIVED" },
-        select: {
-          id: true,
-          createdAt: true,
-          updatedAt: true,
-          supplierId: true,
-        },
-        take: 1000,
-      });
-      const leadTimes: Record<string, number[]> = {};
-      for (const r of receivedReorders) {
-        if (!r.updatedAt || !r.createdAt) continue;
-        const daysLead =
-          (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) /
-          (24 * 3600 * 1000);
-        if (!leadTimes[r.supplierId ?? "unknown"])
-          leadTimes[r.supplierId ?? "unknown"] = [];
-        leadTimes[r.supplierId ?? "unknown"].push(daysLead);
-      }
-      const reorderLeadTimeSummary = Object.entries(leadTimes).map(
-        ([supplierId, arr]) => ({
-          supplierId,
-          avgDays: arr.reduce((a, b) => a + b, 0) / arr.length,
-          samples: arr.length,
-        })
-      );
-
-      // alerts by type
-      const alertsByType = alertsByTypeRaw.map((r) => ({
-        type: r.type,
-        count: Number(r._count?._all ?? 0),
-      }));
+      
+      // alerts by type (removed alerts)
+       const alertsByType: any[] = [];
 
       // stock turnover approximation: soldQty / qtyReceived
       const soldQtyTotal = saleItemsSoldAgg.reduce(
@@ -529,15 +451,6 @@ dashboardRouter.get(
       );
       const qtyReceivedTotal = Number(inventorySums._sum.qtyReceived ?? 0) || 1;
       const stockTurnover = soldQtyTotal / qtyReceivedTotal;
-
-      // reservation stats
-      const reservationsCount = await prisma.reservation.count({
-        where: { storeId },
-      });
-      const reservedQtyAgg = await prisma.reservationItem.aggregate({
-        where: { reservation: { storeId } },
-        _sum: { qty: true },
-      });
 
       // final recentSales summary enrichment (medicine meta)
       const recentSalesSummary = recentSales.map((s) => ({
@@ -572,15 +485,15 @@ dashboardRouter.get(
           overview: {
             totalMedicines,
             totalBatches,
-            totalActiveAlerts,
-            totalPendingReorders,
+            totalActiveAlerts: 0,
+            totalPendingReorders: 0,
             recentSalesCount,
             recentRevenue,
             unreadNotifications,
             webhookFailures,
             inventoryTotals,
-            reservationsCount,
-            reservedQty: Number(reservedQtyAgg._sum?.qty ?? 0),
+            reservationsCount: 0,
+            reservedQty: 0,
           },
           charts: {
             salesByDay: (() => {
@@ -608,10 +521,10 @@ dashboardRouter.get(
             paymentMethods,
             categoryBreakdown,
             topMovers,
-            supplierPerformance,
+            supplierPerformance: [],
             expiryHeatmap: expiryHeatmapArr,
             inventoryAging: agingBucketsResult,
-            reorderLeadTimeSummary,
+            reorderLeadTimeSummary: [],
             alertsByType,
             stockTurnover,
             avgOrderValue,
@@ -630,7 +543,7 @@ dashboardRouter.get(
             recentSales: recentSalesSummary,
             activity,
             suppliers,
-            recentReceivedReorders: receivedReorders.slice(0, 20),
+            recentReceivedReorders: [],
           },
         },
       });

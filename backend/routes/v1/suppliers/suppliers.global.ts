@@ -112,6 +112,14 @@ router.post(
           .catch(() => {});
       }
 
+      // If we linked a user to this supplier, ensure the user has globalRole="SUPPLIER"
+      if (user?.id && (supplier.userId === user.id) && user.globalRole !== "SUPPLIER" && user.globalRole !== "SUPERADMIN") {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { globalRole: "SUPPLIER" },
+        });
+      }
+
       return res.status(201).json({ success: true, data: { supplier } });
     } catch (err) {
       next(err);

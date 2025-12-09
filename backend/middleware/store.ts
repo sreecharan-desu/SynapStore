@@ -30,8 +30,8 @@ export async function storeContext(
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "unauthenticated" });
 
-    // find single store assignment
-    const link = await prisma.userStoreRole.findFirst({
+    // find single store assignment (default)
+    let link = await prisma.userStoreRole.findFirst({
       where: { userId },
       select: {
         storeId: true,
@@ -49,8 +49,36 @@ export async function storeContext(
       },
     });
 
-    // no store assigned -> user must create one
+    // Check header Override
+    const headerStoreId = req.headers["x-store-id"];
+    if (headerStoreId && typeof headerStoreId === "string") {
+       const specificLink = await prisma.userStoreRole.findFirst({
+        where: { userId, storeId: headerStoreId },
+        select: {
+          storeId: true,
+          role: true,
+          store: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              timezone: true,
+              currency: true,
+              settings: true,
+            },
+          },
+        },
+      });
+      if (specificLink) link = specificLink;
+    }
+
+    // no store assigned -> user must create one -- UNLESS they are a SUPPLIER/SUPERADMIN
     if (!link) {
+      if (req.user?.globalRole === "SUPPLIER" || req.user?.globalRole === "SUPERADMIN") {
+        req.store = null;
+        req.userStoreRoles = [];
+        return next(); // allow proceed without store
+      }
       req.store = null;
       req.userStoreRoles = [];
       return res.status(403).json({
