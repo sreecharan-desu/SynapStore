@@ -38,7 +38,7 @@ router.post(
         data: {
           storeId: store.id,
           // @ts-ignore
-          filename: parsed.data.filename ?? null,
+          filename: parsed.data.filename,
           status: "PENDING",
           metadata: parsed.data.metadata ?? {},
         },
