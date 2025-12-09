@@ -37,7 +37,6 @@ router.post(
       const upload = await prisma.upload.create({
         data: {
           storeId: store.id,
-          // @ts-ignore
           filename: parsed.data.filename,
           status: "PENDING",
           metadata: parsed.data.metadata ?? {},
