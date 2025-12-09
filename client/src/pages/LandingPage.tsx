@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import HeroSection from "../components/landingpage/HeroSection";
 import HowItWorks from "../components/landingpage/HowItWorks";
 import AnimatedInventoryShowcase from "../components/landingpage/AnimatedList";
@@ -7,62 +7,216 @@ import WhyChooseUs from "../components/landingpage/WhyChooseUs";
 import Testimonials from "../components/landingpage/Testimonials";
 import Footer from "../components/landingpage/Footer";
 import KeyFeatures from "../components/landingpage/KeyFeatures";
+import { motion, useScroll, useSpring, AnimatePresence } from "framer-motion";
+import { ArrowRight, Menu, X } from "lucide-react";
 
 const LandingPage: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, {
+    stiffness: 100,
+    damping: 30,
+    restDelta: 0.001
+  });
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 50);
+      setScrolled(window.scrollY > 20);
     };
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [mobileMenuOpen]);
+
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      const offset = 80; // Account for fixed navbar
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - offset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: "smooth"
+      });
+      setMobileMenuOpen(false);
+    }
+  };
+
+  const navLinks: any[] = [];
+
   return (
-    <div className="relative min-h-screen w-full bg-background-page selection:bg-brand-primary selection:text-white overflow-x-hidden">
+    <div className="relative min-h-screen w-full bg-slate-50 selection:bg-emerald-500 selection:text-white overflow-x-hidden font-sans">
+
+      {/* Scroll Progress Bar */}
+      <motion.div
+        className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-400 origin-left z-[60]"
+        style={{ scaleX }}
+      />
+
       {/* Navigation */}
-      <nav
+      <motion.nav
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
         id="main-nav"
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "bg-white/80 backdrop-blur-md shadow-sm" : "bg-transparent"
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ease-in-out border-b ${scrolled
+          ? "bg-white/95 backdrop-blur-xl shadow-lg shadow-slate-200/50 border-slate-200/60 py-3"
+          : "bg-white/80 backdrop-blur-md border-white/20 py-4"
           }`}
       >
-        <div className="max-w-7xl mx-auto px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 flex items-center justify-center bg-white rounded-xl shadow-md border border-brand-primary/20 transition-transform hover:scale-105 duration-300">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 flex items-center justify-between">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-3 group relative z-10">
+            <div className="relative w-11 h-11 flex items-center justify-center bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-600 rounded-xl shadow-lg shadow-emerald-500/30 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6 group-hover:shadow-emerald-500/50">
+              <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent rounded-xl" />
               <img
                 src="/logo.svg"
                 alt="SynapStore Logo"
-                className="w-8 h-8 object-contain"
+                className="w-6 h-6 object-contain brightness-0 invert relative z-10"
               />
             </div>
-            <span className="text-2xl font-extrabold bg-gradient-to-r from-brand-primary-dark via-brand-primary to-brand-primary-light bg-clip-text text-transparent tracking-tight">
+            <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 bg-clip-text text-transparent tracking-tight">
               SynapStore
             </span>
+          </Link>
+
+          {/* Desktop Navigation Links */}
+          <div className="hidden md:flex items-center gap-1">
+            {navLinks.map((link, index) => (
+              <motion.button
+                key={link.id}
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.1 + index * 0.1 }}
+                onClick={() => scrollToSection(link.id)}
+                className="relative px-4 py-2 text-slate-700 font-medium text-sm rounded-lg transition-all duration-300 hover:text-emerald-600 group"
+              >
+                <span className="relative z-10">{link.label}</span>
+                <div className="absolute inset-0 bg-emerald-50 rounded-lg scale-0 group-hover:scale-100 transition-transform duration-300 origin-center" />
+              </motion.button>
+            ))}
           </div>
 
-          <div className="hidden md:flex items-center gap-6">
-
-            <Link
-              to="/login"
-              className="px-6 py-2.5  text-white rounded-full font-medium hover:bg-brand-primary-dark transition-all shadow-lg hover:shadow-brand-primary/25 hover:-translate-y-0.5"
+          {/* CTA Button & Mobile Menu Toggle */}
+          <div className="flex items-center gap-3">
+            <motion.button
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              onClick={() => navigate("/login")}
+              className="hidden sm:flex group relative items-center gap-2 px-6 py-2.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 transition-all duration-300 hover:-translate-y-0.5 overflow-hidden"
+              aria-label="Get Started"
             >
-              Get Started
-            </Link>
+              <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <span className="relative z-10">Get Started</span>
+              <ArrowRight className="w-4 h-4 relative z-10 group-hover:translate-x-1 transition-transform duration-300" />
+            </motion.button>
+
+            {/* Mobile Menu Button */}
+            <motion.button
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.5 }}
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors duration-300"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? (
+                <X className="w-6 h-6 text-slate-700" />
+              ) : (
+                <Menu className="w-6 h-6 text-slate-700" />
+              )}
+            </motion.button>
           </div>
         </div>
-      </nav>
 
-      <HeroSection />
+        {/* Mobile Menu */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <>
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden"
+                onClick={() => setMobileMenuOpen(false)}
+              />
 
-      <div className="relative z-10 w-full bg-background-page">
-        <KeyFeatures />
-        <WhyChooseUs />
-        <HowItWorks />
-        <AnimatedInventoryShowcase />
-        <Testimonials />
+              {/* Menu Panel */}
+              <motion.div
+                initial={{ opacity: 0, x: "100%" }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: "100%" }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className="fixed top-[73px] right-0 bottom-0 w-72 bg-white/95 backdrop-blur-xl shadow-2xl z-50 md:hidden border-l border-slate-200"
+              >
+                <div className="flex flex-col p-6 gap-2">
+                  {navLinks.map((link, index) => (
+                    <motion.button
+                      key={link.id}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: index * 0.1 }}
+                      onClick={() => scrollToSection(link.id)}
+                      className="w-full text-left px-4 py-3 text-slate-700 font-medium rounded-lg hover:bg-emerald-50 hover:text-emerald-600 transition-all duration-300"
+                    >
+                      {link.label}
+                    </motion.button>
+                  ))}
+
+                  <motion.button
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3, delay: navLinks.length * 0.1 }}
+                    onClick={() => {
+                      navigate("/login");
+                      setMobileMenuOpen(false);
+                    }}
+                    className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 transition-all duration-300"
+                  >
+                    <span>Get Started</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </motion.button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+      </motion.nav>
+
+      <main className="relative z-10 w-full">
+        <HeroSection />
+
+        <div className="bg-white relative">
+          {/* Subtle separator gradient */}
+          <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-slate-50 to-white pointer-events-none" />
+
+          <KeyFeatures />
+          <WhyChooseUs />
+          <HowItWorks />
+          <AnimatedInventoryShowcase />
+          <Testimonials />
+        </div>
+
         <Footer />
-      </div>
+      </main>
     </div>
   );
 };
