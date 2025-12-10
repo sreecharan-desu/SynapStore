@@ -558,6 +558,36 @@ dashboardRouter.get(
 
 
 
+dashboardRouter.get(
+  "/supplier-requests",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "ADMIN"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const store = req.store!;
+
+      const supplierRequests = await prisma.supplierRequest.findMany({
+        where: {
+          storeId: store.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+      return res.json({
+        success: true,
+        data: supplierRequests,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+
 
 // STORE OWNER ACCEPT AND REJECT REQUEST
 
