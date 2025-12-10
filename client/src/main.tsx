@@ -68,7 +68,6 @@ createRoot(document.getElementById("root")!).render(
             }
           />
 
-          {/* Dashboard Routes with Layout */}
           <Route
             path="/dashboard"
             element={

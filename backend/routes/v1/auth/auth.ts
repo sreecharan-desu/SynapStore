@@ -427,12 +427,12 @@ router.post(
             isActive: true,
           },
         });
-        
+
         return respond(res, 200, {
           token,
           user: {
             id: user.id,
-            username: crypto$.decryptCell(user.username),
+            username: user.username, // already decrypted by Prisma extension
             email,
             globalRole: "SUPPLIER",
           },

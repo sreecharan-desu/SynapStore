@@ -4,20 +4,6 @@ import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
 import { jsonFetch } from "../utils/api";
 
-type StoreResponse = {
-  success: boolean;
-  message: string;
-  effectiveStore: {
-    id: string;
-    name: string;
-    slug: string;
-    timezone: string;
-    currency: string;
-    settings: any;
-    roles: string[];
-  };
-};
-
 const StoreCreate = () => {
   const [auth, setAuth] = useRecoilState(authState);
   const navigate = useNavigate();
@@ -40,18 +26,22 @@ const StoreCreate = () => {
     }
     try {
       setLoading(true);
-      const body = await jsonFetch<StoreResponse>("/api/v1/store/create", {
+      const response = await jsonFetch<any>("/api/v1/store/create", {
         method: "POST",
         body: JSON.stringify({ name, slug, timezone, currency }),
         token: auth.token,
       });
+
+      // Handle wrapped response structure
+      const effectiveStore = response.data?.effectiveStore || response.effectiveStore;
+
       setAuth({
         ...auth,
-        effectiveStore: body.effectiveStore,
+        effectiveStore: effectiveStore,
         needsStoreSetup: false,
       });
-      setSuccess("Store created. Redirecting to dashboard...");
-      setTimeout(() => navigate("/dashboard"), 500);
+      setSuccess(response.message || "Store created successfully. Redirecting to dashboard...");
+      setTimeout(() => navigate("/store/dashboard"), 1000);
     } catch (err: any) {
       setError(err.message || "Could not create store");
     } finally {

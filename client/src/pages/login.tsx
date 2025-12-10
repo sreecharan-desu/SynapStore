@@ -102,19 +102,22 @@ const Login: React.FC = () => {
   }, [timer]);
 
   // Helpers
-  const handleAuthSuccess = (body: SigninResponse) => {
+  const handleAuthSuccess = (response: any) => {
+    // Extract data from wrapped response structure
+    const data = response.data || response;
+
     setAuth({
-      token: body.token,
-      user: body.user,
-      effectiveStore: body.effectiveStore ?? null,
-      needsStoreSetup: Boolean(body.needsStoreSetup),
-      needsStoreSelection: Boolean(body.needsStoreSelection),
-      suppliers: body.suppliers ?? [],
-      supplierId: body.supplierId ?? null,
+      token: data.token,
+      user: data.user,
+      effectiveStore: data.effectiveStore ?? null,
+      needsStoreSetup: Boolean(data.needsStoreSetup),
+      needsStoreSelection: Boolean(data.needsStoreSelection),
+      suppliers: data.suppliers ?? [],
+      supplierId: data.supplierId ?? null,
     });
 
     // Role-based redirects
-    const globalRole = body.user?.globalRole;
+    const globalRole = data.user?.globalRole;
 
     // SUPERADMIN → SuperAdminDashboard
     if (globalRole === "SUPERADMIN") {
@@ -129,13 +132,13 @@ const Login: React.FC = () => {
     }
 
     // STORE_OWNER → needs store setup or store dashboard
-    if (body.needsStoreSetup) {
+    if (data.needsStoreSetup) {
       navigate("/store/create", { replace: true });
       return;
     }
 
     // STORE_OWNER with store(s) → StoreOwnerDashboard
-    if (globalRole === "STORE_OWNER" || body.effectiveStore) {
+    if (globalRole === "STORE_OWNER" || data.effectiveStore) {
       navigate("/store/dashboard", { replace: true });
       return;
     }
@@ -151,7 +154,7 @@ const Login: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      const body = await jsonFetch("/api/v1/auth/register", {
+      const response = await jsonFetch("/api/v1/auth/register", {
         method: "POST",
         body: JSON.stringify({
           username: email.split("@")[0] || email,
@@ -159,10 +162,14 @@ const Login: React.FC = () => {
           password,
         }),
       });
+
+      // Handle wrapped response structure
+      const body = response.data || response;
+
       setShowOtp(true);
       setIsSignup(true);
       setTimer(RESEND_COOLDOWN);
-      setSuccess("OTP sent to your email");
+      setSuccess(response.message || "OTP sent to your email");
       return body;
     } catch (err: any) {
       setError(err.message || "Registration failed");
@@ -177,16 +184,20 @@ const Login: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      const body = await jsonFetch<SigninResponse>("/api/v1/auth/signin", {
+      const response = await jsonFetch<any>("/api/v1/auth/signin", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      if (body.token) {
-        handleAuthSuccess(body);
+
+      // Check if token exists in the wrapped response
+      const data = response.data || response;
+
+      if (data.token) {
+        handleAuthSuccess(response);
       } else {
         throw new Error("no token returned");
       }
-      return body;
+      return response;
     } catch (err: any) {
       setError(err.message || "Sign in failed");
       throw err;
@@ -200,16 +211,20 @@ const Login: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      const body = await jsonFetch<SigninResponse>("/api/v1/oauth/google", {
+      const response = await jsonFetch<any>("/api/v1/oauth/google", {
         method: "POST",
         body: JSON.stringify({ idToken: credential }),
       });
-      if (body.token) {
-        handleAuthSuccess(body);
+
+      // Check if token exists in the wrapped response
+      const data = response.data || response;
+
+      if (data.token) {
+        handleAuthSuccess(response);
       } else {
         throw new Error("No token returned from Google auth endpoint");
       }
-      return body;
+      return response;
     } catch (err: any) {
       setError(err.message || "Google sign-in failed");
       throw err;
@@ -227,12 +242,12 @@ const Login: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      await jsonFetch("/api/v1/auth/resend-otp", {
+      const response = await jsonFetch("/api/v1/auth/resend-otp", {
         method: "POST",
         body: JSON.stringify({ email }),
       });
       setTimer(RESEND_COOLDOWN);
-      setSuccess("OTP resent");
+      setSuccess(response.message || "OTP resent");
     } catch (err: any) {
       setError(err.message || "Could not resend OTP");
     } finally {
@@ -250,16 +265,24 @@ const Login: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      await jsonFetch("/api/v1/auth/verify-otp", {
+      const response = await jsonFetch("/api/v1/auth/verify-otp", {
         method: "POST",
         body: JSON.stringify({ email, otp: code }),
       });
+
       setShowOtp(false);
-      setIsSignup(false);
       setOtp(Array.from({ length: OTP_LENGTH }).map(() => ""));
-      setEmail("");
-      setPassword("");
-      setSuccess("OTP verified - you can now sign in");
+      setSuccess(response.message || "OTP verified successfully");
+
+      // After successful OTP verification, automatically sign in
+      setTimeout(async () => {
+        try {
+          await signin();
+        } catch (err) {
+          // If auto-signin fails, just show the verification success message
+          setIsSignup(false);
+        }
+      }, 500);
     } catch (err: any) {
       setError(err.message || "OTP verification failed");
     } finally {
