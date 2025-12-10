@@ -12,7 +12,7 @@ const getBaseUrl = () =>
   (typeof process !== "undefined"
     ? (import.meta.env as any)?.REACT_APP_BASE_URL
     : undefined) ||
-  "http://192.168.48.210:3000";
+  "http://192.168.40.201:3000";
 
 export const jsonFetch = async <T = any>(path: string, opts: FetchOpts = {}) => {
   const baseUrl = getBaseUrl();
@@ -21,7 +21,7 @@ export const jsonFetch = async <T = any>(path: string, opts: FetchOpts = {}) => 
     "Content-Type": "application/json",
     ...(opts.headers || {}),
   };
-
+  ``
   if (opts.token && !isTokenExpiredSafe(opts.token)) {
     // TypeScript's HeadersInit does not support direct property assignment for custom headers.
     // We need to ensure headers is a plain object before adding Authorization.
