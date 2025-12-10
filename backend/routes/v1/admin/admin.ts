@@ -192,6 +192,8 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
   }
 });
 
+
+
 /* -----------------------
    Admin - PATCH /v1/admin/stores/:id/suspend
    - role: SUPERADMIN
@@ -302,6 +304,53 @@ router.patch("/suppliers/:id/suspend", requireRole("SUPERADMIN"), async (req: an
     return respond(res, 500, { error: "internal_error" });
   }
 });
+
+
+
+
+/* -----------------------
+   Admin - GET /v1/admin/users
+   - role: SUPERADMIN
+   - list users with pagination and search
+*/
+router.get("/users", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+    const q = req.query.q ? String(req.query.q).trim() : "";
+    const showInactive = req.query.showInactive === "true";
+
+    const where: any = {};
+    if (q) {
+      where.OR = [
+        { username: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+      ];
+    }
+    if (!showInactive) {
+      where.isActive = true;
+    }
+
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 100, // Limit to 100 for now, can be paginated later
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        globalRole: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    return respond(res, 200, { success: true, data: { users } });
+  } catch (err) {
+    console.error("GET /admin/users error:", err);
+    return respond(res, 500, { error: "internal_error" });
+  }
+});
+
+
 
 /* -----------------------
    Admin - POST /v1/admin/users/:userId/convert-to-supplier
