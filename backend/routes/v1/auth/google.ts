@@ -19,7 +19,7 @@ function respond(res: Response, status: number, body: object) {
 }
 
 // Block google signin for these global roles
-const RESTRICTED_GOOGLE_ROLES = ["SUPPLIER", "ADMIN", "SUPERADMIN"];
+const RESTRICTED_GOOGLE_ROLES = ["ADMIN", "SUPERADMIN"];
 
 GoogleRouter.post("/", async (req: Request, res: Response) => {
   const parsed = googleSchema.safeParse(req.body);
@@ -92,11 +92,23 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
         imageUrl: true,
         isverified: true,
         globalRole: true,
+        isActive: true, // Added isActive to select clause
       },
     });
 
-    // Prisma extension automatically decrypts all fields
-    const user = userRow as any;
+    if (!userRow.isActive) {
+      return respond(res, 403, {
+        error: "This account has been temporarily disabled/suspended",
+        code: "user_not_active",
+      });
+    }
+
+    const user = crypto$.decryptObject(userRow, [
+      "username",
+      "email",
+      "imageUrl",
+    ]) as any;
+    user.globalRole = userRow.globalRole ?? null;
 
     // find single-store assignment (single-store mode)
     const link = await prisma.userStoreRole.findFirst({
@@ -191,7 +203,8 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
           globalRole: user.globalRole ?? null,
         },
         effectiveStore: null,
-        needsStoreSetup: true,
+        needsStoreSetup: user.globalRole !== "SUPPLIER",
+        supplier: supplierRows[0] ?? null,
         suppliers: supplierRows.map((s) => ({
           id: s.id,
           storeId: s.storeId,

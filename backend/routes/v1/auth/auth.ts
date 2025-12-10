@@ -418,22 +418,30 @@ router.post(
         });
       }
       else if (user.globalRole === "SUPPLIER") {
+        const supplier = await prisma.supplier.findUnique({
+          where: { userId: user.id },
+          select: {
+            id: true,
+            name: true,
+            storeId: true,
+            isActive: true,
+          },
+        });
+        
         return respond(res, 200, {
           token,
           user: {
             id: user.id,
-            username: user.username, // already decrypted by Prisma extension
+            username: crypto$.decryptCell(user.username),
             email,
             globalRole: "SUPPLIER",
           },
-          supplierId: await prisma.supplier.findFirst({
-            where: {
-              userId: user.id
-            },
-            select: {
-              id: true,
-            }
-          })
+          // Supplier portal context
+          effectiveStore: null,
+          needsStoreSetup: false,
+          needsStoreSelection: false,
+          supplier: supplier, // Full supplier object or null
+          suppliers: supplier ? [supplier] : [], // Consistency array
         });
       }
       else {

@@ -34,7 +34,7 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
       uploadsCount,
     ] = await Promise.all([
       prisma.user.count(),
-      prisma.store.count({ where: { isActive: true } }),
+      prisma.store.count(),
       prisma.medicine.count(),
       prisma.inventoryBatch.count(),
       prisma.upload.count(),
@@ -172,7 +172,7 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
     }
 
     const stores = await prisma.store.findMany({
-      where,
+      where: { OR: [{ isActive: true }, { isActive: false }] },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
@@ -184,11 +184,15 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
       }
     });
 
+    console.log(stores);
+
     return respond(res, 200, { success: true, data: { stores } });
   } catch (err) {
     return respond(res, 500, { error: "internal_error" });
   }
 });
+
+
 
 /* -----------------------
    Admin - PATCH /v1/admin/stores/:id/suspend
@@ -203,6 +207,14 @@ router.patch("/stores/:id/suspend", requireRole("SUPERADMIN"), async (req: any, 
 
     const store = await prisma.store.update({
       where: { id },
+      data: { isActive },
+      select: {
+        users : true
+      }
+    });
+
+    await prisma.user.update({
+      where: { id: store.users[0].userId },
       data: { isActive },
     });
 
@@ -292,6 +304,53 @@ router.patch("/suppliers/:id/suspend", requireRole("SUPERADMIN"), async (req: an
     return respond(res, 500, { error: "internal_error" });
   }
 });
+
+
+
+
+/* -----------------------
+   Admin - GET /v1/admin/users
+   - role: SUPERADMIN
+   - list users with pagination and search
+*/
+router.get("/users", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+    const q = req.query.q ? String(req.query.q).trim() : "";
+    const showInactive = req.query.showInactive === "true";
+
+    const where: any = {};
+    if (q) {
+      where.OR = [
+        { username: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+      ];
+    }
+    if (!showInactive) {
+      where.isActive = true;
+    }
+
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 100, // Limit to 100 for now, can be paginated later
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        globalRole: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    return respond(res, 200, { success: true, data: { users } });
+  } catch (err) {
+    console.error("GET /admin/users error:", err);
+    return respond(res, 500, { error: "internal_error" });
+  }
+});
+
+
 
 /* -----------------------
    Admin - POST /v1/admin/users/:userId/convert-to-supplier
