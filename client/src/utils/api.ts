@@ -21,7 +21,7 @@ export const jsonFetch = async <T = any>(path: string, opts: FetchOpts = {}) => 
     "Content-Type": "application/json",
     ...(opts.headers || {}),
   };
-
+  ``
   if (opts.token && !isTokenExpiredSafe(opts.token)) {
     // TypeScript's HeadersInit does not support direct property assignment for custom headers.
     // We need to ensure headers is a plain object before adding Authorization.

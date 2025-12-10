@@ -5,7 +5,8 @@ import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Shield, Users, Store, Activity, Search,
-    Package, Truck, LogOut
+    Package, Truck, LogOut, Trash2,
+    PieChart, AlertTriangle, Wallet
 } from "lucide-react";
 
 import { jsonFetch } from "../utils/api";
@@ -50,6 +51,49 @@ interface SupplierData {
     isActive: boolean;
     createdAt: string;
     user?: { email: string; username: string };
+}
+
+interface UserData {
+    id: string;
+    username: string;
+    email: string;
+    globalRole: string;
+    isActive: boolean;
+    createdAt: string;
+}
+
+interface AnalyticsData {
+    overview: {
+        users: { total: number; verified: number };
+        stores: { total: number; active: number; inactive: number };
+        suppliers: { total: number };
+        medicines: { total: number };
+        financials: {
+            totalRevenue: number;
+            inventoryValue: number;
+            totalSalesCount: number;
+        };
+        operations: {
+            pendingSupplierRequests: number;
+            failedUploads: number;
+            expiringBatchesNext30Days: number;
+        };
+    };
+    trends: {
+        users: Array<{ date: string; count: number }>;
+        sales: Array<{ date: string; count: number; revenue: number }>;
+    };
+    distributions: {
+        paymentMethods: Array<{ method: string; count: number; revenue: number }>;
+        userRoles: Array<{ role: string; count: number }>;
+    };
+    recentCriticalActivity: Array<{
+        id: string;
+        action: string;
+        resource: string;
+        createdAt: string;
+        user?: { username: string; email: string };
+    }>;
 }
 
 // --- Components ---
@@ -99,18 +143,36 @@ const StatusBadge = ({ isActive }: { isActive: boolean }) => (
     </span>
 );
 
+const SimpleBarChart = ({ data, color, height = 40 }: { data: number[], color: string, height?: number }) => {
+    const max = Math.max(...data, 1);
+    return (
+        <div className="flex items-end gap-1 h-full w-full" style={{ height }}>
+            {data.map((val, i) => (
+                <div
+                    key={i}
+                    className={`flex-1 rounded-t-sm ${color} opacity-80 hover:opacity-100 transition-opacity`}
+                    style={{ height: `${(val / max) * 100}%` }}
+                    title={val.toString()}
+                />
+            ))}
+        </div>
+    );
+};
+
 // --- Main Page ---
 
 const SuperAdminDashboard: React.FC = () => {
     const auth = useRecoilValue(authState);
     const setAuth = useSetRecoilState(authState);
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<"overview" | "stores" | "suppliers">("overview");
+    const [activeTab, setActiveTab] = useState<"overview" | "analytics" | "stores" | "suppliers" | "users">("overview");
 
     // Data State
     const [stats, setStats] = useState<AdminStats | null>(null);
+    const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [stores, setStores] = useState<StoreData[]>([]);
     const [suppliers, setSuppliers] = useState<SupplierData[]>([]);
+    const [users, setUsers] = useState<UserData[]>([]);
     const [loading, setLoading] = useState(false);
 
     // Search / Filter
@@ -129,6 +191,9 @@ const SuperAdminDashboard: React.FC = () => {
             if (activeTab === "overview") {
                 const res = await jsonFetch("/api/v1/admin/stats", { token });
                 if (res.success) setStats(res.data);
+            } else if (activeTab === "analytics") {
+                const res = await jsonFetch("/api/v1/admin/dashboard/analytics", { token });
+                if (res.success) setAnalytics(res.data);
             } else if (activeTab === "stores") {
                 const url = searchQuery ? `/api/v1/admin/stores?q=${encodeURIComponent(searchQuery)}` : "/api/v1/admin/stores";
                 const res = await jsonFetch(url, { token });
@@ -137,6 +202,10 @@ const SuperAdminDashboard: React.FC = () => {
                 const url = searchQuery ? `/api/v1/admin/suppliers?q=${encodeURIComponent(searchQuery)}` : "/api/v1/admin/suppliers";
                 const res = await jsonFetch(url, { token });
                 if (res.success) setSuppliers(res.data.suppliers);
+            } else if (activeTab === "users") {
+                const url = searchQuery ? `/api/v1/admin/users?q=${encodeURIComponent(searchQuery)}` : "/api/v1/admin/users";
+                const res = await jsonFetch(url, { token });
+                if (res.success) setUsers(res.data.users);
             }
         } catch (err) {
             console.error("Failed to fetch admin data", err);
@@ -176,6 +245,82 @@ const SuperAdminDashboard: React.FC = () => {
             if (res.success) fetchData();
         } catch (err) {
             console.error(err);
+        }
+    };
+
+    const convertToSupplier = async (userId: string, username: string) => {
+        if (!confirm(`Are you sure you want to convert user "${username}" to a Supplier? This will give them supplier access.`)) return;
+        try {
+            const res = await jsonFetch(`/api/v1/admin/users/${userId}/convert-to-supplier`, {
+                method: "POST",
+                token: auth.token
+            });
+            if (res.success) {
+                alert(`User ${username} converted to supplier successfully.`);
+                fetchData();
+            } else {
+                alert("Failed to convert: " + (res.error || "Unknown error"));
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Error: " + err.message);
+        }
+    };
+
+    const deleteUser = async (userId: string, username: string) => {
+        if (!confirm(`Are you sure you want to PERMANENTLY DELETE user "${username}"? This action cannot be undone.`)) return;
+        try {
+            const res = await jsonFetch(`/api/v1/admin/users/${userId}`, {
+                method: "DELETE",
+                token: auth.token
+            });
+            if (res.success) {
+                alert(`User ${username} deleted successfully.`);
+                fetchData();
+            } else {
+                alert("Failed to delete: " + (res.message || res.error || "Unknown error"));
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Error: " + err.message);
+        }
+    };
+
+    const deleteStore = async (storeId: string, storeName: string) => {
+        if (!confirm(`Are you sure you want to PERMANENTLY DELETE store "${storeName}"? This action cannot be undone.`)) return;
+        try {
+            const res = await jsonFetch(`/api/v1/admin/stores/${storeId}`, {
+                method: "DELETE",
+                token: auth.token
+            });
+            if (res.success) {
+                alert(`Store ${storeName} deleted successfully.`);
+                fetchData();
+            } else {
+                alert("Failed to delete: " + (res.message || res.error || "Unknown error"));
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Error: " + err.message);
+        }
+    };
+
+    const deleteSupplier = async (supplierId: string, supplierName: string) => {
+        if (!confirm(`Are you sure you want to PERMANENTLY DELETE supplier "${supplierName}"? This action cannot be undone.`)) return;
+        try {
+            const res = await jsonFetch(`/api/v1/admin/suppliers/${supplierId}`, {
+                method: "DELETE",
+                token: auth.token
+            });
+            if (res.success) {
+                alert(`Supplier ${supplierName} deleted successfully.`);
+                fetchData();
+            } else {
+                alert("Failed to delete: " + (res.message || res.error || "Unknown error"));
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Error: " + err.message);
         }
     };
 
@@ -233,7 +378,7 @@ const SuperAdminDashboard: React.FC = () => {
 
                     {/* Navigation Tabs */}
                     <div className="flex gap-1 mt-6 border-b border-slate-200">
-                        {(["overview", "stores", "suppliers"] as const).map((tab) => (
+                        {(["overview", "analytics", "stores", "suppliers", "users"] as const).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => { setActiveTab(tab); setSearchQuery(""); }}
@@ -350,6 +495,129 @@ const SuperAdminDashboard: React.FC = () => {
                         </motion.div>
                     )}
 
+                    {activeTab === "analytics" && analytics && (
+                        <motion.div
+                            key="analytics"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2 }}
+                            className="space-y-6"
+                        >
+                            {/* Top Level Financials */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <p className="text-indigo-200 text-sm font-medium mb-1">Total Revenue</p>
+                                            <h3 className="text-3xl font-bold">${analytics.overview.financials.totalRevenue.toLocaleString()}</h3>
+                                        </div>
+                                        <div className="p-2 bg-white/20 rounded-lg">
+                                            <Wallet className="w-6 h-6 text-white" />
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-indigo-200">Across {analytics.overview.financials.totalSalesCount} sales</p>
+                                </div>
+                                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <p className="text-slate-500 text-sm font-medium mb-1">Inventory Value</p>
+                                            <h3 className="text-3xl font-bold text-slate-800">${analytics.overview.financials.inventoryValue.toLocaleString()}</h3>
+                                        </div>
+                                        <div className="p-2 bg-emerald-100 rounded-lg">
+                                            <Package className="w-6 h-6 text-emerald-600" />
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-slate-400">Estimated value</p>
+                                </div>
+                                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <p className="text-slate-500 text-sm font-medium mb-1">Expiring Batches (30d)</p>
+                                            <h3 className="text-3xl font-bold text-slate-800">{analytics.overview.operations.expiringBatchesNext30Days}</h3>
+                                        </div>
+                                        <div className="p-2 bg-orange-100 rounded-lg">
+                                            <AlertTriangle className="w-6 h-6 text-orange-600" />
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-slate-400">Requiring attention</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Distributions */}
+                                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                                    <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                        <PieChart className="w-5 h-5 text-indigo-500" />
+                                        User Distribution
+                                    </h3>
+                                    <div className="space-y-4">
+                                        {analytics.distributions.userRoles.map((role) => (
+                                            <div key={role.role}>
+                                                <div className="flex justify-between text-sm mb-1">
+                                                    <span className="font-medium text-slate-700">{role.role}</span>
+                                                    <span className="text-slate-500">{role.count} users</span>
+                                                </div>
+                                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-indigo-500 rounded-full"
+                                                        style={{ width: `${(role.count / analytics.overview.users.total) * 100}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Operational Health */}
+                                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                                    <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                        <Activity className="w-5 h-5 text-indigo-500" />
+                                        Operational Health
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 rounded-xl bg-orange-50 border border-orange-100">
+                                            <p className="text-orange-600 text-sm font-medium">Pending Requests</p>
+                                            <p className="text-2xl font-bold text-orange-800">{analytics.overview.operations.pendingSupplierRequests}</p>
+                                        </div>
+                                        <div className="p-4 rounded-xl bg-red-50 border border-red-100">
+                                            <p className="text-red-600 text-sm font-medium">Failed Uploads</p>
+                                            <p className="text-2xl font-bold text-red-800">{analytics.overview.operations.failedUploads}</p>
+                                        </div>
+                                        <div className="col-span-2 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                                            <div className="flex justify-between items-end mb-2">
+                                                <p className="text-slate-600 text-sm font-medium">Sales Trend (Last 30 Days)</p>
+                                                <p className="text-xs text-slate-400">Daily Revenue</p>
+                                            </div>
+                                            <SimpleBarChart
+                                                data={analytics.trends.sales.map(s => s.revenue)}
+                                                color="bg-emerald-500"
+                                                height={60}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Critical Activity */}
+                            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                                <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                    <AlertTriangle className="w-5 h-5 text-red-500" />
+                                    Recent Critical Actions
+                                </h3>
+                                <div className="space-y-1">
+                                    {analytics.recentCriticalActivity.length === 0 ? (
+                                        <p className="text-slate-400 text-center py-4">No critical actions recorded recently.</p>
+                                    ) : (
+                                        analytics.recentCriticalActivity.map((act) => (
+                                            <ActivityItem key={act.id} activity={act} />
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+
                     {activeTab === "stores" && (
                         <motion.div
                             key="stores"
@@ -404,14 +672,25 @@ const SuperAdminDashboard: React.FC = () => {
                                                     <StatusBadge isActive={store.isActive} />
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className={store.isActive ? "text-red-600 hover:text-red-700 hover:bg-red-50" : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"}
-                                                        onClick={() => toggleStoreStatus(store.id, store.isActive)}
-                                                    >
-                                                        {store.isActive ? "Suspend" : "Activate"}
-                                                    </Button>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className={store.isActive ? "text-amber-600 hover:text-amber-700 hover:bg-amber-50" : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"}
+                                                            onClick={() => toggleStoreStatus(store.id, store.isActive)}
+                                                        >
+                                                            {store.isActive ? "Suspend" : "Activate"}
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                                            onClick={() => deleteStore(store.id, store.name)}
+                                                            title="Delete Store"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -485,14 +764,25 @@ const SuperAdminDashboard: React.FC = () => {
                                                     <StatusBadge isActive={supplier.isActive} />
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className={supplier.isActive ? "text-red-600 hover:text-red-700 hover:bg-red-50" : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"}
-                                                        onClick={() => toggleSupplierStatus(supplier.id, supplier.isActive)}
-                                                    >
-                                                        {supplier.isActive ? "Suspend" : "Activate"}
-                                                    </Button>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className={supplier.isActive ? "text-amber-600 hover:text-amber-700 hover:bg-amber-50" : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"}
+                                                            onClick={() => toggleSupplierStatus(supplier.id, supplier.isActive)}
+                                                        >
+                                                            {supplier.isActive ? "Suspend" : "Activate"}
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                                            onClick={() => deleteSupplier(supplier.id, supplier.name)}
+                                                            title="Delete Supplier"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -500,6 +790,103 @@ const SuperAdminDashboard: React.FC = () => {
                                             <tr>
                                                 <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
                                                     No suppliers found.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </motion.div>
+                    )}
+
+
+                    {activeTab === "users" && (
+                        <motion.div
+                            key="users"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ duration: 0.2 }}
+                            className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between gap-4">
+                                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                    <Users className="w-5 h-5 text-indigo-500" />
+                                    User Management
+                                </h2>
+                                <form onSubmit={handleSearch} className="flex gap-2">
+                                    <div className="relative">
+                                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search users..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
+                                        />
+                                    </div>
+                                    <Button type="submit" variant="default" disabled={loading}>
+                                        {loading ? "Searching..." : "Search"}
+                                    </Button>
+                                </form>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 border-b border-slate-200">
+                                        <tr>
+                                            <th className="px-6 py-4 font-semibold text-slate-700">Username</th>
+                                            <th className="px-6 py-4 font-semibold text-slate-700">Email</th>
+                                            <th className="px-6 py-4 font-semibold text-slate-700">Role</th>
+                                            <th className="px-6 py-4 font-semibold text-slate-700">Joined</th>
+                                            <th className="px-6 py-4 font-semibold text-slate-700 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {users.map((user) => (
+                                            <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-6 py-4 font-medium text-slate-900">{user.username}</td>
+                                                <td className="px-6 py-4 text-slate-500">{user.email}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.globalRole === 'SUPERADMIN'
+                                                        ? "bg-purple-100 text-purple-800"
+                                                        : user.globalRole === 'SUPPLIER'
+                                                            ? "bg-emerald-100 text-emerald-800"
+                                                            : "bg-slate-100 text-slate-800"
+                                                        }`}>
+                                                        {user.globalRole || "USER"}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-500">{new Date(user.createdAt).toLocaleDateString()}</td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {user.globalRole !== 'SUPPLIER' && user.globalRole !== 'SUPERADMIN' && (
+                                                            <Button
+                                                                variant="default"
+                                                                size="sm"
+                                                                className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 border border-indigo-200"
+                                                                onClick={() => convertToSupplier(user.id, user.username)}
+                                                            >
+                                                                Convert to Supplier
+                                                            </Button>
+                                                        )}
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                                            onClick={() => deleteUser(user.id, user.username)}
+                                                            title="Delete User"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {!loading && users.length === 0 && (
+                                            <tr>
+                                                <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                                    No users found.
                                                 </td>
                                             </tr>
                                         )}
