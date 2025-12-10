@@ -8,8 +8,9 @@ import type { Prisma, PrismaClient } from "@prisma/client";
  */
 const ENCRYPT_FIELDS: Record<string, string[]> = {
   // User model - PII and authentication data
-  // username and email are manually deterministically encrypted for lookup.
-  User: ["phone", "imageUrl"],
+  // NOTE: username and email are encrypted deterministically for lookup (WHERE clauses)
+  // but they still need to be in this list so they get decrypted when read
+  User: ["username", "email", "phone", "imageUrl"],
 
   // Store model - business information
   Store: ["name"],
@@ -33,8 +34,9 @@ const ENCRYPT_FIELDS: Record<string, string[]> = {
   AuditLog: ["action", "resource"],
 
   // Otp model - authentication data
-  // phone is deterministically encrypted manually for lookup.
-  Otp: ["otpHash", "salt"],
+  // NOTE: phone is encrypted deterministically for lookup (WHERE clauses)
+  // but it still needs to be in this list so it gets decrypted when read
+  Otp: ["phone", "otpHash", "salt"],
 
   // Sale model - transaction reference
   Sale: ["externalRef"],
@@ -44,6 +46,19 @@ const ENCRYPT_FIELDS: Record<string, string[]> = {
 
   // StockMovement model - notes may contain sensitive info
   StockMovement: ["note"],
+};
+
+/**
+ * Fields that are MANUALLY encrypted deterministically in routes (for WHERE lookups)
+ * These fields should be DECRYPTED on read but NOT encrypted on write
+ * (to avoid double encryption which breaks lookups)
+ */
+const DECRYPT_ONLY_FIELDS: Record<string, string[]> = {
+  // User model - username and email are encrypted deterministically in auth routes
+  User: ["username", "email"],
+
+  // Otp model - phone is encrypted deterministically in auth routes
+  Otp: ["phone"],
 };
 
 /**
@@ -130,6 +145,26 @@ function decryptFields(data: any, fields: string[], dek: Buffer): void {
 }
 
 /**
+ * Decrypt all fields for a model (both ENCRYPT_FIELDS and DECRYPT_ONLY_FIELDS)
+ */
+function decryptAllFieldsForModel(data: any, model: string, dek: Buffer): void {
+  if (!data || typeof data !== "object") return;
+
+  // Decrypt regular encrypted fields
+  const encryptFields = ENCRYPT_FIELDS[model] || [];
+  if (encryptFields.length > 0) {
+    decryptFields(data, encryptFields, dek);
+  }
+
+  // Decrypt decrypt-only fields (manually encrypted in routes)
+  const decryptOnlyFields = DECRYPT_ONLY_FIELDS[model] || [];
+  if (decryptOnlyFields.length > 0) {
+    decryptFields(data, decryptOnlyFields, dek);
+  }
+}
+
+
+/**
  * Setup Prisma Client Extension for transparent field-level encryption
  * This extension intercepts all Prisma operations and:
  * 1. Encrypts sensitive fields before writing to database
@@ -158,8 +193,8 @@ export default function setupPrismaCrypto(prisma: PrismaClient) {
           const result = await query(args);
 
           // Decrypt the result
-          if (result && fieldsToEncrypt.length > 0) {
-            decryptFields(result, fieldsToEncrypt, dek);
+          if (result) {
+            decryptAllFieldsForModel(result, model, dek);
           }
 
           return result;
@@ -191,8 +226,8 @@ export default function setupPrismaCrypto(prisma: PrismaClient) {
           const result = await query(args);
 
           // Decrypt the result
-          if (result && fieldsToEncrypt.length > 0) {
-            decryptFields(result, fieldsToEncrypt, dek);
+          if (result) {
+            decryptAllFieldsForModel(result, model, dek);
           }
 
           return result;
@@ -224,21 +259,18 @@ export default function setupPrismaCrypto(prisma: PrismaClient) {
 
           const result = await query(args);
 
-          // Decrypt the result
-          if (result && fieldsToEncrypt.length > 0) {
-            decryptFields(result, fieldsToEncrypt, dek);
+          // Decrypt the result (including decrypt-only fields)
+          if (result) {
+            decryptAllFieldsForModel(result, model, dek);
 
             // Handle nested relations
             for (const key in result) {
               if (result[key] && typeof result[key] === "object") {
                 const relatedModel = key.charAt(0).toUpperCase() + key.slice(1);
-                const relatedFields = ENCRYPT_FIELDS[relatedModel] || [];
-                if (relatedFields.length > 0) {
-                  if (Array.isArray(result[key])) {
-                    result[key].forEach((item: any) => decryptFields(item, relatedFields, dek));
-                  } else {
-                    decryptFields(result[key], relatedFields, dek);
-                  }
+                if (Array.isArray(result[key])) {
+                  result[key].forEach((item: any) => decryptAllFieldsForModel(item, relatedModel, dek));
+                } else {
+                  decryptAllFieldsForModel(result[key], relatedModel, dek);
                 }
               }
             }
@@ -252,8 +284,8 @@ export default function setupPrismaCrypto(prisma: PrismaClient) {
           const result = await query(args);
           const fieldsToEncrypt = ENCRYPT_FIELDS[model] || [];
 
-          if (result && fieldsToEncrypt.length > 0) {
-            decryptFields(result, fieldsToEncrypt, dek);
+          if (result) {
+            decryptAllFieldsForModel(result, model, dek);
 
             // Handle nested relations
             for (const key in result) {
@@ -279,8 +311,8 @@ export default function setupPrismaCrypto(prisma: PrismaClient) {
           const result = await query(args);
           const fieldsToEncrypt = ENCRYPT_FIELDS[model] || [];
 
-          if (result && fieldsToEncrypt.length > 0) {
-            decryptFields(result, fieldsToEncrypt, dek);
+          if (result) {
+            decryptAllFieldsForModel(result, model, dek);
 
             // Handle nested relations
             for (const key in result) {
@@ -306,8 +338,8 @@ export default function setupPrismaCrypto(prisma: PrismaClient) {
           const result = await query(args);
           const fieldsToEncrypt = ENCRYPT_FIELDS[model] || [];
 
-          if (result && fieldsToEncrypt.length > 0) {
-            decryptFields(result, fieldsToEncrypt, dek);
+          if (result) {
+            decryptAllFieldsForModel(result, model, dek);
 
             // Handle nested relations
             for (const key in result) {
@@ -333,8 +365,8 @@ export default function setupPrismaCrypto(prisma: PrismaClient) {
           const result = await query(args);
           const fieldsToEncrypt = ENCRYPT_FIELDS[model] || [];
 
-          if (result && fieldsToEncrypt.length > 0) {
-            decryptFields(result, fieldsToEncrypt, dek);
+          if (result) {
+            decryptAllFieldsForModel(result, model, dek);
 
             // Handle nested relations
             for (const key in result) {
@@ -358,23 +390,20 @@ export default function setupPrismaCrypto(prisma: PrismaClient) {
         // Intercept findMany operations
         async findMany({ model, operation, args, query }: any) {
           const result = await query(args);
-          const fieldsToEncrypt = ENCRYPT_FIELDS[model] || [];
 
-          if (result && Array.isArray(result) && fieldsToEncrypt.length > 0) {
+          // Decrypt the result (including decrypt-only fields)
+          if (result && Array.isArray(result)) {
             for (const item of result) {
-              decryptFields(item, fieldsToEncrypt, dek);
+              decryptAllFieldsForModel(item, model, dek);
 
               // Handle nested relations
               for (const key in item) {
                 if (item[key] && typeof item[key] === "object") {
                   const relatedModel = key.charAt(0).toUpperCase() + key.slice(1);
-                  const relatedFields = ENCRYPT_FIELDS[relatedModel] || [];
-                  if (relatedFields.length > 0) {
-                    if (Array.isArray(item[key])) {
-                      item[key].forEach((nested: any) => decryptFields(nested, relatedFields, dek));
-                    } else {
-                      decryptFields(item[key], relatedFields, dek);
-                    }
+                  if (Array.isArray(item[key])) {
+                    item[key].forEach((nested: any) => decryptAllFieldsForModel(nested, relatedModel, dek));
+                  } else {
+                    decryptAllFieldsForModel(item[key], relatedModel, dek);
                   }
                 }
               }
