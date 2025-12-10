@@ -52,8 +52,9 @@ const zodDetails = (err: any) =>
  - keeps passwordHash property intact (not decrypted)
 */
 async function findUserByEmail(email: string) {
+  // Try finding by deterministic encryption (legacy/if extension is off)
   const enc = crypto$.encryptCellDeterministic(email);
-  const row = await prisma.user.findUnique({
+  let row = await prisma.user.findUnique({
     where: { email: enc },
     select: {
       id: true,
@@ -69,10 +70,44 @@ async function findUserByEmail(email: string) {
       globalRole: true,
     },
   });
+
+  // If not found, try finding by raw email (if extension is on/transparent or field is plaintext)
+  if (!row) {
+     row = await prisma.user.findUnique({
+      where: { email }, // Prisma extension *might* encrypt this under the hood if active
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        imageUrl: true,
+        passwordHash: true,
+        phone: true,
+        isActive: true,
+        isverified: true,
+        createdAt: true,
+        updatedAt: true,
+        globalRole: true,
+      },
+    });
+  }
+
   if (!row) return null;
 
-  // Prisma extension automatically decrypts fields, no manual decryption needed
-  return row as any;
+  // Manual decryption attempt on fields if they look encrypted (doesn't hurt if already plaintext)
+  // Use safeDecryptCell which returns original value if decrypt fails
+  const decrypted: any = { ...row };
+  decrypted.email = crypto$.safeDecryptCell(row.email);
+  decrypted.username = crypto$.safeDecryptCell(row.username);
+  decrypted.imageUrl = crypto$.safeDecryptCell(row.imageUrl);
+  
+  // Double check: if input email matches decrypted email, we found the right user
+  if (decrypted.email !== email) {
+    // Edge case: Hash collision or wrong user found? 
+    // Usually harmless if unique constraint holds, but ensuring safety.
+    return null;
+  }
+
+  return decrypted;
 }
 
 /* Rate limiters (in-memory) */
@@ -171,7 +206,7 @@ router.post(
       }
 
       // check username duplicate (deterministic)
-      const encUsername = crypto$.encryptCellDeterministic(email.split("@")[0]);
+      const encUsername = crypto$.encryptCellDeterministic(username);
       const existingUsernameRow = await prisma.user.findUnique({
         where: { username: encUsername },
         select: { id: true },
@@ -560,9 +595,14 @@ router.post(
       // decrypt stored otpHash then compare
       let storedOtpPlain: string | null = null;
       try {
+        // Try manual decrypt first
         storedOtpPlain = crypto$.decryptCell(otpRow.otpHash);
+        // If null (fail), maybe it's plaintext?
+        if (!storedOtpPlain) storedOtpPlain = otpRow.otpHash;
       } catch (dErr) {
         console.error("Failed to decrypt stored OTP:", dErr);
+        // Fallback
+        storedOtpPlain = otpRow.otpHash;
       }
 
       if (storedOtpPlain !== otp) {

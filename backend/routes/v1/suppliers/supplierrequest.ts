@@ -3,14 +3,11 @@ import { Router, Request, Response, NextFunction } from "express";
 import prisma from "../../../lib/prisma";
 import { authenticate } from "../../../middleware/authenticate";
 import {
-  storeContext,
-  requireStore,
+
   RequestWithUser,
 } from "../../../middleware/store";
 import { z } from "zod";
-import { requireRole } from "../../../middleware/requireRole"; // your requireRole file
 import { sendMail } from "../../../lib/mailer";
-import { crypto$ } from "../../../lib/crypto";
 
 const router = Router();
 
@@ -214,7 +211,18 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stores = await prisma.store.findMany({
-        where: { isActive: true },
+        where: {
+          isActive: true,
+          // Exclude stores owned by users who are now global Suppliers
+          users: {
+            none: {
+              role: "STORE_OWNER",
+              user: {
+                globalRole: "SUPPLIER",
+              },
+            },
+          },
+        },
         select: {
           id: true,
           name: true,

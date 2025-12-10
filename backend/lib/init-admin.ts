@@ -11,42 +11,73 @@ export async function ensureAdmin() {
     return;
   }
 
-  // Check if admin exists (deterministic encryption for lookup)
   const encEmail = crypto$.encryptCellDeterministic(email);
-  const existing = await prisma.user.findUnique({
-    where: { email: encEmail },
+
+  // Find all current SUPERADMINs
+  const currentSuperAdmins = await prisma.user.findMany({
+    where: { globalRole: "SUPERADMIN" },
   });
 
-  if (existing) {
-    if (existing.globalRole !== "SUPERADMIN") {
-        console.log("User found with admin email but incorrect role. Promoting to SUPERADMIN.");
-        await prisma.user.update({
-            where: { id: existing.id },
-            data: { globalRole: "SUPERADMIN" }
-        });
+  let targetAdminUser = null;
+
+  // Identify the target admin among current SUPERADMINs or as a regular user
+  for (const user of currentSuperAdmins) {
+    if (user.email === encEmail) {
+      targetAdminUser = user;
+      break;
     }
-    return;
   }
 
-  console.log("Creating default admin user...");
-  // create a default username
-  const username = "admin";
-  const encUsername = crypto$.encryptCellDeterministic(username);
-  const hashed = await hashPassword(password);
+  if (!targetAdminUser) {
+    // If not found in current SUPERADMINs, check if they exist as a regular user
+    targetAdminUser = await prisma.user.findUnique({
+      where: { email: encEmail },
+    });
+  }
 
-  try {
+  // Demote any SUPERADMINs that are not the target admin
+  for (const user of currentSuperAdmins) {
+    if (user.email !== encEmail) {
+      console.log(`Demoting user ${user.id} from SUPERADMIN role.`);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { globalRole: "STORE_OWNER" },
+      });
+    }
+  }
+
+  // Now ensure the target admin user exists and has the SUPERADMIN role
+  if (targetAdminUser) {
+    if (targetAdminUser.globalRole !== "SUPERADMIN") {
+      console.log("User found with admin email but incorrect role. Promoting to SUPERADMIN.");
+      await prisma.user.update({
+        where: { id: targetAdminUser.id },
+        data: { globalRole: "SUPERADMIN" },
+      });
+    } else {
+      console.log("Admin user already exists and has SUPERADMIN role.");
+    }
+  } else {
+    // If target admin user does not exist, create them
+    console.log("Creating default admin user...");
+    const username = "admin"; // You might want to make this configurable or unique
+    const encUsername = crypto$.encryptCellDeterministic(username);
+    const hashed = await hashPassword(password);
+
+    try {
       await prisma.user.create({
         data: {
-            username: encUsername,
-            email: encEmail,
-            passwordHash: hashed,
-            isverified: true,
-            globalRole: "SUPERADMIN",
-            isActive: true
-        }
+          username: encUsername,
+          email: encEmail,
+          passwordHash: hashed,
+          isverified: true,
+          globalRole: "SUPERADMIN",
+          isActive: true,
+        },
       });
       console.log("Admin user created.");
-  } catch (err) {
+    } catch (err) {
       console.error("Failed to create admin user:", err);
+    }
   }
 }
