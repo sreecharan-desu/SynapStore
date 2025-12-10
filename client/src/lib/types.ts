@@ -5,6 +5,8 @@ export interface User {
     globalRole?: string | null;
     imageUrl?: string | null;
     isverified?: boolean;
+    isActive?: boolean;
+    createdAt?: string;
 }
 
 export interface Store {
@@ -15,6 +17,9 @@ export interface Store {
     currency?: string | null;
     settings?: any;
     roles?: string[];
+    isActive?: boolean;
+    createdAt?: string;
+    users?: Array<{ userId: string; user?: { email: string } }>;
 }
 
 export interface AuthResponse {
@@ -81,8 +86,35 @@ export interface Supplier {
     email?: string;
     address?: string | null;
     userId?: string | null;
+    isActive?: boolean;
+    user?: { id: string; email: string; username: string };
 }
 
 // Mock types for missing features
 export type MockMedicineCreate = Omit<Medicine, "id" | "isActive"> & { price: number };
 export type MockBatchCreate = { medicineId: string; batchNumber: string; expiry: string; qty: number; cost: number };
+
+export interface SupplierRequest {
+    id: string;
+    supplierId: string;
+    storeId: string;
+    status: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";
+    message?: string;
+    createdAt: string;
+    updatedAt: string;
+    supplier?: Supplier;
+    store?: Store;
+    
+}
+
+export interface AdminStats {
+    counts: {
+        users: number;
+        stores: number;
+        medicines: number;
+        batches: number;
+        reorders: number;
+        uploads: number;
+    };
+    recentActivity: any[];
+}

@@ -53,7 +53,8 @@ const getGoogleClientId = (): string => {
 };
 
 type SigninResponse = {
-  token: string;
+  data: {
+      token: string;
   user: AuthUser;
   effectiveStore: EffectiveStore | null;
   needsStoreSetup?: boolean;
@@ -61,6 +62,8 @@ type SigninResponse = {
   suppliers?: any[];
   supplierId?: { id: string } | null;
   stores?: any[];
+  }
+
 };
 
 const Login: React.FC = () => {
@@ -104,17 +107,17 @@ const Login: React.FC = () => {
   // Helpers
   const handleAuthSuccess = (body: SigninResponse) => {
     setAuth({
-      token: body.token,
-      user: body.user,
-      effectiveStore: body.effectiveStore ?? null,
-      needsStoreSetup: Boolean(body.needsStoreSetup),
-      needsStoreSelection: Boolean(body.needsStoreSelection),
-      suppliers: body.suppliers ?? [],
-      supplierId: body.supplierId ?? null,
+      token: body.data.token,
+      user: body.data.user,
+      effectiveStore: body.data.effectiveStore ?? null,
+      needsStoreSetup: Boolean(body.data.needsStoreSetup),
+      needsStoreSelection: Boolean(body.data.needsStoreSelection),
+      suppliers: body.data.suppliers ?? [],
+      supplierId: body.data.supplierId ?? null,
     });
 
     // Role-based redirects
-    const globalRole = body.user?.globalRole;
+    const globalRole = body.data.user?.globalRole;
 
     // SUPERADMIN → SuperAdminDashboard
     if (globalRole === "SUPERADMIN") {
@@ -129,13 +132,13 @@ const Login: React.FC = () => {
     }
 
     // STORE_OWNER → needs store setup or store dashboard
-    if (body.needsStoreSetup) {
+    if (body.data.needsStoreSetup) {
       navigate("/store/create", { replace: true });
       return;
     }
 
     // STORE_OWNER with store(s) → StoreOwnerDashboard
-    if (globalRole === "STORE_OWNER" || body.effectiveStore) {
+    if (globalRole === "STORE_OWNER" || body.data.effectiveStore) {
       navigate("/store/dashboard", { replace: true });
       return;
     }
@@ -181,7 +184,7 @@ const Login: React.FC = () => {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      if (body.token) {
+      if (body.data.token) {
         handleAuthSuccess(body);
       } else {
         throw new Error("no token returned");
@@ -204,7 +207,7 @@ const Login: React.FC = () => {
         method: "POST",
         body: JSON.stringify({ idToken: credential }),
       });
-      if (body.token) {
+      if (body.data.token) {
         handleAuthSuccess(body);
       } else {
         throw new Error("No token returned from Google auth endpoint");

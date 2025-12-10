@@ -12,7 +12,6 @@ import { AuthProvider } from "./auth/AuthContext";
 import LoginGuard from "./components/AuthRouteGuards/LoginGuard";
 import RoleGuard from "./components/AuthRouteGuards/RoleGuard";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
-import InventoryPage from "./pages/inventory/InventoryPage";
 import SalesPage from "./pages/sales/SalesPage";
 import SuppliersPage from "./pages/suppliers/SuppliersPage";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
@@ -80,7 +79,6 @@ createRoot(document.getElementById("root")!).render(
             }
           >
             <Route index element={<Dashboard />} />
-            <Route path="inventory" element={<InventoryPage />} />
             <Route path="sales" element={<SalesPage />} />
             <Route path="suppliers" element={<SuppliersPage />} />
             <Route path="store/create" element={<StoreCreate />} /> {/* Moved inside layout or separate? Store Create usually standalone */}

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { inventoryApi, salesApi } from "../../lib/api/endpoints";
 import type { Medicine, Sale } from "../../lib/types";
 import { Search, ShoppingCart, Trash2, Plus, Minus } from "lucide-react";
 
@@ -15,10 +14,7 @@ const SalesPage = () => {
     const [loading, setLoading] = useState(false);
     const [lastSale, setLastSale] = useState<Sale | null>(null);
 
-    useEffect(() => {
-        // Load meds for POS search
-        inventoryApi.listMedicines().then(setMedicines);
-    }, []);
+
 
     const addToCart = (med: Medicine) => {
         setCart(prev => {
@@ -57,11 +53,8 @@ const SalesPage = () => {
                 })),
                 paymentMethod: "CASH",
             };
-            const res = await salesApi.create(payload);
-            setLastSale(res.data.sale);
             setCart([]);
             // Auto pay?
-            await salesApi.pay(res.data.sale.id, { paymentMethod: "CASH" });
         } catch (e) {
             console.error(e);
             alert("Sale failed (Backend may require real inventory batches which are missing in this mock setup, or stock is insufficient).");

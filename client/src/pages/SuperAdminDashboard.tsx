@@ -9,7 +9,8 @@ import {
     PieChart, AlertTriangle, Wallet
 } from "lucide-react";
 
-import { jsonFetch } from "../utils/api";
+import { adminApi } from "../lib/api/endpoints";
+
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useSetRecoilState } from "recoil";
@@ -187,25 +188,22 @@ const SuperAdminDashboard: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const token = auth.token;
+            const token = auth.token; // client handles this automatically via interceptor, but keeping for reference if needed
             if (activeTab === "overview") {
-                const res = await jsonFetch("/api/v1/admin/stats", { token });
-                if (res.success) setStats(res.data);
+                const res = await adminApi.getStats();
+                if (res.data.success) setStats(res.data.data);
             } else if (activeTab === "analytics") {
-                const res = await jsonFetch("/api/v1/admin/dashboard/analytics", { token });
-                if (res.success) setAnalytics(res.data);
+                const res = await adminApi.getDashboardAnalytics();
+                if (res.data.success) setAnalytics(res.data.data);
             } else if (activeTab === "stores") {
-                const url = searchQuery ? `/api/v1/admin/stores?q=${encodeURIComponent(searchQuery)}` : "/api/v1/admin/stores";
-                const res = await jsonFetch(url, { token });
-                if (res.success) setStores(res.data.stores);
+                const res = await adminApi.getStores({ q: searchQuery });
+                if (res.data.success) setStores(res.data.data.stores);
             } else if (activeTab === "suppliers") {
-                const url = searchQuery ? `/api/v1/admin/suppliers?q=${encodeURIComponent(searchQuery)}` : "/api/v1/admin/suppliers";
-                const res = await jsonFetch(url, { token });
-                if (res.success) setSuppliers(res.data.suppliers);
+                const res = await adminApi.getSuppliers(searchQuery);
+                if (res.data.success) setSuppliers(res.data.data.suppliers);
             } else if (activeTab === "users") {
-                const url = searchQuery ? `/api/v1/admin/users?q=${encodeURIComponent(searchQuery)}` : "/api/v1/admin/users";
-                const res = await jsonFetch(url, { token });
-                if (res.success) setUsers(res.data.users);
+                const res = await adminApi.getUsers({ q: searchQuery });
+                if (res.data.success) setUsers(res.data.data.users);
             }
         } catch (err) {
             console.error("Failed to fetch admin data", err);
@@ -223,12 +221,8 @@ const SuperAdminDashboard: React.FC = () => {
     const toggleStoreStatus = async (storeId: string, currentStatus: boolean) => {
         if (!confirm(`Are you sure you want to ${currentStatus ? 'suspend' : 'activate'} this store?`)) return;
         try {
-            const res = await jsonFetch(`/api/v1/admin/stores/${storeId}/suspend`, {
-                method: "PATCH",
-                token: auth.token,
-                body: JSON.stringify({ isActive: !currentStatus })
-            });
-            if (res.success) fetchData();
+            const res = await adminApi.suspendStore(storeId, !currentStatus);
+            if (res.data.success) fetchData();
         } catch (err) {
             console.error(err);
         }
@@ -237,12 +231,8 @@ const SuperAdminDashboard: React.FC = () => {
     const toggleSupplierStatus = async (supplierId: string, currentStatus: boolean) => {
         if (!confirm(`Are you sure you want to ${currentStatus ? 'suspend' : 'activate'} this supplier?`)) return;
         try {
-            const res = await jsonFetch(`/api/v1/admin/suppliers/${supplierId}/suspend`, {
-                method: "PATCH",
-                token: auth.token,
-                body: JSON.stringify({ isActive: !currentStatus })
-            });
-            if (res.success) fetchData();
+            const res = await adminApi.suspendSupplier(supplierId, !currentStatus);
+            if (res.data.success) fetchData();
         } catch (err) {
             console.error(err);
         }
@@ -251,15 +241,10 @@ const SuperAdminDashboard: React.FC = () => {
     const convertToSupplier = async (userId: string, username: string) => {
         if (!confirm(`Are you sure you want to convert user "${username}" to a Supplier? This will give them supplier access.`)) return;
         try {
-            const res = await jsonFetch(`/api/v1/admin/users/${userId}/convert-to-supplier`, {
-                method: "POST",
-                token: auth.token
-            });
-            if (res.success) {
+            const res = await adminApi.convertToSupplier(userId);
+            if (res.data) {
                 alert(`User ${username} converted to supplier successfully.`);
                 fetchData();
-            } else {
-                alert("Failed to convert: " + (res.error || "Unknown error"));
             }
         } catch (err: any) {
             console.error(err);
@@ -270,16 +255,9 @@ const SuperAdminDashboard: React.FC = () => {
     const deleteUser = async (userId: string, username: string) => {
         if (!confirm(`Are you sure you want to PERMANENTLY DELETE user "${username}"? This action cannot be undone.`)) return;
         try {
-            const res = await jsonFetch(`/api/v1/admin/users/${userId}`, {
-                method: "DELETE",
-                token: auth.token
-            });
-            if (res.success) {
-                alert(`User ${username} deleted successfully.`);
-                fetchData();
-            } else {
-                alert("Failed to delete: " + (res.message || res.error || "Unknown error"));
-            }
+            await adminApi.deleteUser(userId);
+            alert(`User ${username} deleted successfully.`);
+            fetchData();
         } catch (err: any) {
             console.error(err);
             alert("Error: " + err.message);
@@ -289,16 +267,9 @@ const SuperAdminDashboard: React.FC = () => {
     const deleteStore = async (storeId: string, storeName: string) => {
         if (!confirm(`Are you sure you want to PERMANENTLY DELETE store "${storeName}"? This action cannot be undone.`)) return;
         try {
-            const res = await jsonFetch(`/api/v1/admin/stores/${storeId}`, {
-                method: "DELETE",
-                token: auth.token
-            });
-            if (res.success) {
-                alert(`Store ${storeName} deleted successfully.`);
-                fetchData();
-            } else {
-                alert("Failed to delete: " + (res.message || res.error || "Unknown error"));
-            }
+            await adminApi.deleteStore(storeId);
+            alert(`Store ${storeName} deleted successfully.`);
+            fetchData();
         } catch (err: any) {
             console.error(err);
             alert("Error: " + err.message);
@@ -308,16 +279,9 @@ const SuperAdminDashboard: React.FC = () => {
     const deleteSupplier = async (supplierId: string, supplierName: string) => {
         if (!confirm(`Are you sure you want to PERMANENTLY DELETE supplier "${supplierName}"? This action cannot be undone.`)) return;
         try {
-            const res = await jsonFetch(`/api/v1/admin/suppliers/${supplierId}`, {
-                method: "DELETE",
-                token: auth.token
-            });
-            if (res.success) {
-                alert(`Supplier ${supplierName} deleted successfully.`);
-                fetchData();
-            } else {
-                alert("Failed to delete: " + (res.message || res.error || "Unknown error"));
-            }
+            await adminApi.deleteSupplier(supplierId);
+            alert(`Supplier ${supplierName} deleted successfully.`);
+            fetchData();
         } catch (err: any) {
             console.error(err);
             alert("Error: " + err.message);
