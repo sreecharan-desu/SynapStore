@@ -2,12 +2,10 @@
 import { Router, Request, Response, NextFunction } from "express";
 import prisma from "../../../lib/prisma";
 import { authenticate } from "../../../middleware/authenticate";
-import {
-
-  RequestWithUser,
-} from "../../../middleware/store";
+import { RequestWithUser } from "../../../middleware/store";
 import { z } from "zod";
 import { sendMail } from "../../../lib/mailer";
+import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
 
 const router = Router();
 
@@ -16,8 +14,6 @@ const createReqSchema = z.object({
   supplierId: z.string().uuid(),
   message: z.string().optional(),
 });
-
-
 
 
 /**
@@ -34,9 +30,21 @@ const supplierCreateSchema = z.object({
 
 /**
  * POST /v1/suppliers/global
- * - Authenticated user (preferably globalRole === "SUPPLIER", but we allow admin to create too)
- * - Upsert a global Supplier row (storeId null)
- * - Optionally attach the user to the supplier (supplier.userId = user.id) if not already set
+ * Description: Creates or updates a global supplier profile for the user.
+ * Headers: 
+ *  - Authorization: Bearer <token>
+ * Body:
+ *  - name: string (min 1 char)
+ *  - address: string (optional)
+ *  - phone: string (optional)
+ *  - contactName: string (optional)
+ *  - defaultLeadTime: number (optional)
+ *  - defaultMOQ: number (optional)
+ * Responses:
+ *  - 201: { success: true, data: { supplier: { ... } } }
+ *  - 400: Validation failed
+ *  - 409: Supplier name already taken
+ *  - 500: Internal server error
  */
 router.post(
   "/global",
@@ -44,12 +52,9 @@ router.post(
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const parsed = supplierCreateSchema.safeParse(req.body);
-      if (!parsed.success)
-        return res.status(400).json({
-          success: false,
-          error: "validation_failed",
-          details: parsed.error.issues,
-        });
+      if (!parsed.success) {
+        return handleZodError(res, parsed.error);
+      }
 
       const user = req.user!;
       const payload = parsed.data;
@@ -70,17 +75,7 @@ router.post(
             },
           });
           if (conflict) {
-            return res.status(409).json({
-              success: false,
-              error: "name_taken",
-              details: [
-                {
-                  code: "custom",
-                  message: "Supplier name already used by another profile.",
-                  path: ["name"],
-                },
-              ],
-            });
+            return sendError(res, "Supplier name already used by another profile", 409, { code: "name_taken" });
           }
         }
 
@@ -163,7 +158,7 @@ router.post(
         });
       }
 
-      return res.status(201).json({ success: true, data: { supplier } });
+      return sendSuccess(res, "Supplier profile created/updated", { supplier }, 201);
     } catch (err) {
       next(err);
     }
@@ -172,7 +167,15 @@ router.post(
 
 /**
  * GET /v1/suppliers/global
- * - list global suppliers (search q)
+ * Description: Lists global suppliers with optional search query.
+ * Headers: 
+ *  - Authorization: Bearer <token>
+ * Query Params:
+ *  - q: string (search term for name or contactName)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { suppliers: [...] } }
+ *  - 500: Internal server error
  */
 router.get(
   "/global",
@@ -194,7 +197,7 @@ router.get(
         orderBy: { name: "asc" },
         take: 100,
       });
-      return res.json({ success: true, data: { suppliers } });
+      return sendSuccess(res, "Global suppliers list", { suppliers });
     } catch (err) {
       next(err);
     }
@@ -203,7 +206,13 @@ router.get(
 
 /**
  * GET /v1/suppliers/discovery
- * - Authenticated user can see list of active stores
+ * Description: Lists active stores for suppliers to discover.
+ * Headers: 
+ *  - Authorization: Bearer <token>
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { stores: [...] } }
+ *  - 500: Internal server error
  */
 router.get(
   "/discovery",
@@ -232,7 +241,7 @@ router.get(
         },
         take: 100,
       });
-      return res.json({ success: true, data: { stores } });
+      return sendSuccess(res, "Store discovery list", { stores });
     } catch (err) {
       next(err);
     }
@@ -240,8 +249,22 @@ router.get(
 );
 
 /**
- * POST /v1/supplier-requests
- * - Authenticated user with globalRole SUPPLIER creates a request for a store
+ * POST /v1/suppliers
+ * Description: Creates a new supplier request for a store.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPPLIER)
+ * Body:
+ *  - storeId: string (UUID)
+ *  - supplierId: string (UUID)
+ *  - message: string (optional)
+ * Responses:
+ *  - 201: { success: true, data: { request: { ... } } }
+ *  - 400: Validation failed
+ *  - 401: Unauthenticated
+ *  - 403: Not a supplier
+ *  - 404: Store or Supplier not found
+ *  - 409: Request already exists
+ *  - 500: Internal server error
  */
 router.post(
   "/",
@@ -249,20 +272,11 @@ router.post(
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const parsed = createReqSchema.safeParse(req.body);
-      if (!parsed.success)
-        return res.status(400).json({
-          success: false,
-          error: "validation_failed",
-          details: parsed.error.issues,
-        });
+      if (!parsed.success) return handleZodError(res, parsed.error);
 
       const user = req.user!;
-      if (!user)
-        return res
-          .status(401)
-          .json({ success: false, error: "unauthenticated" });
-      if (user.globalRole !== "SUPPLIER")
-        return res.status(403).json({ success: false, error: "only_supplier" });
+      if (!user) return sendError(res, "Unauthenticated", 401);
+      if (user.globalRole !== "SUPPLIER") return sendError(res, "Only suppliers can perform this action", 403, { code: "only_supplier" });
 
       const { storeId, supplierId, message } = parsed.data;
 
@@ -270,27 +284,18 @@ router.post(
         where: { id: storeId },
         select: { id: true, name: true },
       });
-      if (!store)
-        return res
-          .status(404)
-          .json({ success: false, error: "store_not_found" });
+      if (!store) return sendError(res, "Store not found", 404);
 
       const supplier = await prisma.supplier.findUnique({
         where: { id: supplierId },
       });
-      if (!supplier)
-        return res
-          .status(404)
-          .json({ success: false, error: "supplier_not_found" });
+      if (!supplier) return sendError(res, "Supplier not found", 404);
 
       // prevent duplicate pending requests
       const existing = await prisma.supplierRequest.findFirst({
         where: { supplierId, storeId, status: "PENDING" },
       });
-      if (existing)
-        return res
-          .status(409)
-          .json({ success: false, error: "already_requested" });
+      if (existing) return sendError(res, "Connection request already pending", 409, { code: "already_requested" });
 
       const reqRow = await prisma.supplierRequest.create({
         data: {
@@ -361,13 +366,25 @@ router.post(
         })
         .catch(() => { });
 
-      return res.status(201).json({ success: true, data: { request: reqRow } });
+      return sendSuccess(res, "Supplier request sent", { request: reqRow }, 201);
     } catch (err) {
       next(err);
     }
   }
 );
 
+/**
+ * GET /v1/suppliers
+ * Description: Gets supplier details and their requests.
+ * Headers: 
+ *  - Authorization: Bearer <token>
+ * Query Params:
+ *  - supplierId: string (UUID)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { supplier: { ... }, requests: [...] } }
+ *  - 500: Internal server error
+ */
 router.get(
   "/",
   authenticate,
@@ -386,7 +403,7 @@ router.get(
       const requests = await prisma.supplierRequest.findMany({
         where: { supplierId },
       });
-      return res.json({ success: true, data: { supplier, requests } });
+      return sendSuccess(res, "Supplier details retrieved", { supplier, requests });
     } catch (err) {
       next(err);
     }

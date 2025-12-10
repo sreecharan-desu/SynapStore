@@ -7,7 +7,9 @@ import prisma from "../../../lib/prisma";
 import { requireRole } from "../../../middleware/requireRole";
 import { crypto$ } from "../../../lib/crypto";
 import { sendMail } from "../../../lib/mailer";
-import router from "../auth/auth";
+// router from email-auth is unused here? removing.
+// import router from "../auth/email-auth"; 
+import { sendSuccess, sendError, handlePrismaError, sendInternalError } from "../../../lib/api";
 
 type RoleEnum = Role;
 
@@ -57,28 +59,33 @@ function permissionsForRoles(roles: RoleEnum[] = []) {
   };
 }
 
+/**
+ * GET /v1/dashboard/store
+ * Description: Returns the current store context and permissions for the authenticated user.
+ * Headers: 
+ *  - Authorization: Bearer <token>
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { user: {...}, store: {...}, roles: [...], permissions: {...} } }
+ *  - 401: Unauthenticated
+ *  - 403: No store found or Forbidden
+ *  - 500: Internal server error
+ */
 dashboardRouter.get(
   "/store",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const user = req.user;
-      if (!user)
-        return res
-          .status(401)
-          .json({ success: false, error: "unauthenticated" });
+      if (!user) return sendError(res, "Unauthenticated", 401);
 
       const store = req.store;
       if (!store) {
-        return res.status(403).json({
-          success: false,
-          error: "no_store_found",
-          needsStoreSetup: true,
-        });
+        return sendError(res, "No store found in context", 403, { code: "no_store_found", needsStoreSetup: true });
       }
 
       const roles = (req.userStoreRoles ?? []) as RoleEnum[];
       if (roles.length === 0 && user.globalRole !== "SUPERADMIN") {
-        return res.status(403).json({ success: false, error: "forbidden" });
+        return sendError(res, "Forbidden: No role in this store", 403);
       }
 
       const permissions = permissionsForRoles(roles);
@@ -88,26 +95,23 @@ dashboardRouter.get(
         "private, max-age=60, stale-while-revalidate=30"
       );
 
-      return res.json({
-        success: true,
-        data: {
-          user: {
-            id: user.id,
-            username: user.username ?? null,
-            email: user.email ?? null,
-            globalRole: user.globalRole ?? null,
-          },
-          store: {
-            id: store.id,
-            name: store.name,
-            slug: store.slug,
-            timezone: store.timezone ?? null,
-            currency: store.currency ?? null,
-            settings: store.settings ?? null,
-          },
-          roles,
-          permissions,
+      return sendSuccess(res, "Store context retrieved", {
+        user: {
+          id: user.id,
+          username: user.username ?? null,
+          email: user.email ?? null,
+          globalRole: user.globalRole ?? null,
         },
+        store: {
+          id: store.id,
+          name: store.name,
+          slug: store.slug,
+          timezone: store.timezone ?? null,
+          currency: store.currency ?? null,
+          settings: store.settings ?? null,
+        },
+        roles,
+        permissions,
       });
     } catch (err) {
       next(err);
@@ -115,23 +119,34 @@ dashboardRouter.get(
   }
 );
 
+/**
+ * GET /v1/dashboard/bootstrap
+ * Description: Bootstraps the dashboard with extensive data (sales, inventory, low stock, etc.).
+ * Headers: 
+ *  - Authorization: Bearer <token>
+ * Query Params:
+ *  - days: number (default 30) - number of days for sales window
+ *  - top: number (default 10) - limit for top movers
+ *  - recent: number (default 20) - limit for recent sales
+ *  - threshold: number (default 5) - low stock threshold
+ *  - expiriesDays: number (default 90) - expiry lookahead
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { user: {...}, store: {...}, overview: {...}, charts: {...}, lists: {...} } }
+ *  - 401: Unauthenticated
+ *  - 403: No store found
+ *  - 500: Internal server error
+ */
 dashboardRouter.get(
   "/bootstrap",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const user = req.user;
-      if (!user)
-        return res
-          .status(401)
-          .json({ success: false, error: "unauthenticated" });
+      if (!user) return sendError(res, "Unauthenticated", 401);
 
       const store = req.store;
       if (!store)
-        return res.status(403).json({
-          success: false,
-          error: "no_store_found",
-          needsStoreSetup: true,
-        });
+        return sendError(res, "No store found", 403, { code: "no_store_found", needsStoreSetup: true });
 
       const storeId = String(store.id);
 
@@ -468,86 +483,83 @@ dashboardRouter.get(
       }));
 
       // Final payload (very rich)
-      return res.json({
-        success: true,
-        data: {
-          user: {
-            id: user.id,
-            username: user.username ?? null,
-            email: user.email ?? null,
-            globalRole: user.globalRole ?? null,
-          },
-          store: {
-            id: store.id,
-            name: store.name,
-            slug: store.slug,
-            timezone: store.timezone ?? null,
-            currency: store.currency ?? null,
-            settings: store.settings ?? null,
-          },
-          overview: {
-            totalMedicines,
-            totalBatches,
-            totalActiveAlerts: 0,
-            totalPendingReorders: 0,
-            recentSalesCount,
-            recentRevenue,
-            unreadNotifications,
-            webhookFailures,
-            inventoryTotals,
-            reservationsCount: 0,
-            reservedQty: 0,
-          },
-          charts: {
-            salesByDay: (() => {
-              // build time-series daily from saleRows
-              const map: Record<
-                string,
-                { date: string; revenue: number; count: number }
-              > = {};
-              for (let i = 0; i < days; i++) {
-                const d = new Date(
-                  Date.now() - (days - 1 - i) * 24 * 3600 * 1000
-                );
-                const k = d.toISOString().slice(0, 10);
-                map[k] = { date: k, revenue: 0, count: 0 };
-              }
-              for (const s of saleRows) {
-                const k = new Date(s.createdAt).toISOString().slice(0, 10);
-                map[k] = map[k] ?? { date: k, revenue: 0, count: 0 };
-                map[k].revenue += Number(s.totalValue ?? 0);
-                map[k].count += 1;
-              }
-              return Object.values(map);
-            })(),
-            salesByHour,
-            paymentMethods,
-            categoryBreakdown,
-            topMovers,
-            supplierPerformance: [],
-            expiryHeatmap: expiryHeatmapArr,
-            inventoryAging: agingBucketsResult,
-            reorderLeadTimeSummary: [],
-            alertsByType,
-            stockTurnover,
-            avgOrderValue,
-            avgItemsPerSale,
-            repeatCustomerRate,
-          },
-          lists: {
-            lowStock: lowStockBatches.map((b: any) => ({
-              ...b,
-              medicine: medicinesById[b.medicineId] ?? null,
-            })),
-            expiries: expiriesSoon.map((b: any) => ({
-              ...b,
-              medicine: medicinesById[b.medicineId] ?? null,
-            })),
-            recentSales: recentSalesSummary,
-            activity,
-            suppliers,
-            recentReceivedReorders: [],
-          },
+      return sendSuccess(res, "Dashboard bootstrap data", {
+        user: {
+          id: user.id,
+          username: user.username ?? null,
+          email: user.email ?? null,
+          globalRole: user.globalRole ?? null,
+        },
+        store: {
+          id: store.id,
+          name: store.name,
+          slug: store.slug,
+          timezone: store.timezone ?? null,
+          currency: store.currency ?? null,
+          settings: store.settings ?? null,
+        },
+        overview: {
+          totalMedicines,
+          totalBatches,
+          totalActiveAlerts: 0,
+          totalPendingReorders: 0,
+          recentSalesCount,
+          recentRevenue,
+          unreadNotifications,
+          webhookFailures,
+          inventoryTotals,
+          reservationsCount: 0,
+          reservedQty: 0,
+        },
+        charts: {
+          salesByDay: (() => {
+            // build time-series daily from saleRows
+            const map: Record<
+              string,
+              { date: string; revenue: number; count: number }
+            > = {};
+            for (let i = 0; i < days; i++) {
+              const d = new Date(
+                Date.now() - (days - 1 - i) * 24 * 3600 * 1000
+              );
+              const k = d.toISOString().slice(0, 10);
+              map[k] = { date: k, revenue: 0, count: 0 };
+            }
+            for (const s of saleRows) {
+              const k = new Date(s.createdAt).toISOString().slice(0, 10);
+              map[k] = map[k] ?? { date: k, revenue: 0, count: 0 };
+              map[k].revenue += Number(s.totalValue ?? 0);
+              map[k].count += 1;
+            }
+            return Object.values(map);
+          })(),
+          salesByHour,
+          paymentMethods,
+          categoryBreakdown,
+          topMovers,
+          supplierPerformance: [],
+          expiryHeatmap: expiryHeatmapArr,
+          inventoryAging: agingBucketsResult,
+          reorderLeadTimeSummary: [],
+          alertsByType,
+          stockTurnover,
+          avgOrderValue,
+          avgItemsPerSale,
+          repeatCustomerRate,
+        },
+        lists: {
+          lowStock: lowStockBatches.map((b: any) => ({
+            ...b,
+            medicine: medicinesById[b.medicineId] ?? null,
+          })),
+          expiries: expiriesSoon.map((b: any) => ({
+            ...b,
+            medicine: medicinesById[b.medicineId] ?? null,
+          })),
+          recentSales: recentSalesSummary,
+          activity,
+          suppliers,
+          recentReceivedReorders: [],
         },
       });
     } catch (err) {
@@ -558,6 +570,16 @@ dashboardRouter.get(
 
 
 
+/**
+ * GET /v1/dashboard/supplier-requests
+ * Description: Lists all supplier requests for the current store.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: STORE_OWNER or ADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: [...] }
+ *  - 500: Internal server error
+ */
 dashboardRouter.get(
   "/supplier-requests",
   authenticate,
@@ -577,10 +599,7 @@ dashboardRouter.get(
         },
       });
 
-      return res.json({
-        success: true,
-        data: supplierRequests,
-      });
+      return sendSuccess(res, "Supplier requests retrieved", supplierRequests);
     } catch (err) {
       next(err);
     }
@@ -592,8 +611,18 @@ dashboardRouter.get(
 // STORE OWNER ACCEPT AND REJECT REQUEST
 
 /**
- * POST /v1/supplier-requests/:id/accept
- * - storeContext + requireStore required (owner/admin role)
+ * POST /v1/dashboard/:id/accept
+ * Description: Accepts a supplier request.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: STORE_OWNER or ADMIN)
+ * Body: None
+ * Path Params:
+ *  - id: string (Request UUID)
+ * Responses:
+ *  - 200: { success: true, message: "accepted" }
+ *  - 400: Invalid state
+ *  - 404: Request not found
+ *  - 500: Internal server error
  */
 dashboardRouter.post(
   "/:id/accept",
@@ -609,12 +638,10 @@ dashboardRouter.post(
 
       const reqRow = await prisma.supplierRequest.findUnique({ where: { id } });
       if (!reqRow || reqRow.storeId !== store.id)
-        return res
-          .status(404)
-          .json({ success: false, error: "request_not_found" });
+        return sendError(res, "Request not found", 404);
 
       if (reqRow.status !== "PENDING")
-        return res.status(400).json({ success: false, error: "invalid_state" });
+        return sendError(res, "Invalid request state (must be PENDING)", 400);
 
       await prisma.$transaction([
         prisma.supplierRequest.update({
@@ -698,7 +725,7 @@ dashboardRouter.post(
         }
       }
 
-      return res.json({ success: true, message: "accepted" });
+      return sendSuccess(res, "Supplier request accepted");
     } catch (err) {
       next(err);
     }
@@ -706,9 +733,20 @@ dashboardRouter.post(
 );
 
 /**
- * POST /v1/supplier-requests/:id/reject
+ * POST /v1/dashboard/:id/reject
+ * Description: Rejects a supplier request.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: STORE_OWNER or ADMIN)
+ * Body: None
+ * Path Params:
+ *  - id: string (Request UUID)
+ * Responses:
+ *  - 200: { success: true, message: "rejected" }
+ *  - 400: Invalid state
+ *  - 404: Request not found
+ *  - 500: Internal server error
  */
-router.post(
+dashboardRouter.post(
   "/:id/reject",
   authenticate,
   storeContext,
@@ -722,12 +760,10 @@ router.post(
 
       const reqRow = await prisma.supplierRequest.findUnique({ where: { id } });
       if (!reqRow || reqRow.storeId !== store.id)
-        return res
-          .status(404)
-          .json({ success: false, error: "request_not_found" });
+        return sendError(res, "Request not found", 404);
 
       if (reqRow.status !== "PENDING")
-        return res.status(400).json({ success: false, error: "invalid_state" });
+        return sendError(res, "Invalid request state", 400);
 
       await prisma.supplierRequest.update({
         where: { id },
@@ -794,7 +830,7 @@ router.post(
         }
       }
 
-      return res.json({ success: true, message: "rejected" });
+      return sendSuccess(res, "Supplier request rejected");
     } catch (err) {
       next(err);
     }

@@ -7,6 +7,8 @@ import type { Request, Response } from "express";
 import prisma from "../../../lib/prisma";
 import { crypto$ } from "../../../lib/crypto";
 
+import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
+
 const GoogleRouter = Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -14,21 +16,29 @@ const googleSchema = z.object({
   idToken: z.string().min(20, "idToken is required"),
 });
 
-function respond(res: Response, status: number, body: object) {
-  return res.status(status).json(body);
-}
+// Helper respond removed, using standard helpers from lib/api
 
 // Block google signin for these global roles
 const RESTRICTED_GOOGLE_ROLES = ["ADMIN", "SUPERADMIN"];
 
+/**
+ * POST /v1/oauth/google
+ * Description: Authenticates a user using a Google ID token.
+ * Headers: None
+ * Body:
+ *  - idToken: string (min 20 chars)
+ * Responses:
+ *  - 200: { token, user: { ... }, effectiveStore: { ... } | null, suppliers: [...] }
+ *  - 400: Validation failed or invalid ID token
+ *  - 403: Account suspended or restricted role
+ *  - 502: Failed to verify with Google
+ */
+
+
 GoogleRouter.post("/", async (req: Request, res: Response) => {
   const parsed = googleSchema.safeParse(req.body);
   if (!parsed.success) {
-    const details = parsed.error.issues.map((i) => ({
-      path: i.path.join("."),
-      message: i.message,
-    }));
-    return respond(res, 400, { error: "validation failed", details });
+    return handleZodError(res, parsed.error);
   }
 
   const { idToken } = parsed.data;
@@ -40,14 +50,14 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
     });
     const payload = ticket.getPayload();
     if (!payload)
-      return respond(res, 400, { error: "invalid id token payload" });
+      return sendError(res, "Invalid ID token payload", 400);
 
     const email = payload.email;
     const name = payload.name ?? "";
     const picture = payload.picture ?? "";
 
     if (!email)
-      return respond(res, 400, { error: "google account missing email" });
+      return sendError(res, "Google account missing email address", 400);
 
     const encEmail = crypto$.encryptCellDeterministic(email);
     const usernamePlain = name || email.split("@")[0];
@@ -64,43 +74,43 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       existingUser?.globalRole &&
       RESTRICTED_GOOGLE_ROLES.includes(existingUser.globalRole)
     ) {
-      return respond(res, 403, {
-        error: "google login not allowed for this account type",
-      });
+      return sendError(res, "Google login not allowed for this account type (Admin/Superadmin)", 403);
     }
 
     // upsert user (google-verified => isverified true)
-    const userRow = await prisma.user.upsert({
-      where: { email: encEmail },
-      update: {
-        username: encUsername,
-        imageUrl: encImage ?? undefined,
-        isverified: true,
-      },
-      create: {
-        username: encUsername,
-        email: encEmail,
-        passwordHash: null,
-        imageUrl: encImage ?? undefined,
-        isverified: true,
-        globalRole: "STORE_OWNER",
-      },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        imageUrl: true,
-        isverified: true,
-        globalRole: true,
-        isActive: true, // Added isActive to select clause
-      },
-    });
+    let userRow;
+    try {
+      userRow = await prisma.user.upsert({
+        where: { email: encEmail },
+        update: {
+          username: encUsername,
+          imageUrl: encImage ?? undefined,
+          isverified: true,
+        },
+        create: {
+          username: encUsername,
+          email: encEmail,
+          passwordHash: null, // No password for Google users initially
+          imageUrl: encImage ?? undefined,
+          isverified: true,
+          globalRole: "STORE_OWNER",
+        },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          imageUrl: true,
+          isverified: true,
+          globalRole: true,
+          isActive: true, // Added isActive to select clause
+        },
+      });
+    } catch (e: any) {
+      return handlePrismaError(res, e, "User");
+    }
 
     if (!userRow.isActive) {
-      return respond(res, 403, {
-        error: "This account has been temporarily disabled/suspended",
-        code: "user_not_active",
-      });
+      return sendError(res, "This account has been temporarily disabled/suspended", 403, { code: "user_not_active" });
     }
 
     const user = crypto$.decryptObject(userRow, [
@@ -192,30 +202,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       console.error("google signin: failed to persist logs", e);
     }
 
-    // response: if no store, instruct onboarding
-    if (!effectiveStore) {
-      return respond(res, 200, {
-        token,
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          globalRole: user.globalRole ?? null,
-        },
-        effectiveStore: null,
-        needsStoreSetup: user.globalRole !== "SUPPLIER",
-        supplier: supplierRows[0] ?? null,
-        suppliers: supplierRows.map((s) => ({
-          id: s.id,
-          storeId: s.storeId,
-          name: s.name,
-          isActive: s.isActive,
-        })),
-      });
-    }
-
-    // normal success with effectiveStore
-    return respond(res, 200, {
+    const responseData = {
       token,
       user: {
         id: user.id,
@@ -223,25 +210,28 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
         email: user.email,
         globalRole: user.globalRole ?? null,
       },
-      effectiveStore,
+      effectiveStore: effectiveStore ?? null,
+      needsStoreSetup: !effectiveStore && user.globalRole !== "SUPPLIER",
+      supplier: supplierRows[0] ?? null,
       suppliers: supplierRows.map((s) => ({
         id: s.id,
         storeId: s.storeId,
         name: s.name,
         isActive: s.isActive,
       })),
-    });
+    };
+
+    return sendSuccess(res, "Google authentication successful", responseData);
+
   } catch (err: any) {
     console.error("Google sign-in error:", err?.message ?? err);
     if (
       err?.message?.includes("Token used too late") ||
       err?.message?.includes("invalid")
     ) {
-      return respond(res, 400, { error: "invalid id token" });
+      return sendError(res, "Invalid or expired Google ID token", 400);
     }
-    return respond(res, 502, {
-      error: "failed to verify id token with google",
-    });
+    return sendInternalError(res, err, "Failed to verify ID token with Google");
   }
 });
 

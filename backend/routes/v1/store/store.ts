@@ -4,6 +4,8 @@ import prisma from "../../../lib/prisma";
 import { authenticate } from "../../../middleware/authenticate";
 import { z } from "zod";
 
+import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
+
 const Storerouter = Router();
 
 // Schema for store creation
@@ -14,22 +16,33 @@ const createStoreSchema = z.object({
   currency: z.string().optional(),
 });
 
+/**
+ * POST /v1/store/create
+ * Description: Creates a new store for the authenticated user.
+ * Headers: 
+ *  - Authorization: Bearer <token>
+ * Body:
+ *  - name: string (min 2 chars)
+ *  - slug: string (min 2 chars)
+ *  - timezone: string (optional, default: Asia/Kolkata)
+ *  - currency: string (optional, default: INR)
+ * Responses:
+ *  - 201: { success: true, message: "store created", effectiveStore: { ... } }
+ *  - 400: Validation failed or store already exists
+ *  - 401: Unauthenticated
+ *  - 500: Internal server error
+ */
 Storerouter.post(
   "/create",
   authenticate,
   async (req: Request & { user?: any }, res: Response) => {
     try {
       if (!req.user?.id) {
-        return res.status(401).json({ error: "unauthenticated" });
+        return sendError(res, "Unauthenticated", 401);
       }
 
       const parsed = createStoreSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({
-          error: "validation failed",
-          details: parsed.error.issues,
-        });
-      }
+      if (!parsed.success) return handleZodError(res, parsed.error);
 
       const {
         name,
@@ -40,7 +53,7 @@ Storerouter.post(
 
 
       if (await prisma.store.findUnique({ where: { slug } })) {
-        return res.status(400).json({ error: "store already exists" ,success: false});
+        return sendError(res, "Store already exists", 409, { code: "store_exists" });
       }
 
       // 1) Create store
@@ -71,17 +84,17 @@ Storerouter.post(
       });
 
       // 3) Return effectiveStore for dashboard boot
-      return res.status(201).json({
-        success: true,
-        message: "store created",
+      return sendSuccess(res, "Store created successfully", {
         effectiveStore: {
           ...store,
           roles: ["STORE_OWNER"],
         },
-      });
-    } catch (err) {
-      console.error("Create store error:", err);
-      return res.status(500).json({ error: "internal_server_error" });
+      }, 201);
+    } catch (err: any) {
+      if (err.code === "P2002") {
+        return sendError(res, "Store with this slug already exists", 409, { code: "store_exists" });
+      }
+      return sendInternalError(res, err, "Failed to create store");
     }
   }
 );

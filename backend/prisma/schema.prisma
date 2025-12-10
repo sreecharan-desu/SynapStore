@@ -151,8 +151,6 @@ model UserStoreRole {
   @@index([userId])
 }
 
-
-
 model Supplier {
   id               String   @id @default(uuid())
   supLegacyId      Int?
@@ -178,6 +176,8 @@ model Supplier {
 
   supplierRequests SupplierRequest[]
 }
+
+
 
 model Medicine {
   id            String    @id @default(uuid())
@@ -246,6 +246,8 @@ model Upload {
   @@index([storeId, status])
 }
 
+
+
 model StockMovement {
   id            String    @id @default(uuid())
   store         Store     @relation(fields: [storeId], references: [id])
@@ -313,26 +315,6 @@ model Notification {
   @@index([storeId, status])
 }
 
-
-
-model Otp {
-  id           String   @id @default(uuid())
-  user         User?    @relation(fields: [userId], references: [id])
-  userId       String?
-  store        Store?   @relation(fields: [storeId], references: [id])
-  storeId      String?
-  phone        String
-  otpHash      String
-  salt         String
-  attempts     Int      @default(0)
-  expiresAt    DateTime
-  used         Boolean  @default(false)
-  createdAt    DateTime @default(now())
-
-  @@index([phone])
-  @@index([storeId])
-}
-
 model Sale {
   id            String   @id @default(uuid())
   store         Store    @relation(fields: [storeId], references: [id])
@@ -373,6 +355,25 @@ model SaleItem {
 }
 
 
+
+
+model Otp {
+  id           String   @id @default(uuid())
+  user         User?    @relation(fields: [userId], references: [id])
+  userId       String?
+  store        Store?   @relation(fields: [storeId], references: [id])
+  storeId      String?
+  phone        String
+  otpHash      String
+  salt         String
+  attempts     Int      @default(0)
+  expiresAt    DateTime
+  used         Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([phone])
+  @@index([storeId])
+}
 
 enum SupplierRequestStatus {
   PENDING

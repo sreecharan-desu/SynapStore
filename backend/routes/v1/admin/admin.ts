@@ -1,14 +1,14 @@
 // routes/v1/admin.ts
 import { Router } from "express";
-import { z } from "zod";
 import prisma from "../../../lib/prisma";
 import { authenticate } from "../../../middleware/authenticate";
 import { requireRole } from "../../../middleware/requireRole";
 import { signJwt } from "../../../lib/auth";
 
+import { sendSuccess, sendError, handlePrismaError, sendInternalError} from "../../../lib/api";
+
 const router = Router();
-const respond = (res: any, status: number, body: object) =>
-  res.status(status).json(body);
+// Helper respond removed, using standard helpers from lib/api
 
 /**
  * NOTE
@@ -20,9 +20,18 @@ router.use(authenticate);
 
 /* -----------------------
    Admin - GET /v1/admin/stats
-   - role: SUPERADMIN
-   - returns global counts and recent activity summary
 */
+
+/**
+ * GET /v1/admin/stats
+ * Description: Returns global counts and recent activity summary for the admin dashboard.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { counts: { ... }, recentActivity: [...] } }
+ *  - 500: Internal server error
+ */
 router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
   try {
     // Gather multiple counts in parallel
@@ -57,35 +66,38 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
       },
     });
 
-    return respond(res, 200, {
-      success: true,
-      data: {
-        counts: {
-          users: userCount,
-          stores: storeCount,
-          medicines: medicineCount,
-          batches: inventoryBatches,
-          reorders: reordersCount,
-          uploads: uploadsCount,
-        },
-        recentActivity,
+    return sendSuccess(res, "Admin stats retrieved", {
+      counts: {
+        users: userCount,
+        stores: storeCount,
+        medicines: medicineCount,
+        batches: inventoryBatches,
+        reorders: reordersCount,
+        uploads: uploadsCount,
       },
+      recentActivity,
     });
   } catch (err) {
-    console.error("GET /admin/stats error:", err);
-    return respond(res, 500, {
-      success: false,
-      error: "internal_server_error",
-    });
+    return sendInternalError(res, err, "Failed to retrieve admin stats");
   }
 });
 
 /* -----------------------
    Admin - POST /v1/admin/users/:userId/impersonate
-   - role: SUPERADMIN
-   - returns a token that impersonates the user (signed JWT)
-   - audit logs the action
 */
+
+/**
+ * POST /v1/admin/users/:userId/impersonate
+ * Description: Generates a JWT token to impersonate a specific user.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { token, user: { ... } } }
+ *  - 403: User disabled or other permission error
+ *  - 404: User not found
+ *  - 500: Internal server error
+ */
 router.post(
   "/users/:userId/impersonate",
   requireRole("SUPERADMIN"),
@@ -104,10 +116,8 @@ router.post(
         },
       });
 
-      if (!user)
-        return respond(res, 404, { success: false, error: "user_not_found" });
-      if (!user.isActive)
-        return respond(res, 403, { success: false, error: "user_disabled" });
+      if (!user) return sendError(res, "User not found", 404);
+      if (!user.isActive) return sendError(res, "User is disabled or suspended", 403, { code: "user_disabled" });
 
       // sign a token for the user - include an "impersonator" claim for audit
       const token = signJwt({
@@ -128,33 +138,38 @@ router.post(
         },
       });
 
-      return respond(res, 200, {
-        success: true,
-        data: {
-          token,
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            globalRole: user.globalRole,
-          },
+      return sendSuccess(res, "Impersonation successful", {
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          globalRole: user.globalRole,
         },
       });
     } catch (err) {
-      console.error("POST /admin/users/:userId/impersonate error:", err);
-      return respond(res, 500, {
-        success: false,
-        error: "internal_server_error",
-      });
+      return sendInternalError(res, err, "Failed to impersonate user");
     }
   }
 );
 
 /* -----------------------
    Admin - GET /v1/admin/stores
-   - role: SUPERADMIN
-   - list stores with pagination and search
 */
+
+/**
+ * GET /v1/admin/stores
+ * Description: Lists stores with pagination and search capabilities.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Query Params:
+ *  - q: string (search term)
+ *  - showInactive: boolean (true to include inactive stores)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { stores: [...] } }
+ *  - 500: Internal server error
+ */
 router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const q = req.query.q ? String(req.query.q).trim() : "";
@@ -199,11 +214,9 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
       }
     });
 
-    console.log(stores);
-
-    return respond(res, 200, { success: true, data: { stores } });
+    return sendSuccess(res, "Stores retrieved", { stores });
   } catch (err) {
-    return respond(res, 500, { error: "internal_error" });
+    return sendInternalError(res, err);
   }
 });
 
@@ -211,27 +224,44 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
 
 /* -----------------------
    Admin - PATCH /v1/admin/stores/:id/suspend
-   - role: SUPERADMIN
-   - toggle isActive
 */
+
+/**
+ * PATCH /v1/admin/stores/:id/suspend
+ * Description: Toggles the active status of a store.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body:
+ *  - isActive: boolean
+ * Responses:
+ *  - 200: { success: true, data: { store: { ... } } }
+ *  - 500: Internal server error
+ */
 router.patch("/stores/:id/suspend", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const id = req.params.id;
     const body = req.body; // { isActive: boolean }
     const isActive = body.isActive ?? false;
 
+    // First check existence
+    const existingStore = await prisma.store.findUnique({ where: { id }, select: { id: true } });
+    if (!existingStore) return sendError(res, "Store not found", 404);
+
     const store = await prisma.store.update({
       where: { id },
       data: { isActive },
       select: {
+        id: true, name: true, isActive: true,
         users : true
       }
     });
 
-    await prisma.user.update({
-      where: { id: store.users[0].userId },
-      data: { isActive },
-    });
+    if (store.users && store.users.length > 0) {
+      await prisma.user.update({
+        where: { id: store.users[0].userId },
+        data: { isActive },
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
@@ -243,17 +273,28 @@ router.patch("/stores/:id/suspend", requireRole("SUPERADMIN"), async (req: any, 
       }
     });
 
-    return respond(res, 200, { success: true, data: { store } });
+    return sendSuccess(res, isActive ? "Store activated" : "Store suspended", { store });
   } catch (err) {
-    return respond(res, 500, { error: "internal_error" });
+    return handlePrismaError(res, err, "Store");
   }
 });
 
 /* -----------------------
    Admin - GET /v1/admin/suppliers
-   - role: SUPERADMIN
-   - list global suppliers
 */
+
+/**
+ * GET /v1/admin/suppliers
+ * Description: Lists global suppliers with search capabilities.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Query Params:
+ *  - q: string (search term)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { suppliers: [...] } }
+ *  - 500: Internal server error
+ */
 router.get("/suppliers", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const q = req.query.q ? String(req.query.q).trim() : "";
@@ -275,34 +316,50 @@ router.get("/suppliers", requireRole("SUPERADMIN"), async (req: any, res) => {
       }
     });
 
-    return respond(res, 200, { success: true, data: { suppliers } });
+    return sendSuccess(res, "Suppliers retrieved", { suppliers });
   } catch (err) {
-    return respond(res, 500, { error: "internal_error" });
+    return sendInternalError(res, err);
   }
 });
 
 /* -----------------------
    Admin - PATCH /v1/admin/suppliers/:id/suspend
-   - role: SUPERADMIN
-   - toggle isActive
 */
+
+/**
+ * PATCH /v1/admin/suppliers/:id/suspend
+ * Description: Toggles the active status of a supplier.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body:
+ *  - isActive: boolean
+ * Responses:
+ *  - 200: { success: true, data: { supplier: { ... } } }
+ *  - 500: Internal server error
+ */
 router.patch("/suppliers/:id/suspend", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const id = req.params.id;
     const body = req.body; // { isActive: boolean }
     const isActive = body.isActive ?? false;
 
+    // check exist
+    const exists = await prisma.supplier.findUnique({ where: { id }, select: { id: true } });
+    if (!exists) return sendError(res, "Supplier not found", 404);
+
     const supplier = await prisma.supplier.update({
       where: { id },
       data: { isActive },
     });
 
-    await prisma.user.update({
-      where: {
-        id : supplier.userId ?? ""
-      },
-      data: {isActive: isActive }
-    })
+    if (supplier.userId) {
+      await prisma.user.update({
+        where: {
+          id : supplier.userId
+        },
+        data: { isActive: isActive }
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
@@ -314,9 +371,9 @@ router.patch("/suppliers/:id/suspend", requireRole("SUPERADMIN"), async (req: an
       }
     });
 
-    return respond(res, 200, { success: true, data: { supplier } });
+    return sendSuccess(res, isActive ? "Supplier activated" : "Supplier suspended", { supplier });
   } catch (err) {
-    return respond(res, 500, { error: "internal_error" });
+    return handlePrismaError(res, err, "Supplier");
   }
 });
 
@@ -325,16 +382,28 @@ router.patch("/suppliers/:id/suspend", requireRole("SUPERADMIN"), async (req: an
 
 /* -----------------------
    Admin - GET /v1/admin/users
-   - role: SUPERADMIN
-   - list users with pagination and search
 */
+
+/**
+ * GET /v1/admin/users
+ * Description: Lists users with pagination and search capabilities.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Query Params:
+ *  - q: string (search term)
+ *  - showInactive: boolean
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { users: [...] } }
+ *  - 500: Internal server error
+ */
 router.get("/users", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const q = req.query.q ? String(req.query.q).trim() : "";
     const showInactive = req.query.showInactive === "true";
 
     const where: any = {
-      // Exclude self
+      // Exclude self (optional, maybe superadmin wants to see self too?)
       id: { not: req.user?.id },
     };
     if (q) {
@@ -361,10 +430,9 @@ router.get("/users", requireRole("SUPERADMIN"), async (req: any, res) => {
       },
     });
 
-    return respond(res, 200, { success: true, data: { users } });
+    return sendSuccess(res, "Users retrieved", { users });
   } catch (err) {
-    console.error("GET /admin/users error:", err);
-    return respond(res, 500, { error: "internal_error" });
+    return sendInternalError(res, err);
   }
 });
 
@@ -372,10 +440,19 @@ router.get("/users", requireRole("SUPERADMIN"), async (req: any, res) => {
 
 /* -----------------------
    Admin - POST /v1/admin/users/:userId/convert-to-supplier
-   - role: SUPERADMIN
-   - converts user to supplier role
-   - ensures supplier profile exists
 */
+
+/**
+ * POST /v1/admin/users/:userId/convert-to-supplier
+ * Description: Converts a user to a supplier role and ensures a supplier profile exists.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true }
+ *  - 404: User not found
+ *  - 500: Internal server error
+ */
 router.post(
   "/users/:userId/convert-to-supplier",
   requireRole("SUPERADMIN"),
@@ -384,7 +461,7 @@ router.post(
       const { userId } = req.params;
       
       const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) return respond(res, 404, { error: "user_not_found" });
+      if (!user) return sendError(res, "User not found", 404);
 
       await prisma.user.update({
         where: { id: userId },
@@ -416,10 +493,9 @@ router.post(
         },
       });
 
-      return respond(res, 200, { success: true });
+      return sendSuccess(res, "User converted to supplier role");
     } catch (err) {
-      console.error("Convert user to supplier error:", err);
-      return respond(res, 500, { error: "internal_error" });
+      return handlePrismaError(res, err, "User");
     }
   }
 );
@@ -428,20 +504,32 @@ export default router;
 
 /* -----------------------
    Admin - DELETE /v1/admin/users/:id
-   - role: SUPERADMIN
-   - delete user
 */
+
+/**
+ * DELETE /v1/admin/users/:id
+ * Description: Deletes a user.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true }
+ *  - 400: Cannot delete self
+ *  - 404: User not found
+ *  - 409: Data integrity violation (user has associated records)
+ *  - 500: Internal server error
+ */
 router.delete("/users/:id", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const { id } = req.params;
     
     // Prevent deleting self
     if (req.user.id === id) {
-      return respond(res, 400, { error: "cannot_delete_self" });
+      return sendError(res, "Cannot delete your own account", 400);
     }
 
     const user = await prisma.user.findUnique({ where: { id } });
-    if (!user) return respond(res, 404, { error: "user_not_found" });
+    if (!user) return sendError(res, "User not found", 404);
 
     // Attempt delete
     await prisma.user.delete({ where: { id } });
@@ -457,27 +545,37 @@ router.delete("/users/:id", requireRole("SUPERADMIN"), async (req: any, res) => 
       },
     });
 
-    return respond(res, 200, { success: true });
+    return sendSuccess(res, "User deleted successfully");
   } catch (err: any) {
-    console.error("Delete user error:", err);
     if (err.code === "P2003") {
-      return respond(res, 409, { error: "cannot_delete_user_data_integrity", message: "User has associated records (e.g. stores, sales) that prevent deletion." });
+      return sendError(res, "User has associated records (e.g. stores, sales) that prevent deletion.", 409, { code: "cannot_delete_user_data_integrity" });
     }
-    return respond(res, 500, { error: "internal_error" });
+    return sendInternalError(res, err);
   }
 });
 
 /* -----------------------
    Admin - DELETE /v1/admin/stores/:id
-   - role: SUPERADMIN
-   - delete store
 */
+
+/**
+ * DELETE /v1/admin/stores/:id
+ * Description: Deletes a store.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true }
+ *  - 404: Store not found
+ *  - 409: Data integrity violation (store has associated records)
+ *  - 500: Internal server error
+ */
 router.delete("/stores/:id", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const { id } = req.params;
 
     const store = await prisma.store.findUnique({ where: { id } });
-    if (!store) return respond(res, 404, { error: "store_not_found" });
+    if (!store) return sendError(res, "Store not found", 404);
 
     // Attempt delete
     await prisma.store.delete({ where: { id } });
@@ -493,27 +591,37 @@ router.delete("/stores/:id", requireRole("SUPERADMIN"), async (req: any, res) =>
       },
     });
 
-    return respond(res, 200, { success: true });
+    return sendSuccess(res, "Store deleted successfully");
   } catch (err: any) {
-    console.error("Delete store error:", err);
     if (err.code === "P2003") {
-      return respond(res, 409, { error: "cannot_delete_store_data_integrity", message: "Store has associated records (e.g. inventories, sales) that prevent deletion." });
+      return sendError(res, "Store has associated records (e.g. inventories, sales) that prevent deletion.", 409, { code: "cannot_delete_store_data_integrity" });
     }
-    return respond(res, 500, { error: "internal_error" });
+    return sendInternalError(res, err);
   }
 });
 
 /* -----------------------
    Admin - DELETE /v1/admin/suppliers/:id
-   - role: SUPERADMIN
-   - delete supplier
 */
+
+/**
+ * DELETE /v1/admin/suppliers/:id
+ * Description: Deletes a supplier.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true }
+ *  - 404: Supplier not found
+ *  - 409: Data integrity violation (supplier has associated records)
+ *  - 500: Internal server error
+ */
 router.delete("/suppliers/:id", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const { id } = req.params;
 
     const supplier = await prisma.supplier.findUnique({ where: { id } });
-    if (!supplier) return respond(res, 404, { error: "supplier_not_found" });
+    if (!supplier) return sendError(res, "Supplier not found", 404);
 
     // Attempt delete
     await prisma.supplier.delete({ where: { id } });
@@ -529,22 +637,30 @@ router.delete("/suppliers/:id", requireRole("SUPERADMIN"), async (req: any, res)
       },
     });
 
-    return respond(res, 200, { success: true });
+    return sendSuccess(res, "Supplier deleted successfully");
   } catch (err: any) {
-    console.error("Delete supplier error:", err);
     if (err.code === "P2003") {
-        return respond(res, 409, { error: "cannot_delete_supplier_data_integrity", message: "Supplier has associated records (e.g. requests, items) that prevent deletion." });
+        return sendError(res, "Supplier has associated records (e.g. requests, items) that prevent deletion.", 409, { code: "cannot_delete_supplier_data_integrity" });
       }
-    return respond(res, 500, { error: "internal_error" });
+    return sendInternalError(res, err);
   }
 });
 
 
 /* -----------------------
    Admin - GET /v1/admin/dashboard/analytics
-   - role: SUPERADMIN
-   - provides extensive analytics data for the dashboard
 */
+
+/**
+ * GET /v1/admin/dashboard/analytics
+ * Description: Provides extensive analytics data for the admin dashboard.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { overview: {...}, trends: {...}, distributions: {...}, recentCriticalActivity: [...] } }
+ *  - 500: Internal server error
+ */
 router.get("/dashboard/analytics", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const thirtyDaysAgo = new Date();
@@ -697,13 +813,9 @@ router.get("/dashboard/analytics", requireRole("SUPERADMIN"), async (req: any, r
       recentCriticalActivity: recentCriticalActions
     };
 
-    return respond(res, 200, {
-      success: true,
-      data: formattedData,
-    });
+    return sendSuccess(res, "Admin analytics retrieved", formattedData);
   } catch (err: any) {
-    console.error("Admin dashboard analytics error:", err);
-    return respond(res, 500, { error: "internal_error" });
+    return sendInternalError(res, err, "Failed to retrieve admin analytics");
   }
 });
 

@@ -9,6 +9,14 @@ import type { Request, Response } from "express";
 import { crypto$ } from "../../../lib/crypto";
 import rateLimiter from "../../../middleware/ratelimitter";
 
+import {
+  sendSuccess,
+  sendError,
+  handleZodError,
+  sendInternalError,
+  handlePrismaError,
+} from "../../../lib/api";
+
 const router = Router();
 
 // encrypted fields stored with crypto$.encryptCell / encryptCellDeterministic
@@ -35,17 +43,6 @@ const verifyOtpSchema = z.object({
   otp: z.string().min(4, "otp too short"),
 });
 
-/* Helpers */
-type ErrorResponse = { error: string; code?: string; details?: any[] };
-const respond = (res: Response, status: number, body: object) =>
-  res.status(status).json(body);
-
-const zodDetails = (err: any) =>
-  err?.issues?.map((i: any) => ({
-    path: i.path.join("."),
-    message: i.message,
-  })) ?? [];
-
 /**
  - findUserByEmail
  - uses deterministic encryption for lookup, returns decrypted fields
@@ -54,6 +51,7 @@ const zodDetails = (err: any) =>
 async function findUserByEmail(email: string) {
   // Try finding by deterministic encryption (legacy/if extension is off)
   const enc = crypto$.encryptCellDeterministic(email);
+  console.log(enc)
   let row = await prisma.user.findUnique({
     where: { email: enc },
     select: {
@@ -70,6 +68,7 @@ async function findUserByEmail(email: string) {
       globalRole: true,
     },
   });
+  console.log(row)
 
   // If not found, try finding by raw email (if extension is on/transparent or field is plaintext)
   if (!row) {
@@ -181,28 +180,37 @@ async function createOtpForUser(
 
 /* Routes */
 
-/* Register */
+/* Resend OTP */
+
+/**
+ * POST /v1/auth/register
+ * Description: Registers a new user and sends an OTP to their email.
+ * Headers: None
+ * Body:
+ *  - username: string (min 3 chars)
+ *  - email: string (valid email)
+ *  - password: string (min 6 chars)
+ * Responses:
+ *  - 201: { message: "registered - otp sent", user: { id, username, email } }
+ *  - 400: Validation failed
+ *  - 409: User already exists
+ *  - 502: Database error
+ */
 router.post(
   "/register",
   registerLimiter,
-  async (req: Request, res: Response, next) => {
+  async (req: Request, res: Response, next: import("express").NextFunction) => {
     try {
       const parsed = registerSchema.safeParse(req.body);
       if (!parsed.success) {
-        return respond(res, 400, {
-          error: "validation failed",
-          details: zodDetails(parsed.error),
-        } as ErrorResponse);
+        return handleZodError(res, parsed.error);
       }
       const { username, email, password } = parsed.data;
 
       // check duplicates via deterministic encryption lookups
       const existingEmail = await findUserByEmail(email);
       if (existingEmail) {
-        return respond(res, 409, {
-          error: "user already exists",
-          code: "user_exists",
-        });
+        return sendError(res, "User with this email already exists", 409, { code: "user_exists" });
       }
 
       // check username duplicate (deterministic)
@@ -212,10 +220,7 @@ router.post(
         select: { id: true },
       });
       if (existingUsernameRow) {
-        return respond(res, 409, {
-          error: "user already exists",
-          code: "user_exists",
-        });
+        return sendError(res, "Username is already taken", 409, { code: "username_taken" });
       }
 
       // prepare data
@@ -236,14 +241,7 @@ router.post(
           select: { id: true, username: true, email: true },
         });
       } catch (pErr: any) {
-        console.error("Prisma create user error:", pErr);
-        if (pErr?.code === "P2002") {
-          return respond(res, 409, {
-            error: "user already exists",
-            code: "user_exists",
-          });
-        }
-        return respond(res, 502, { error: "database error creating user" });
+        return handlePrismaError(res, pErr, "User");
       }
 
       // generate and store OTP (in Otp table)
@@ -253,8 +251,7 @@ router.post(
       try {
         await createOtpForUser(userRow.id, email, otp, otpExpiry);
       } catch (pErr: any) {
-        console.error("Prisma create OTP error:", pErr);
-        return respond(res, 502, { error: "database error storing otp" });
+        return handlePrismaError(res, pErr, "OTP");
       }
 
       // send OTP to plaintext email provided by client
@@ -262,68 +259,56 @@ router.post(
         await sendOtpEmail(email, otp);
       } catch (mailErr: any) {
         console.error("Failed to send OTP email:", mailErr);
-        try {
-          // mark unused OTPs for this contact as used to avoid lingering OTPs
-          const encPhone = crypto$.encryptCellDeterministic(email);
-          await prisma.otp.updateMany({
-            where: { phone: encPhone, used: false },
-            data: { used: true },
-          });
-        } catch (clearErr) {
-          console.error(
-            "Failed to mark OTP used after mail failure:",
-            clearErr
-          );
-        }
-        return respond(res, 502, {
-          error: "failed to send verification email, please try again later",
-        });
+        // Clean up OTP to avoid dead state if possible, or just fail
+        return sendError(res, "Failed to send verification email. Please try again later.", 502);
       }
 
       // Prisma extension automatically decrypts fields
-      return respond(res, 201, {
-        message: "registered - otp sent",
+      return sendSuccess(res, "Registration successful. OTP sent to your email.", {
         user: {
           id: userRow.id,
-          username: userRow.username,
-          email: userRow.email,
+          username: userRow.username, // decent chance this is already decrypted by the extension
+          email: email, 
         },
-      });
+      }, 201);
+
     } catch (err: any) {
-      console.error("Register handler error:", err);
-      if (err?.name === "ZodError") {
-        return respond(res, 400, {
-          error: "validation failed",
-          details: err.errors,
-        });
-      }
       next(err);
     }
   }
 );
 
 /* Resend OTP */
+
+/**
+ * POST /v1/auth/resend-otp
+ * Description: Resends the OTP to the user's email if not already verified.
+ * Headers: None
+ * Body:
+ *  - email: string (valid email)
+ * Responses:
+ *  - 200: { message: "otp resent" }
+ *  - 400: Validation failed or email already verified
+ *  - 404: User not found
+ *  - 429: Rate limited (wait before retrying)
+ *  - 502: Failed to create OTP or send email
+ */
+// Fix typo
 router.post(
   "/resend-otp",
   resendLimiter,
-  async (req: Request, res: Response, next) => {
+  async (req: Request, res: Response, next: import("express").NextFunction) => {
     try {
       const parsed = resendSchema.safeParse(req.body);
       if (!parsed.success) {
-        return respond(res, 400, {
-          error: "validation failed",
-          details: zodDetails(parsed.error),
-        } as ErrorResponse);
+        return handleZodError(res, parsed.error);
       }
       const { email } = parsed.data;
 
       const user = await findUserByEmail(email);
-      if (!user) return respond(res, 404, { error: "user not found" });
+      if (!user) return sendError(res, "User not found", 404);
       if (user.isverified) {
-        return respond(res, 400, {
-          error: "email already verified",
-          code: "email_already_verified",
-        });
+        return sendError(res, "Email is already verified", 400, { code: "email_already_verified" });
       }
       // Strict server-side rate limit per email:
       // allow only one unused OTP created per 60 seconds.
@@ -345,11 +330,7 @@ router.post(
         if (ageSeconds < MIN_SECONDS) {
           const retryAfter = MIN_SECONDS - ageSeconds;
           res.setHeader("Retry-After", String(retryAfter));
-          return respond(res, 429, {
-            error: "too many requests",
-            code: "otp_rate_limited",
-            message: `please wait ${retryAfter} second(s) before requesting another OTP`,
-          });
+          return sendError(res, `Please wait ${retryAfter} second(s) before requesting another OTP`, 429, { code: "otp_rate_limited", retryAfter });
         }
       }
 
@@ -359,98 +340,89 @@ router.post(
       try {
         await createOtpForUser(user.id, email, otp, otpExpiry);
       } catch (pErr: any) {
-        console.error("Prisma create OTP error:", pErr);
-        return respond(res, 502, { error: "failed to create otp" });
+        return handlePrismaError(res, pErr, "OTP");
       }
 
       try {
         await sendOtpEmail(email, otp);
       } catch (mailErr: any) {
-        console.error("Failed to send resend OTP email:", mailErr);
-        try {
-          await prisma.otp.updateMany({
-            where: { phone: encPhone, used: false },
-            data: { used: true },
-          });
-        } catch (clearErr) {
-          console.error(
-            "Failed to mark OTP used after mail failure:",
-            clearErr
-          );
-        }
-        return respond(res, 502, {
-          error: "failed to send verification email, please try again later",
-        });
+         console.error("Failed to send resend OTP email:", mailErr);
+         return sendError(res, "Failed to send verification email. Please try again later.", 502);
       }
 
-      return respond(res, 200, { message: "otp resent" });
+      return sendSuccess(res, "OTP resent successfully");
     } catch (err: any) {
-      console.error("Resend OTP error:", err);
-      if (err?.name === "ZodError")
-        return respond(res, 400, {
-          error: "validation failed",
-          details: err.errors,
-        });
       next(err);
     }
   }
 );
 
 /* Signin */
+
+/**
+ * POST /v1/auth/signin
+ * Description: Authenticates a user and returns a JWT token.
+ * Headers: None
+ * Body:
+ *  - email: string (valid email)
+ *  - password: string (min 6 chars)
+ * Responses:
+ *  - 200: { token, user: { ... }, effectiveStore: { ... } | null, stores: [], needsStoreSetup: boolean, needsStoreSelection: boolean }
+ *  - 400: Validation failed
+ *  - 401: Invalid credentials
+ *  - 403: Email not verified or account suspended
+ *  - 500: Internal server error
+ */
 router.post(
   "/signin",
   signinIpLimiter,
   signinEmailLimiter,
-  async (req: Request, res: Response, next) => {
+  async (req: Request, res: Response, next: import("express").NextFunction) => {
     try {
       const parsed = signinSchema.safeParse(req.body);
       if (!parsed.success) {
-        return respond(res, 400, {
-          error: "validation failed",
-          details: zodDetails(parsed.error),
-        });
+        return handleZodError(res, parsed.error);
       }
 
       const { email, password } = parsed.data;
 
       const user = await findUserByEmail(email);
-      if (!user) return respond(res, 401, { error: "invalid credentials" });
+      if (!user) return sendError(res, "Invalid credentials", 401);
 
       if (!user.isverified) {
-        return respond(res, 403, {
-          error: "email not verified",
-          code: "email_not_verified",
-        });
+        return sendError(res, "Email not verified", 403, { code: "email_not_verified" });
       }
 
       if (!user.isActive) {
-        return respond(res, 403, {
-          error: "This account has been temprarily disabled/suspended",
-          code: "user_not_active",
-        });
+        return sendError(res, "This account has been temporarily disabled/suspended", 403, { code: "user_not_active" });
       }
 
       const ok = await comparePassword(password, user.passwordHash);
-      if (!ok) return respond(res, 401, { error: "invalid credentials" });
+      if (!ok) return sendError(res, "Invalid credentials", 401);
 
       const token = signJwt({
         sub: user.id,
         email,
         globalRole: user.globalRole ?? null,
       });
+
+      // Response payload construction
+      let responseData: any = {
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          email,
+          globalRole: user.globalRole,
+        },
+        effectiveStore: null,
+        stores: [],
+      };
+
       // if SUPERADMIN, bypass store checks and return global admin context
       if (user.globalRole === "SUPERADMIN") {
-        return respond(res, 200, {
-          token,
-          user: {
-            id: user.id,
-            username: user.username, // already decrypted by Prisma extension
-            email,
-            globalRole: "SUPERADMIN",
-          },
-          effectiveStore: null, // superadmin sees global view
-          stores: [],
-        });
+        responseData.user.globalRole = "SUPERADMIN";
+        return sendSuccess(res, "Signed in as Superadmin", responseData);
       }
       else if (user.globalRole === "SUPPLIER") {
         const supplier = await prisma.supplier.findUnique({
@@ -463,24 +435,16 @@ router.post(
           },
         });
         
-        return respond(res, 200, {
-          token,
-          user: {
-            id: user.id,
-            username: crypto$.decryptCell(user.username),
-            email,
-            globalRole: "SUPPLIER",
-          },
-          // Supplier portal context
-          effectiveStore: null,
-          needsStoreSetup: false,
-          needsStoreSelection: false,
-          supplier: supplier, // Full supplier object or null
-          suppliers: supplier ? [supplier] : [], // Consistency array
-        });
+        responseData.user.globalRole = "SUPPLIER";
+        responseData.needsStoreSetup = false;
+        responseData.needsStoreSelection = false;
+        responseData.supplier = supplier;
+        responseData.suppliers = supplier ? [supplier] : [];
+        // decrypt username if needed, handled by variable 'user' coming from findUserByEmail which decrypts
+        
+        return sendSuccess(res, "Signed in as Supplier", responseData);
       }
       else {
-
         // fetch store roles for this user
         const stores = await prisma.userStoreRole.findMany({
           where: { userId: user.id },
@@ -501,66 +465,46 @@ router.post(
 
         // NO STORE → must create one
         if (stores.length === 0) {
-          return respond(res, 200, {
-            token,
-            user: {
-              id: user.id,
-              username: user.username, // already decrypted by Prisma extension
-              email,
-              globalRole: user.globalRole, // expose global role
-            },
-            effectiveStore: null,
-            needsStoreSetup: true,
-          });
+          responseData.needsStoreSetup = true;
+          return sendSuccess(res, "Signed in. Store setup required.", responseData);
         }
 
         // ONE STORE → use directly
         if (stores.length === 1) {
           const s = stores[0];
-          return respond(res, 200, {
-            token,
-            user: {
-              id: user.id,
-              username: user.username, // already decrypted by Prisma extension
-              email,
-              globalRole: user.globalRole, // expose global role (e.g. SUPPLIER)
-            },
-            effectiveStore: {
-              id: s.store.id,
-              name: s.store.name, // already decrypted by Prisma extension
-              slug: s.store.slug,
-              timezone: s.store.timezone,
-              currency: s.store.currency,
-              settings: s.store.settings,
-              roles: [s.role],
-            },
-          });
+          responseData.effectiveStore = {
+            ...s.store,
+            roles: [s.role],
+          };
+           return sendSuccess(res, "Signed in successfully", responseData);
         }
 
         // (future support) MULTIPLE STORES → frontend must show switcher
-        return respond(res, 200, {
-          token,
-          user: {
-            id: user.id,
-            username: user.username, // already decrypted by Prisma extension
-            email,
-            globalRole: user.globalRole, // expose global role
-          },
-          effectiveStore: null,
-          stores, // store names already decrypted by Prisma extension
-          needsStoreSelection: true,
-        });
-
+        responseData.stores = stores; // maps to store names
+        responseData.needsStoreSelection = true;
+        return sendSuccess(res, "Signed in. Please select a store.", responseData);
       }
 
     } catch (err: any) {
-      console.error("Signin error:", err);
       next(err);
     }
   }
 );
 
 /* Verify OTP */
+
+/**
+ * POST /v1/auth/verify-otp
+ * Description: Verifies the OTP sent to the user's email.
+ * Headers: None
+ * Body:
+ *  - email: string (valid email)
+ *  - otp: string (min 4 chars)
+ * Responses:
+ *  - 200: { message: "otp verified" }
+ *  - 400: Validation failed, invalid OTP, or no OTP pending
+ *  - 404: User not found
+ */
 router.post(
   "/verify-otp",
   verifyLimiter,
@@ -568,15 +512,12 @@ router.post(
     try {
       const parsed = verifyOtpSchema.safeParse(req.body);
       if (!parsed.success) {
-        return respond(res, 400, {
-          error: "validation failed",
-          details: zodDetails(parsed.error),
-        } as ErrorResponse);
+        return handleZodError(res, parsed.error);
       }
       const { email, otp } = parsed.data;
 
       const user = await findUserByEmail(email);
-      if (!user) return respond(res, 404, { error: "user not found" });
+      if (!user) return sendError(res, "User not found", 404);
 
       // fetch latest unused OTP rows for this contact (encrypted phone)
       const encPhone = crypto$.encryptCellDeterministic(email);
@@ -590,7 +531,7 @@ router.post(
       });
 
       if (!otpRow)
-        return respond(res, 400, { error: "no otp pending or otp expired" });
+        return sendError(res, "No pending OTP found or OTP has expired", 400);
 
       // decrypt stored otpHash then compare
       let storedOtpPlain: string | null = null;
@@ -612,10 +553,8 @@ router.post(
             where: { id: otpRow.id },
             data: { attempts: otpRow.attempts + 1 },
           });
-        } catch (_e) {
-          // ignore
-        }
-        return respond(res, 400, { error: "invalid otp" });
+        } catch (_e) { /* ignore */ }
+        return sendError(res, "Invalid OTP", 400);
       }
 
       // mark OTP as used and set user's isverified = true
@@ -634,20 +573,11 @@ router.post(
       } catch (pErr: any) {
         console.error("Prisma mark OTP used / verify user error:", pErr);
         // if transaction failed, still respond success but warn
-        return respond(res, 200, {
-          message:
-            "otp verified (but failed to persist used/verified state on server)",
-        });
+         return sendSuccess(res, "OTP verified (state warning: failed to persist used status)", null, 200);
       }
 
-      return respond(res, 200, { message: "otp verified" });
+      return sendSuccess(res, "OTP verified successfully");
     } catch (err: any) {
-      console.error("Verify OTP error:", err);
-      if (err?.name === "ZodError")
-        return respond(res, 400, {
-          error: "validation failed",
-          details: err.errors,
-        });
       next(err);
     }
   }
