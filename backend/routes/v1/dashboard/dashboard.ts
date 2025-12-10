@@ -146,8 +146,8 @@ dashboardRouter.get(
       const expiriesDays = Math.max(Number(req.query.expiriesDays ?? 90), 1);
       const agingBuckets = req.query.agingBuckets
         ? String(req.query.agingBuckets)
-            .split(",")
-            .map((s) => Number(s))
+          .split(",")
+          .map((s) => Number(s))
         : [30, 90, 180, 365]; // days
       const salesWindowStart = new Date(
         Date.now() - days * 24 * 60 * 60 * 1000
@@ -443,9 +443,9 @@ dashboardRouter.get(
         .map(([month, v]) => ({ month, ...v }))
         .sort((a, b) => a.month.localeCompare(b.month));
 
-      
+
       // alerts by type (removed alerts)
-       const alertsByType: any[] = [];
+      const alertsByType: any[] = [];
 
       // stock turnover approximation: soldQty / qtyReceived
       const soldQtyTotal = saleItemsSoldAgg.reduce(
@@ -640,7 +640,8 @@ dashboardRouter.post(
           select: { email: true },
         });
         if (supUser?.email) {
-          let supEmail = crypto$.decryptCell(supUser.email);
+          // Email is already decrypted by Prisma extension
+          const supEmail = supUser.email;
           if (supEmail) {
             await prisma.notification.create({
               data: {
@@ -735,7 +736,8 @@ router.post(
           select: { email: true },
         });
         if (supUser?.email) {
-          let supEmail = crypto$.decryptCell(supUser.email);
+          // Email is already decrypted by Prisma extension
+          const supEmail = supUser.email;
           if (supEmail) {
             await prisma.notification.create({
               data: {
