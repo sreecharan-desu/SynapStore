@@ -73,19 +73,13 @@ export async function authenticate(
       return res.status(403).json({ error: "user disabled" });
     }
 
-    // decrypt deterministic fields stored in DB (email, username)
-    const decrypted = crypto$.decryptObject(userRow, [
-      "email",
-      "username",
-      "imageUrl",
-    ]) as any;
-
+    // Prisma extension automatically decrypts all fields
     // attach sanitized user object to req for downstream middlewares
     req.user = {
       id: userRow.id,
-      email: decrypted.email ?? null,
-      username: decrypted.username ?? null,
-      imageUrl: decrypted.imageUrl ?? null,
+      email: userRow.email ?? null,
+      username: userRow.username ?? null,
+      imageUrl: userRow.imageUrl ?? null,
       globalRole: userRow.globalRole ?? null,
       isverified: userRow.isverified ?? false,
       rawTokenClaims: decoded,

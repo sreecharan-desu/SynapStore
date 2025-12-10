@@ -95,12 +95,8 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       },
     });
 
-    const user = crypto$.decryptObject(userRow, [
-      "username",
-      "email",
-      "imageUrl",
-    ]) as any;
-    user.globalRole = userRow.globalRole ?? null;
+    // Prisma extension automatically decrypts all fields
+    const user = userRow as any;
 
     // find single-store assignment (single-store mode)
     const link = await prisma.userStoreRole.findFirst({

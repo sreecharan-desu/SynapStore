@@ -71,12 +71,8 @@ async function findUserByEmail(email: string) {
   });
   if (!row) return null;
 
-  // decrypt encrypted fields
-  const decrypted = crypto$.decryptObject(row, ENCRYPTED_FIELDS) as any;
-  // keep passwordHash & isverified (already present)
-  decrypted.passwordHash = row.passwordHash ?? null;
-  decrypted.isverified = row.isverified ?? false;
-  return decrypted as any;
+  // Prisma extension automatically decrypts fields, no manual decryption needed
+  return row as any;
 }
 
 /* Rate limiters (in-memory) */
@@ -199,7 +195,7 @@ router.post(
             username: encUsername,
             email: encEmail,
             passwordHash: hashed,
-            globalRole : "STORE_OWNER"
+            globalRole: "STORE_OWNER"
             // isverified defaults to false per schema
           },
           select: { id: true, username: true, email: true },
@@ -249,15 +245,13 @@ router.post(
         });
       }
 
-      // decrypt user fields for response
-      const decrypted = crypto$.decryptObject(userRow, ENCRYPTED_FIELDS) as any;
-
+      // Prisma extension automatically decrypts fields
       return respond(res, 201, {
         message: "registered - otp sent",
         user: {
-          id: decrypted.id,
-          username: decrypted.username, // username is decrypted
-          email: decrypted.email,
+          id: userRow.id,
+          username: userRow.username,
+          email: userRow.email,
         },
       });
     } catch (err: any) {
@@ -415,7 +409,7 @@ router.post(
           token,
           user: {
             id: user.id,
-            username: crypto$.decryptCell(user.username), // decrypt username
+            username: user.username, // already decrypted by Prisma extension
             email,
             globalRole: "SUPERADMIN",
           },
@@ -428,13 +422,13 @@ router.post(
           token,
           user: {
             id: user.id,
-            username: crypto$.decryptCell(user.username), // decrypt username
+            username: user.username, // already decrypted by Prisma extension
             email,
             globalRole: "SUPPLIER",
           },
           supplierId: await prisma.supplier.findFirst({
             where: {
-              userId : user.id
+              userId: user.id
             },
             select: {
               id: true,
@@ -443,76 +437,76 @@ router.post(
         });
       }
       else {
-        
-      // fetch store roles for this user
-      const stores = await prisma.userStoreRole.findMany({
-        where: { userId: user.id },
-        select: {
-          role: true,
-          store: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              timezone: true,
-              currency: true,
-              settings: true,
+
+        // fetch store roles for this user
+        const stores = await prisma.userStoreRole.findMany({
+          where: { userId: user.id },
+          select: {
+            role: true,
+            store: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                timezone: true,
+                currency: true,
+                settings: true,
+              },
             },
           },
-        },
-      });
+        });
 
-      // NO STORE → must create one
-      if (stores.length === 0) {
+        // NO STORE → must create one
+        if (stores.length === 0) {
+          return respond(res, 200, {
+            token,
+            user: {
+              id: user.id,
+              username: user.username, // already decrypted by Prisma extension
+              email,
+              globalRole: user.globalRole, // expose global role
+            },
+            effectiveStore: null,
+            needsStoreSetup: true,
+          });
+        }
+
+        // ONE STORE → use directly
+        if (stores.length === 1) {
+          const s = stores[0];
+          return respond(res, 200, {
+            token,
+            user: {
+              id: user.id,
+              username: user.username, // already decrypted by Prisma extension
+              email,
+              globalRole: user.globalRole, // expose global role (e.g. SUPPLIER)
+            },
+            effectiveStore: {
+              id: s.store.id,
+              name: s.store.name, // already decrypted by Prisma extension
+              slug: s.store.slug,
+              timezone: s.store.timezone,
+              currency: s.store.currency,
+              settings: s.store.settings,
+              roles: [s.role],
+            },
+          });
+        }
+
+        // (future support) MULTIPLE STORES → frontend must show switcher
         return respond(res, 200, {
           token,
           user: {
             id: user.id,
-            username: crypto$.decryptCell(user.username), // decrypt username
+            username: user.username, // already decrypted by Prisma extension
             email,
             globalRole: user.globalRole, // expose global role
           },
           effectiveStore: null,
-          needsStoreSetup: true,
+          stores, // store names already decrypted by Prisma extension
+          needsStoreSelection: true,
         });
-      }
-
-      // ONE STORE → use directly
-      if (stores.length === 1) {
-        const s = stores[0];
-        return respond(res, 200, {
-          token,
-          user: {
-            id: user.id,
-            username: crypto$.decryptCell(user.username), // decrypt username
-            email,
-            globalRole: user.globalRole, // expose global role (e.g. SUPPLIER)
-          },
-          effectiveStore: {
-            id: s.store.id,
-            name: s.store.name,
-            slug: s.store.slug,
-            timezone: s.store.timezone,
-            currency: s.store.currency,
-            settings: s.store.settings,
-            roles: [s.role],
-          },
-        });
-      }
-
-      // (future support) MULTIPLE STORES → frontend must show switcher
-      return respond(res, 200, {
-        token,
-        user: {
-          id: user.id,
-          username: crypto$.decryptCell(user.username), // decrypt username
-          email,
-          globalRole: user.globalRole, // expose global role
-        },
-        effectiveStore: null,
-        stores,
-        needsStoreSelection: true,
-      });
 
       }
 

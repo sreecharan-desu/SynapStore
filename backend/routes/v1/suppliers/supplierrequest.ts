@@ -74,7 +74,7 @@ router.post(
         // If existing.userId is null, we can attach IF existingMap is null.
         // If existing.userId is set, we don't overwrite it here (only update other fields).
         // Actually, if existing.userId is set, we just update fields.
-        
+
         const canAttachUser = !existing.userId && user?.id && !existingMap;
 
         if (canAttachUser) {
@@ -140,7 +140,7 @@ router.post(
               payload: { supplierId: supplier.id },
             },
           })
-          .catch(() => {});
+          .catch(() => { });
       }
 
       // If we linked a user to this supplier, ensure the user has globalRole="SUPPLIER"
@@ -170,11 +170,11 @@ router.get(
       const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
       const where = q
         ? {
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { contactName: { contains: q, mode: "insensitive" } },
-            ],
-          }
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { contactName: { contains: q, mode: "insensitive" } },
+          ],
+        }
         : {};
       const suppliers = await prisma.supplier.findMany({
         // @ts-ignore
@@ -280,7 +280,7 @@ router.post(
 
       // notify store owners/admins (create Notification row)
       // notify store owners/admins via IN_APP and EMAIL
-      
+
       // 1. IN_APP to store room (generic "store_admins")
       await prisma.notification.create({
         data: {
@@ -308,13 +308,9 @@ router.post(
       });
 
       for (const admin of storeAdmins) {
-        let adminEmail = admin.user.email;
+        // Email is already decrypted by Prisma extension
+        const adminEmail = admin.user.email;
         if (adminEmail) {
-          // Attempt to decrypt if it looks encrypted (helper usually returns null if fail, but let's be safe)
-          // Actually, we should just try decrypt. If it returns null, maybe it wasn't encrypted?
-          // But our system encrypts emails.
-          const decrypted = crypto$.decryptCell(adminEmail);
-          if (decrypted) adminEmail = decrypted;
 
           await prisma.notification.create({
             data: {
@@ -323,9 +319,8 @@ router.post(
               channel: "EMAIL",
               recipient: adminEmail!,
               subject: `New Supplier Request: ${supplier.name}`,
-              body: `A new supplier request has been received from ${supplier.name}.\n\nMessage: ${
-                message ?? "No message"
-              }\n\nPlease log in to accept or reject.`,
+              body: `A new supplier request has been received from ${supplier.name}.\n\nMessage: ${message ?? "No message"
+                }\n\nPlease log in to accept or reject.`,
               status: "SENT", // we are sending it now
             },
           });
@@ -335,9 +330,8 @@ router.post(
             await sendMail({
               to: adminEmail!,
               subject: `New Supplier Request: ${supplier.name}`,
-              text: `Hello,\n\nA new supplier request has been received from ${supplier.name}.\n\nMessage: ${
-                message ?? "No message"
-              }\n\nPlease log in to your dashboard to accept or reject this request.`,
+              text: `Hello,\n\nA new supplier request has been received from ${supplier.name}.\n\nMessage: ${message ?? "No message"
+                }\n\nPlease log in to your dashboard to accept or reject this request.`,
             });
           } catch (e) {
             console.error("Failed to send email to store admin:", e);
@@ -354,7 +348,7 @@ router.post(
             payload: { requestId: reqRow.id, supplierId },
           },
         })
-        .catch(() => {});
+        .catch(() => { });
 
       return res.status(201).json({ success: true, data: { request: reqRow } });
     } catch (err) {
@@ -368,7 +362,7 @@ router.get(
   authenticate,
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
-  
+
       const supplierId =
         typeof req.query.supplierId === "string"
           ? req.query.supplierId
