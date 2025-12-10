@@ -1,40 +1,17 @@
-// src/pages/SupplierDashboard.tsx
 import React, { useEffect, useState } from "react";
 import { useRecoilValue, useSetRecoilState } from "recoil";
 import { authState, clearAuthState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Package, TruckIcon, FileText, DollarSign,
-    Store, Search, Send, Clock, CheckCircle, XCircle,
-    LogOut, Settings, AlertCircle
+    Search, Send, Clock, CheckCircle, XCircle,
+    LogOut, AlertCircle,
+    Store as StoreIcon
 } from "lucide-react";
-import { jsonFetch } from "../utils/api";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
-
-// --- Types ---
-
-interface StoreDiscovery {
-    id: string;
-    name: string;
-    slug: string;
-    currency: string;
-    timezone: string;
-}
-
-interface SupplierRequest {
-    id: string;
-    status: "PENDING" | "ACCEPTED" | "REJECTED";
-    message: string | null;
-    createdAt: string;
-    storeId?: string;
-    store?: {
-        id: string;
-        name: string;
-    };
-}
-
-
+import { suppliersApi } from "../lib/api/endpoints";
+import type { Store, SupplierRequest } from "../lib/types";
 
 // --- Components ---
 
@@ -79,7 +56,7 @@ const SupplierDashboard: React.FC = () => {
     const [loading, setLoading] = useState(false);
 
     // Data
-    const [stores, setStores] = useState<StoreDiscovery[]>([]);
+    const [stores, setStores] = useState<Store[]>([]);
     const [requests, setRequests] = useState<SupplierRequest[]>([]);
 
     // Profile form state
@@ -95,21 +72,16 @@ const SupplierDashboard: React.FC = () => {
     // Check if we have an existing profile to load
     useEffect(() => {
         if (auth.suppliers && auth.suppliers.length > 0) {
-            // In a real app we'd fetch the full profile details. 
-            // For now, we'll just populate what we actally have or keep defaults for missing fields.
-            // Since auth.suppliers is a summary list, we might want to fetch the full profile details in 'fetchData'
-            // But let's at least set the name if it's there.
             const s = auth.suppliers[0];
             setProfileForm(prev => ({ ...prev, name: s.name }));
+            // We'd ideally fetch the full details here if they aren't in auth state
         }
     }, [auth.suppliers]);
 
     // Forms
     const [requestMessage, setRequestMessage] = useState("");
-    const [selectedStore, setSelectedStore] = useState<StoreDiscovery | null>(null);
+    const [selectedStore, setSelectedStore] = useState<Store | null>(null);
 
-    // Determine current supplier ID (simplistic: grab first one or from auth)
-    // In a real app we might let them switch context if they manage multiple suppliers
     const currentSupplier = auth.suppliers && auth.suppliers.length > 0 ? auth.suppliers[0] : null;
 
     useEffect(() => {
@@ -120,15 +92,14 @@ const SupplierDashboard: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const token = auth.token;
             if (activeTab === "marketplace") {
-                const res = await jsonFetch("/api/v1/suppliers/discovery", { token });
-                if (res.success) setStores(res.data.stores);
+                const res = await suppliersApi.getDiscoveryStores();
+                if (res.data.success) setStores(res.data.data.stores);
             } else if (activeTab === "requests") {
-                const res = await jsonFetch("/api/v1/supplier-requests?supplierId=" + currentSupplier?.id, { token });
-                if (res.success) setRequests(res.data.requests);
+                const res = await suppliersApi.getDetails(currentSupplier?.id);
+                if (res.data.success) setRequests(res.data.data.requests);
             } else if (activeTab === "profile") {
-                // no-op
+                // If we implemented an endpoint to get full profile details, we'd call it here
             }
         } catch (err) {
             console.error("Fetch error", err);
@@ -148,23 +119,18 @@ const SupplierDashboard: React.FC = () => {
         if (!selectedStore) return;
 
         try {
-            const res = await jsonFetch("/api/v1/supplier-requests", {
-                method: "POST",
-                token: auth.token,
-                body: JSON.stringify({
-                    storeId: selectedStore.id,
-                    supplierId: currentSupplier.id,
-                    message: requestMessage
-                })
+            const res = await suppliersApi.createRequest({
+                storeId: selectedStore.id,
+                supplierId: currentSupplier.id,
+                message: requestMessage
             });
-            if (res.success) {
+            if (res.data.success) {
                 alert("Request sent successfully!");
                 setSelectedStore(null);
                 setRequestMessage("");
-                // Switch to requests tab to see it?
                 setActiveTab("requests");
             } else {
-                alert("Failed to send request: " + (res.error || "Unknown error"));
+                alert("Failed to send request: Unknown error");
             }
         } catch (err: any) {
             alert("Error: " + err.message);
@@ -173,35 +139,28 @@ const SupplierDashboard: React.FC = () => {
 
     const handleSaveProfile = async () => {
         try {
-            // Basic validation
             if (!profileForm.name.trim()) {
                 alert("Business Name is required");
                 return;
             }
 
-            const res = await jsonFetch("/api/v1/suppliers/global", {
-                method: "POST",
-                token: auth.token,
-                body: JSON.stringify({
-                    name: profileForm.name,
-                    contactName: profileForm.contactName,
-                    phone: profileForm.phone,
-                    address: profileForm.address,
-                    defaultLeadTime: Number(profileForm.defaultLeadTime),
-                    defaultMOQ: Number(profileForm.defaultMOQ)
-                })
+            const res = await suppliersApi.createGlobal({
+                name: profileForm.name,
+                contactName: profileForm.contactName,
+                phone: profileForm.phone,
+                address: profileForm.address,
+                defaultLeadTime: Number(profileForm.defaultLeadTime),
+                defaultMOQ: Number(profileForm.defaultMOQ)
             });
 
-            if (res.success) {
+            if (res.data.success) {
                 alert("Profile saved successfully!");
-                // Update local auth state to reflect the new/updated supplier
-                // In a robust app, we should probably refetch the 'me' endpoint or update the token.
-                // For now, we'll manually patch the auth state to include this supplier if it wasn't there.
+                const supData = res.data.data.supplier;
                 if (!currentSupplier) {
                     const newSupplierShort = {
-                        id: res.data.supplier.id,
+                        id: supData.id,
                         storeId: null, // global supplier
-                        name: res.data.supplier.name,
+                        name: supData.name,
                         isActive: true
                     };
                     setAuth(prev => ({
@@ -210,7 +169,7 @@ const SupplierDashboard: React.FC = () => {
                     }));
                 }
             } else {
-                alert("Failed to save profile: " + (res.error || "Unknown error"));
+                alert("Failed to save profile: Unknown error");
             }
         } catch (err: any) {
             alert("Error saving profile: " + err.message);
@@ -224,16 +183,11 @@ const SupplierDashboard: React.FC = () => {
         }
     };
 
-    // Calculate quick stats from requests
     const pendingCount = requests.filter(r => r.status === "PENDING").length;
     const connectedCount = requests.filter(r => r.status === "ACCEPTED").length;
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex">
-
-            {/* Sidebar Navigation (could be top nav too, but sidebar feels more 'dashboardy' for this role) */}
-            {/* Let's stick to Top Nav to match Admin style for consistency */}
-
             <div className="flex-1 flex flex-col h-screen overflow-hidden">
                 {/* Header */}
                 <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200 z-20 shrink-0">
@@ -339,40 +293,6 @@ const SupplierDashboard: React.FC = () => {
                                             delay={0.3}
                                         />
                                     </div>
-
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl p-8 text-white shadow-xl">
-                                            <h2 className="text-2xl font-bold mb-4">Grow Your Business</h2>
-                                            <p className="text-emerald-100 mb-6 max-w-md">
-                                                Browse the Marketplace to find new stores looking for suppliers like you.
-                                                Send connection requests and start selling active inventory today.
-                                            </p>
-                                            <Button
-                                                variant="secondary"
-                                                onClick={() => setActiveTab("marketplace")}
-                                                className="bg-white text-emerald-700 hover:bg-emerald-50 border-0"
-                                            >
-                                                Explore Marketplace
-                                            </Button>
-                                        </div>
-
-                                        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                                <Settings className="w-5 h-5 text-slate-400" />
-                                                Quick Settings
-                                            </h3>
-                                            <div className="space-y-3">
-                                                <div className="p-3 bg-slate-50 rounded-lg flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors">
-                                                    <span className="text-sm font-medium text-slate-700">Notifications</span>
-                                                    <div className="w-8 h-4 bg-emerald-500 rounded-full relative"><div className="w-3 h-3 bg-white rounded-full absolute right-0.5 top-0.5" /></div>
-                                                </div>
-                                                <div className="p-3 bg-slate-50 rounded-lg flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors">
-                                                    <span className="text-sm font-medium text-slate-700">Auto-Accept Orders</span>
-                                                    <div className="w-8 h-4 bg-slate-300 rounded-full relative"><div className="w-3 h-3 bg-white rounded-full absolute left-0.5 top-0.5" /></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </motion.div>
                             )}
 
@@ -408,7 +328,7 @@ const SupplierDashboard: React.FC = () => {
                                             {stores.map(store => (
                                                 <div key={store.id} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
                                                     <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                        <Store className="w-12 h-12 text-slate-100 group-hover:text-emerald-50 group-hover:scale-110 transition-transform duration-500" />
+                                                        <StoreIcon className="w-12 h-12 text-slate-100 group-hover:text-emerald-50 group-hover:scale-110 transition-transform duration-500" />
                                                     </div>
 
                                                     <div className="relative z-10">
@@ -469,7 +389,7 @@ const SupplierDashboard: React.FC = () => {
                                                         <td className="px-6 py-4 font-medium text-slate-900">
                                                             {req.store?.name || (stores.find(s => s.id === req.storeId)?.name) || "Store (" + (req.storeId?.slice(0, 8) || "Unknown") + ")"}
                                                         </td>
-                                                        <td className="px-6 py-4 text-slate-500">{new Date(req.createdAt).toLocaleDateString()}</td>
+                                                        <td className="px-6 py-4 text-slate-500">{req.createdAt ? new Date(req.createdAt).toLocaleDateString() : "-"}</td>
                                                         <td className="px-6 py-4 text-slate-500 max-w-xs truncate" title={req.message || ""}>{req.message || "-"}</td>
                                                         <td className="px-6 py-4">
                                                             <RequestBadge status={req.status} />
@@ -489,7 +409,7 @@ const SupplierDashboard: React.FC = () => {
                                 </motion.div>
                             )}
 
-                            {/* PROFILE TAB (Placeholder) */}
+                            {/* PROFILE TAB */}
                             {activeTab === "profile" && (
                                 <motion.div
                                     key="profile"
@@ -610,4 +530,3 @@ const SupplierDashboard: React.FC = () => {
 };
 
 export default SupplierDashboard;
-

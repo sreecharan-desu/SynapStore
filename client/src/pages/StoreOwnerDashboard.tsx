@@ -5,8 +5,9 @@ import { authState } from "../state/auth";
 import { motion } from "framer-motion";
 import { Store, ShoppingCart, TrendingUp, Users, Package, DollarSign, Activity, LogOut, Truck, Check, X } from "lucide-react";
 import { useLogout } from "../hooks/useLogout";
-import { jsonFetch } from "../utils/api";
+import { dashboardApi } from "../lib/api/endpoints";
 import { Button } from "../components/ui/button";
+import type { SupplierRequest, Supplier } from "../lib/types";
 
 interface DashboardData {
     user: any;
@@ -28,8 +29,8 @@ interface DashboardData {
     lists: {
         lowStock: Array<any>;
         recentSales: Array<any>;
-        activity: Array<any>;
-        suppliers: Array<any>;
+        activity: Array<{ id: string; action: string; createdAt: string }>;
+        suppliers: Array<Supplier>;
     };
 }
 
@@ -39,53 +40,24 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const [data, setData] = React.useState<DashboardData | null>(null);
     const [loading, setLoading] = React.useState(true);
-    const [supplierRequests, setSupplierRequests] = React.useState<any[]>([]);
+    const [supplierRequests, setSupplierRequests] = React.useState<SupplierRequest[]>([]);
 
     React.useEffect(() => {
         const fetchDashboardData = async () => {
             try {
-                // First get basic store info to ensuring permissions
-                await jsonFetch("/api/v1/dashboard/store", { token: auth.token });
+                const [, bootstrapRes, requestsRes] = await Promise.all([
+                    dashboardApi.getStore(), // just to ensure permissions/context
+                    dashboardApi.getBootstrap(),
+                    dashboardApi.getSupplierRequests()
+                ]);
 
-                // Then get the full bootstrap data
-                const res = await jsonFetch("/api/v1/dashboard/bootstrap", { token: auth.token });
-                if (res.success) {
-                    setData(res.data);
+                if (bootstrapRes.data.success) {
+                    setData(bootstrapRes.data.data);
                 }
 
-                // Fetch supplier requests separately as they might not be in bootstrap yet or we want fresh state
-                // Note: User didn't provide GET endpoint for requests in prompt, but we should assume we can list them somehow
-                // For now we will rely on what might be in 'activity' or 'lists' if provided, or add a specific fetch if needed.
-                // Looking at the provided backend code, there isn't a direct "list pending requests" endpoint exposed in the snippet.
-                // However, the prompt implies we should implement the UI for it. We'll check 'lists.activity' for related logs or assume a missing endpoint.
-                // Correction: The backend snippet mentions `prisma.supplierRequest.count` but doesn't return the list in bootstrap.
-                // We'll focus on the 'bootstrap' data visualization first.
-                // If the user wants to manage requests, we need a list. 
-                // Let's assume we can fetch them or they are part of a missing "requests" list.
-                // For this step, I'll add a placeholder for fetching requests or use alerts if applicable.
-
-                // Actually, let's fetch pending requests if we can. 
-                // Since the user didn't provide a GET /supplier-requests endpoint in the prompt (only separate DELETE/ACCEPT),
-                // we'll simulate it or wait for the user to provide it.
-                // **Wait**, I see `prisma.supplier.findMany` in bootstrap. That's *connected* suppliers.
-                // I will add a "Supplier Requests" section that uses a mock list or checks if the backend provided it elsewhere.
-                // In the `bootstrap` endpoint, there is NO `supplierRequests` array returned.
-                // I will assume for now we can't see pending requests list without a new endpoint. 
-                // BUT, the user explicitly asked to "Store Owner Accept and Reject Request".
-                // I will add a specific fetch for requests assuming standard REST conventions or just leave a placeholder 'fetch' 
-                // and comment that the endpoint is missing from the provided snippet.
-
-                // Re-reading user request: "hey also implement this in STORE_OWNER frontend UI".
-                // It implies I should use the provided backend logic.
-                // The provided backend logic HAS `dashboardRouter.get("/bootstrap", ...)` which returns `lists: { suppliers: ... }`.
-                // It does NOT return pending requests.
-                // However, I can implement the UI components for it and maybe a "fetchRequests" function that hits a speculative endpoint
-                // or just shows where they would be.
-
-                // Let's try to fetch from a standard endpoint `/api/v1/supplier-requests` just in case, or handle it gracefully.
-                const reqs = await jsonFetch("/api/v1/dashboard/supplier-requests", { token: auth.token });
-                if (reqs.success) setSupplierRequests(reqs.data);
-
+                if (requestsRes.data.success && Array.isArray(requestsRes.data.data)) {
+                    setSupplierRequests(requestsRes.data.data);
+                }
             } catch (err) {
                 console.error("Failed to fetch dashboard data", err);
             } finally {
@@ -107,11 +79,8 @@ const StoreOwnerDashboard: React.FC = () => {
     const handleAcceptRequest = async (requestId: string) => {
         if (!confirm("Accept this supplier request?")) return;
         try {
-            const res = await jsonFetch(`/api/v1/dashboard/${requestId}/accept`, {
-                method: "POST",
-                token: auth.token
-            });
-            if (res.success) {
+            const res = await dashboardApi.acceptSupplierRequest(requestId);
+            if (res.data.success) {
                 alert("Request accepted!");
                 // Refresh data
                 window.location.reload();
@@ -125,11 +94,8 @@ const StoreOwnerDashboard: React.FC = () => {
     const handleRejectRequest = async (requestId: string) => {
         if (!confirm("Reject this supplier request?")) return;
         try {
-            const res = await jsonFetch(`/api/v1/dashboard/${requestId}/reject`, {
-                method: "POST",
-                token: auth.token
-            });
-            if (res.success) {
+            const res = await dashboardApi.rejectSupplierRequest(requestId);
+            if (res.data.success) {
                 alert("Request rejected");
                 // Refresh data
                 window.location.reload();
@@ -227,7 +193,7 @@ const StoreOwnerDashboard: React.FC = () => {
                     <h2 className="text-xl font-bold text-slate-800 mb-6">Recent Activity</h2>
                     <div className="space-y-4">
                         {data?.lists.activity && data.lists.activity.length > 0 ? (
-                            data.lists.activity.map((log: any) => (
+                            data.lists.activity.map((log) => (
                                 <div key={log.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
@@ -263,7 +229,7 @@ const StoreOwnerDashboard: React.FC = () => {
                             Pending Supplier Requests
                         </h2>
                         <div className="space-y-3">
-                            {supplierRequests.map((req: any) => (
+                            {supplierRequests.map((req) => (
                                 <div key={req.id} className="flex items-center justify-between p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
                                     <div>
                                         <p className="font-semibold text-slate-800">{req.supplier?.name || "Unknown Supplier"}</p>

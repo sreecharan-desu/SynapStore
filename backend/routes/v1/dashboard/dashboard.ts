@@ -593,10 +593,14 @@ dashboardRouter.get(
       const supplierRequests = await prisma.supplierRequest.findMany({
         where: {
           storeId: store.id,
+          status: "PENDING"
         },
         orderBy: {
           createdAt: "desc",
         },
+        include: {
+            supplier: true
+        }
       });
 
       return sendSuccess(res, "Supplier requests retrieved", supplierRequests);

@@ -4,12 +4,13 @@ import { useRecoilValue } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Shield, Users, Store, Activity, Search,
+    Shield, Users, Store as StoreIcon, Activity, Search,
     Package, Truck, LogOut, Trash2,
-    PieChart, AlertTriangle, Wallet
+    PieChart, AlertTriangle, Wallet,
 } from "lucide-react";
 
 import { adminApi } from "../lib/api/endpoints";
+import type { User, Store, Supplier, AdminStats } from "../lib/types";
 
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -18,50 +19,7 @@ import { clearAuthState } from "../state/auth";
 
 // --- Types ---
 
-interface AdminStats {
-    counts: {
-        users: number;
-        stores: number;
-        medicines: number;
-        batches: number;
-        reorders: number;
-        uploads: number;
-    };
-    recentActivity: Array<{
-        id: string;
-        action: string;
-        resource: string;
-        createdAt: string;
-        user?: { username: string; email: string };
-    }>;
-}
-
-interface StoreData {
-    id: string;
-    name: string;
-    slug: string;
-    isActive: boolean;
-    createdAt: string;
-    users: Array<{ user: { email: string } }>;
-}
-
-interface SupplierData {
-    id: string;
-    name: string;
-    contactName?: string;
-    isActive: boolean;
-    createdAt: string;
-    user?: { email: string; username: string };
-}
-
-interface UserData {
-    id: string;
-    username: string;
-    email: string;
-    globalRole: string;
-    isActive: boolean;
-    createdAt: string;
-}
+// Local interfaces removed in favor of shared types
 
 interface AnalyticsData {
     overview: {
@@ -171,9 +129,9 @@ const SuperAdminDashboard: React.FC = () => {
     // Data State
     const [stats, setStats] = useState<AdminStats | null>(null);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
-    const [stores, setStores] = useState<StoreData[]>([]);
-    const [suppliers, setSuppliers] = useState<SupplierData[]>([]);
-    const [users, setUsers] = useState<UserData[]>([]);
+    const [stores, setStores] = useState<Store[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(false);
 
     // Search / Filter
@@ -188,7 +146,6 @@ const SuperAdminDashboard: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const token = auth.token; // client handles this automatically via interceptor, but keeping for reference if needed
             if (activeTab === "overview") {
                 const res = await adminApi.getStats();
                 if (res.data.success) setStats(res.data.data);
@@ -376,7 +333,7 @@ const SuperAdminDashboard: React.FC = () => {
                             {/* Stats Grid */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                                 <StatCard
-                                    icon={Store}
+                                    icon={StoreIcon}
                                     label="Total Stores"
                                     value={loading ? "..." : stats?.counts.stores ?? 0}
                                     color="from-blue-500 to-cyan-500"
@@ -445,7 +402,7 @@ const SuperAdminDashboard: React.FC = () => {
                                         <h3 className="font-bold text-slate-800 mb-4">Quick Navigation</h3>
                                         <div className="space-y-3">
                                             <Button variant="outline" className="w-full justify-start gap-2" onClick={() => setActiveTab("stores")}>
-                                                <Store className="w-4 h-4 text-slate-500" />
+                                                <StoreIcon className="w-4 h-4 text-slate-500" />
                                                 Manage Stores
                                             </Button>
                                             <Button variant="outline" className="w-full justify-start gap-2" onClick={() => setActiveTab("suppliers")}>
@@ -593,7 +550,7 @@ const SuperAdminDashboard: React.FC = () => {
                         >
                             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between gap-4">
                                 <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    <Store className="w-5 h-5 text-indigo-500" />
+                                    <StoreIcon className="w-5 h-5 text-indigo-500" />
                                     Registered Stores
                                 </h2>
                                 <form onSubmit={handleSearch} className="flex gap-2">
@@ -633,7 +590,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                     {store.users?.[0]?.user?.email || "No Owner"}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <StatusBadge isActive={store.isActive} />
+                                                    <StatusBadge isActive={store.isActive || false} />
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
@@ -641,7 +598,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                             variant="ghost"
                                                             size="sm"
                                                             className={store.isActive ? "text-amber-600 hover:text-amber-700 hover:bg-amber-50" : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"}
-                                                            onClick={() => toggleStoreStatus(store.id, store.isActive)}
+                                                            onClick={() => toggleStoreStatus(store.id, store.isActive || false)}
                                                         >
                                                             {store.isActive ? "Suspend" : "Activate"}
                                                         </Button>
@@ -725,7 +682,8 @@ const SuperAdminDashboard: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <StatusBadge isActive={supplier.isActive} />
+                                                    
+                                                    <StatusBadge isActive={supplier.isActive || false} />
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
@@ -733,7 +691,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                             variant="ghost"
                                                             size="sm"
                                                             className={supplier.isActive ? "text-amber-600 hover:text-amber-700 hover:bg-amber-50" : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"}
-                                                            onClick={() => toggleSupplierStatus(supplier.id, supplier.isActive)}
+                                                            onClick={() => toggleSupplierStatus(supplier.id, supplier.isActive || false)}
                                                         >
                                                             {supplier.isActive ? "Suspend" : "Activate"}
                                                         </Button>
@@ -821,7 +779,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                         {user.globalRole || "USER"}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-slate-500">{new Date(user.createdAt).toLocaleDateString()}</td>
+                                                <td className="px-6 py-4 text-slate-500">Joined: {new Date(user.createdAt || "").toLocaleDateString()}</td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
                                                         {user.globalRole !== 'SUPPLIER' && user.globalRole !== 'SUPERADMIN' && (

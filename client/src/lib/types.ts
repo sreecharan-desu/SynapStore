@@ -88,6 +88,8 @@ export interface Supplier {
     userId?: string | null;
     isActive?: boolean;
     user?: { id: string; email: string; username: string };
+    defaultLeadTime?: number;
+    defaultMOQ?: number;
 }
 
 // Mock types for missing features
@@ -104,7 +106,7 @@ export interface SupplierRequest {
     updatedAt: string;
     supplier?: Supplier;
     store?: Store;
-    
+    createdById?: string;
 }
 
 export interface AdminStats {

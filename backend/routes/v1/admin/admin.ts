@@ -42,7 +42,7 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
       inventoryBatches,
       uploadsCount,
     ] = await Promise.all([
-      prisma.user.count(),
+      prisma.user.count({ where: { globalRole: { notIn: ["SUPERADMIN", "ADMIN"] } } }),
       prisma.store.count(),
       prisma.medicine.count(),
       prisma.inventoryBatch.count(),
@@ -481,6 +481,33 @@ router.post(
             userId,
           },
         });
+
+      }
+      
+      // Delete stores associated with the user if they were a STORE_OWNER
+      const userStores = await prisma.userStoreRole.findMany({
+        where: {
+          userId: userId,
+          role: "STORE_OWNER",
+        },
+        select: { storeId: true },
+      });
+
+      for (const storeRole of userStores) {
+        try {
+          await prisma.store.delete({
+            where: { id: storeRole.storeId },
+          });
+        } catch (e: any) {
+          console.error(`Failed to delete store ${storeRole.storeId} during user conversion:`, e);
+          // If foreign key constraint fails, we might leave it (or we could use a transaction/cascade manually elsewhere)
+          // For now, logging error is safer than failing the entire request since user is already updated.
+          if (e.code === 'P2003') {
+             // Optional: Force delete or delete related records if required.
+             // Given the complexity, we'll just log warning.
+             console.warn(`Could not delete store ${storeRole.storeId} due to existing relations.`);
+          }
+        }
       }
 
       await prisma.auditLog.create({

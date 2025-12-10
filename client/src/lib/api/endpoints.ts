@@ -36,12 +36,12 @@ export const dashboardApi = {
 
 // --- Suppliers ---
 export const suppliersApi = {
-    listGlobal: (q?: string) => client.get<{ success: boolean; data: { suppliers: Supplier[] } }>("/suppliers/global", { params: { q } }),
-    createGlobal: (data: Partial<Supplier>) => client.post<{ success: boolean; data: { supplier: Supplier } }>("/suppliers/global", data),
+    listGlobal: (q?: string) => client.get<{ success: boolean; data: { suppliers: Supplier[] } }>("/supplier-requests/global", { params: { q } }),
+    createGlobal: (data: Partial<Supplier>) => client.post<{ success: boolean; data: { supplier: Supplier } }>("/supplier-requests/global", data),
     
-    getDiscoveryStores: () => client.get<{ success: boolean; data: { stores: Store[] } }>("/suppliers/discovery"),
-    createRequest: (data: { storeId: string; supplierId: string; message?: string }) => client.post<{ success: boolean; data: { request: SupplierRequest } }>("/suppliers", data),
-    getDetails: (supplierId?: string) => client.get<{ success: boolean; data: { supplier: Supplier; requests: SupplierRequest[] } }>("/suppliers", { params: { supplierId } }),
+    getDiscoveryStores: () => client.get<{ success: boolean; data: { stores: Store[] } }>("/supplier-requests/discovery"),
+    createRequest: (data: { storeId: string; supplierId: string; message?: string }) => client.post<{ success: boolean; data: { request: SupplierRequest } }>("/supplier-requests", data),
+    getDetails: (supplierId?: string) => client.get<{ success: boolean; data: { supplier: Supplier; requests: SupplierRequest[] } }>("/supplier-requests", { params: { supplierId } }),
 };
 
 // --- Admin ---

@@ -217,18 +217,57 @@ router.get(
 router.get(
   "/discovery",
   authenticate,
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
+      const user = req.user;
+      if (!user) return sendError(res, "Unauthenticated", 401);
+
+      const supplier = await prisma.supplier.findFirst({
+        where: { userId: user.id },
+        select: { id: true },
+      });
+
+      if (!supplier) {
+        // If the user is not linked to a supplier, they can't have linked stores.
+        // Return all active stores for discovery.
+        const stores = await prisma.store.findMany({
+          where: {
+            isActive: true,
+          },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            currency: true,
+            timezone: true,
+          },
+          take: 100,
+        });
+        return sendSuccess(res, "Store discovery list", { stores });
+      }
+
+      const supplierId = supplier.id;
+
       const stores = await prisma.store.findMany({
         where: {
           isActive: true,
-          // Exclude stores owned by users who are now global Suppliers
+          // Exclude stores that show up in SupplierStore (already linked)
+          supplierStores: {
+            none: {
+              supplierId: supplierId,
+            },
+          },
+          // Exclude stores that show up in SupplierRequest (pending or accepted)
+          supplierRequests: {
+            none: {
+              supplierId: supplierId,
+              status: { in: ["PENDING", "ACCEPTED"] },
+            },
+          },
+          // Exclude stores where the current user is a member (e.g. owner)
           users: {
             none: {
-              role: "STORE_OWNER",
-              user: {
-                globalRole: "SUPPLIER",
-              },
+              userId: user.id,
             },
           },
         },
