@@ -96,6 +96,7 @@ router.post(
             contactName: payload.contactName ?? undefined,
             defaultLeadTime: payload.defaultLeadTime ?? undefined,
             defaultMOQ: payload.defaultMOQ ?? undefined,
+         
             // userId already set
           },
         });
@@ -330,19 +331,6 @@ router.post(
           const decrypted = crypto$.decryptCell(adminEmail);
           if (decrypted) adminEmail = decrypted;
 
-          await prisma.notification.create({
-            data: {
-              storeId,
-              userId: admin.userId,
-              channel: "EMAIL",
-              recipient: adminEmail!,
-              subject: `New Supplier Request: ${supplier.name}`,
-              body: `A new supplier request has been received from ${supplier.name}.\n\nMessage: ${
-                message ?? "No message"
-              }\n\nPlease log in to accept or reject.`,
-              status: "SENT", // we are sending it now
-            },
-          });
 
           // Send actual email
           try {

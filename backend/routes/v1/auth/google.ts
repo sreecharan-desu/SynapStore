@@ -203,7 +203,8 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
           globalRole: user.globalRole ?? null,
         },
         effectiveStore: null,
-        needsStoreSetup: true,
+        needsStoreSetup: user.globalRole !== "SUPPLIER",
+        supplier: supplierRows[0] ?? null,
         suppliers: supplierRows.map((s) => ({
           id: s.id,
           storeId: s.storeId,
