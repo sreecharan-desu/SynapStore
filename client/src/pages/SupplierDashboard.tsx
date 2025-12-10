@@ -122,7 +122,7 @@ const SupplierDashboard: React.FC = () => {
         try {
             const token = auth.token;
             if (activeTab === "marketplace") {
-                const res = await jsonFetch("/api/v1/suppliers/discovery", { token });
+                const res = await jsonFetch("/api/v1/suppliers-requests/discovery", { token });
                 if (res.success) setStores(res.data.stores);
             } else if (activeTab === "requests") {
                 const res = await jsonFetch("/api/v1/supplier-requests?supplierId=" + currentSupplier?.id, { token });
@@ -179,7 +179,7 @@ const SupplierDashboard: React.FC = () => {
                 return;
             }
 
-            const res = await jsonFetch("/api/v1/suppliers/global", {
+            const res = await jsonFetch("/api/v1/suppliers-requests/global", {
                 method: "POST",
                 token: auth.token,
                 body: JSON.stringify({

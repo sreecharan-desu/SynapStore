@@ -107,6 +107,6 @@ export const salesApi = {
 
 // --- Suppliers ---
 export const suppliersApi = {
-    listGlobal: (q?: string) => client.get<{ success: boolean; data: { suppliers: Supplier[] } }>("/suppliers/global", { params: { q } }),
-    createGlobal: (data: Partial<Supplier>) => client.post<{ success: boolean; data: { supplier: Supplier } }>("/suppliers/global", data),
+    listGlobal: (q?: string) => client.get<{ success: boolean; data: { suppliers: Supplier[] } }>("/suppliers-requests/global", { params: { q } }),
+    createGlobal: (data: Partial<Supplier>) => client.post<{ success: boolean; data: { supplier: Supplier } }>("/suppliers-requests/global", data),
 };

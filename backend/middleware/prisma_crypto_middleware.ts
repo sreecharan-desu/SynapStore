@@ -147,19 +147,64 @@ function decryptFields(data: any, fields: string[], dek: Buffer): void {
 /**
  * Decrypt all fields for a model (both ENCRYPT_FIELDS and DECRYPT_ONLY_FIELDS)
  */
+/**
+ * Decrypt all fields for a model (both ENCRYPT_FIELDS and DECRYPT_ONLY_FIELDS)
+ * RECURSIVE: Also decrypts nested relations
+ */
 function decryptAllFieldsForModel(data: any, model: string, dek: Buffer): void {
   if (!data || typeof data !== "object") return;
 
   // Decrypt regular encrypted fields
   const encryptFields = ENCRYPT_FIELDS[model] || [];
   if (encryptFields.length > 0) {
-    decryptFields(data, encryptFields, dek);
+    // Only decrypt if the field exists in data
+    const fieldsPresent = encryptFields.filter(f => data[f] !== undefined);
+    if (fieldsPresent.length > 0) {
+      decryptFields(data, fieldsPresent, dek);
+    }
   }
 
   // Decrypt decrypt-only fields (manually encrypted in routes)
   const decryptOnlyFields = DECRYPT_ONLY_FIELDS[model] || [];
   if (decryptOnlyFields.length > 0) {
-    decryptFields(data, decryptOnlyFields, dek);
+    const fieldsPresent = decryptOnlyFields.filter(f => data[f] !== undefined);
+    if (fieldsPresent.length > 0) {
+      decryptFields(data, fieldsPresent, dek);
+    }
+  }
+
+  // Recursively handle nested relations
+  // Heuristic: If a key's value is an object or array of objects, try to decrypt it 
+  // by guessing the model name (Capitalize first letter)
+  for (const key in data) {
+    if (key === "id" || key === "createdAt" || key === "updatedAt") continue;
+
+    const value = data[key];
+    if (!value) continue;
+
+    // Check if it looks like a relation (object or array of objects)
+    if (typeof value === "object") {
+      // Guess model name: user -> User, store -> Store, etc.
+      // Prisma fields are usually camelCase, models are PascalCase.
+      // This is a simple heuristic but works for most standard Prisma schemas.
+      const guessedModel = key.charAt(0).toUpperCase() + key.slice(1);
+
+      // Check if we have configuration for this guessed model (to avoid useless recursion on json fields etc)
+      // If it's not in ENCRYPT_FIELDS or DECRYPT_ONLY_FIELDS, we might still need to recurse 
+      // if it has nested relations that ARE encrypted.
+      // But for safety/perf, let's recurse blindly but rely on decryptAllFieldsForModel to be fast if no fields match.
+
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          decryptAllFieldsForModel(item, guessedModel, dek);
+        }
+      } else {
+        // It's a single object (or Date, or null - Date check needed?)
+        if (!(value instanceof Date)) {
+          decryptAllFieldsForModel(value, guessedModel, dek);
+        }
+      }
+    }
   }
 }
 
