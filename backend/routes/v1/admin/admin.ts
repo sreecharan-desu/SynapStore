@@ -34,7 +34,7 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
       uploadsCount,
     ] = await Promise.all([
       prisma.user.count(),
-      prisma.store.count({ where: { isActive: true } }),
+      prisma.store.count(),
       prisma.medicine.count(),
       prisma.inventoryBatch.count(),
       prisma.upload.count(),
@@ -172,7 +172,7 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
     }
 
     const stores = await prisma.store.findMany({
-      where,
+      where: { OR: [{ isActive: true }, { isActive: false }] },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
@@ -183,6 +183,8 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
         }
       }
     });
+
+    console.log(stores);
 
     return respond(res, 200, { success: true, data: { stores } });
   } catch (err) {
@@ -203,6 +205,14 @@ router.patch("/stores/:id/suspend", requireRole("SUPERADMIN"), async (req: any, 
 
     const store = await prisma.store.update({
       where: { id },
+      data: { isActive },
+      select: {
+        users : true
+      }
+    });
+
+    await prisma.user.update({
+      where: { id: store.users[0].userId },
       data: { isActive },
     });
 

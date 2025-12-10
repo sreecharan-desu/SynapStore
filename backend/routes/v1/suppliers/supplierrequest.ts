@@ -57,66 +57,38 @@ router.post(
       const user = req.user!;
       const payload = parsed.data;
 
-      // attempt to find an existing global supplier by name (case-insensitive)
-      const existing = await prisma.supplier.findFirst({
-        where: { name: { equals: payload.name, mode: "insensitive" } },
+      // 1. Check if user is already associated with a supplier (prioritize this to allow profile updates)
+      let supplier = await prisma.supplier.findUnique({
+        where: { userId: user.id },
       });
 
-      // Check if the user is already associated with ANY supplier to avoid unique constraint violation
-      // on userId. A user can only be linked to ONE supplier profile.
-      const existingMap = user?.id
-        ? await prisma.supplier.findUnique({ where: { userId: user.id } })
-        : null;
-
-      let supplier;
-      if (existing) {
-        // optionally attach user if not mapped AND user is not mapped to another supplier
-        // If existing.userId is null, we can attach IF existingMap is null.
-        // If existing.userId is set, we don't overwrite it here (only update other fields).
-        // Actually, if existing.userId is set, we just update fields.
-        
-        const canAttachUser = !existing.userId && user?.id && !existingMap;
-
-        if (canAttachUser) {
-          supplier = await prisma.supplier.update({
-            where: { id: existing.id },
-            data: {
-              address: payload.address ?? existing.address ?? undefined,
-              phone: payload.phone ?? existing.phone ?? undefined,
-              contactName:
-                payload.contactName ?? existing.contactName ?? undefined,
-              defaultLeadTime:
-                payload.defaultLeadTime ??
-                existing.defaultLeadTime ??
-                undefined,
-              defaultMOQ:
-                payload.defaultMOQ ?? existing.defaultMOQ ?? undefined,
-              userId: user.id,
+      if (supplier) {
+        // User is already linked. This is an update to their own profile.
+        // Check for name conflict if renaming
+        if (supplier.name.toLowerCase() !== payload.name.toLowerCase()) {
+          const conflict = await prisma.supplier.findFirst({
+            where: {
+              name: { equals: payload.name, mode: "insensitive" },
+              id: { not: supplier.id },
             },
           });
-        } else {
-          supplier = await prisma.supplier.update({
-            where: { id: existing.id },
-            data: {
-              address: payload.address ?? existing.address ?? undefined,
-              phone: payload.phone ?? existing.phone ?? undefined,
-              contactName:
-                payload.contactName ?? existing.contactName ?? undefined,
-              defaultLeadTime:
-                payload.defaultLeadTime ??
-                existing.defaultLeadTime ??
-                undefined,
-              defaultMOQ:
-                payload.defaultMOQ ?? existing.defaultMOQ ?? undefined,
-            },
-          });
+          if (conflict) {
+            return res.status(409).json({
+              success: false,
+              error: "name_taken",
+              details: [
+                {
+                  code: "custom",
+                  message: "Supplier name already used by another profile.",
+                  path: ["name"],
+                },
+              ],
+            });
+          }
         }
-      } else {
-        // create new global supplier (storeId left null)
-        // only attach userId if they are not already attached to another supplier
-        const userIdToLink = (!existingMap && user?.id) ? user.id : undefined;
 
-        supplier = await prisma.supplier.create({
+        supplier = await prisma.supplier.update({
+          where: { id: supplier.id },
           data: {
             name: payload.name,
             address: payload.address ?? undefined,
@@ -124,9 +96,46 @@ router.post(
             contactName: payload.contactName ?? undefined,
             defaultLeadTime: payload.defaultLeadTime ?? undefined,
             defaultMOQ: payload.defaultMOQ ?? undefined,
-            userId: userIdToLink,
+            // userId already set
           },
         });
+      } else {
+        // User not linked. Check if supplier exists by name
+        const existingByName = await prisma.supplier.findFirst({
+          where: { name: { equals: payload.name, mode: "insensitive" } },
+        });
+
+        if (existingByName) {
+          // Update existing found by name.
+          // Link user if the found supplier is not yet linked to anyone.
+          const shouldLink = !existingByName.userId;
+
+          supplier = await prisma.supplier.update({
+            where: { id: existingByName.id },
+            data: {
+              name: payload.name, // update casing if needed
+              address: payload.address ?? undefined,
+              phone: payload.phone ?? undefined,
+              contactName: payload.contactName ?? undefined,
+              defaultLeadTime: payload.defaultLeadTime ?? undefined,
+              defaultMOQ: payload.defaultMOQ ?? undefined,
+              userId: shouldLink ? user.id : undefined,
+            },
+          });
+        } else {
+          // Create new global supplier
+          supplier = await prisma.supplier.create({
+            data: {
+              name: payload.name,
+              address: payload.address ?? undefined,
+              phone: payload.phone ?? undefined,
+              contactName: payload.contactName ?? undefined,
+              defaultLeadTime: payload.defaultLeadTime ?? undefined,
+              defaultMOQ: payload.defaultMOQ ?? undefined,
+              userId: user.id,
+            },
+          });
+        }
       }
 
       // activity log
@@ -144,7 +153,12 @@ router.post(
       }
 
       // If we linked a user to this supplier, ensure the user has globalRole="SUPPLIER"
-      if (user?.id && (supplier.userId === user.id) && user.globalRole !== "SUPPLIER" && user.globalRole !== "SUPERADMIN") {
+      if (
+        user?.id &&
+        supplier.userId === user.id &&
+        user.globalRole !== "SUPPLIER" &&
+        user.globalRole !== "SUPERADMIN"
+      ) {
         await prisma.user.update({
           where: { id: user.id },
           data: { globalRole: "SUPPLIER" },

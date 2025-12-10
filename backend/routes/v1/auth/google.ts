@@ -19,7 +19,7 @@ function respond(res: Response, status: number, body: object) {
 }
 
 // Block google signin for these global roles
-const RESTRICTED_GOOGLE_ROLES = ["SUPPLIER", "ADMIN", "SUPERADMIN"];
+const RESTRICTED_GOOGLE_ROLES = ["ADMIN", "SUPERADMIN"];
 
 GoogleRouter.post("/", async (req: Request, res: Response) => {
   const parsed = googleSchema.safeParse(req.body);
@@ -92,8 +92,16 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
         imageUrl: true,
         isverified: true,
         globalRole: true,
+        isActive: true, // Added isActive to select clause
       },
     });
+
+    if (!userRow.isActive) {
+      return respond(res, 403, {
+        error: "This account has been temporarily disabled/suspended",
+        code: "user_not_active",
+      });
+    }
 
     const user = crypto$.decryptObject(userRow, [
       "username",
