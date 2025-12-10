@@ -8,7 +8,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
  */
 const ENCRYPT_FIELDS: Record<string, string[]> = {
   // User model - PII and authentication data
-  User: ["username", "email", "phone", "imageUrl"],
+  // username and email are manually deterministically encrypted for lookup.
+  User: ["phone", "imageUrl"],
 
   // Store model - business information
   Store: ["name"],
@@ -32,7 +33,8 @@ const ENCRYPT_FIELDS: Record<string, string[]> = {
   AuditLog: ["action", "resource"],
 
   // Otp model - authentication data
-  Otp: ["phone", "otpHash", "salt"],
+  // phone is deterministically encrypted manually for lookup.
+  Otp: ["otpHash", "salt"],
 
   // Sale model - transaction reference
   Sale: ["externalRef"],
