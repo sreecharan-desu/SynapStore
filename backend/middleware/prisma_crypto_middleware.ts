@@ -8,9 +8,9 @@ import type { Prisma, PrismaClient } from "@prisma/client";
  */
 const ENCRYPT_FIELDS: Record<string, string[]> = {
   // User model - PII and authentication data
-  // NOTE: username and email are encrypted deterministically for lookup (WHERE clauses)
-  // but they still need to be in this list so they get decrypted when read
-  User: ["username", "email", "phone", "imageUrl"],
+  // username, email, imageUrl are encrypted manually in routes (deterministically or otherwise)
+  // so they are removed from here to prevent double encryption on write.
+  User: ["phone"],
 
   // Store model - business information
   Store: ["name"],
@@ -34,9 +34,8 @@ const ENCRYPT_FIELDS: Record<string, string[]> = {
   AuditLog: ["action", "resource"],
 
   // Otp model - authentication data
-  // NOTE: phone is encrypted deterministically for lookup (WHERE clauses)
-  // but it still needs to be in this list so it gets decrypted when read
-  Otp: ["phone", "otpHash", "salt"],
+  // phone (email), otpHash are manually encrypted in routes
+  Otp: ["salt"],
 
   // Sale model - transaction reference
   Sale: ["externalRef"],
@@ -55,10 +54,10 @@ const ENCRYPT_FIELDS: Record<string, string[]> = {
  */
 const DECRYPT_ONLY_FIELDS: Record<string, string[]> = {
   // User model - username and email are encrypted deterministically in auth routes
-  User: ["username", "email"],
+  User: ["username", "email", "imageUrl"],
 
   // Otp model - phone is encrypted deterministically in auth routes
-  Otp: ["phone"],
+  Otp: ["phone", "otpHash"],
 };
 
 /**

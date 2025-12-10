@@ -51,7 +51,6 @@ const verifyOtpSchema = z.object({
 async function findUserByEmail(email: string) {
   // Try finding by deterministic encryption (legacy/if extension is off)
   const enc = crypto$.encryptCellDeterministic(email);
-  console.log(enc)
   let row = await prisma.user.findUnique({
     where: { email: enc },
     select: {
@@ -68,7 +67,6 @@ async function findUserByEmail(email: string) {
       globalRole: true,
     },
   });
-  console.log(row)
 
   // If not found, try finding by raw email (if extension is on/transparent or field is plaintext)
   if (!row) {

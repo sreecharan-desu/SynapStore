@@ -22,7 +22,8 @@ export async function ensureAdmin() {
 
   // Identify the target admin among current SUPERADMINs or as a regular user
   for (const user of currentSuperAdmins) {
-    if (user.email === encEmail) {
+    // Middleware decrypts user.email, so compare with plaintext email
+    if (user.email === email) {
       targetAdminUser = user;
       break;
     }
@@ -30,6 +31,7 @@ export async function ensureAdmin() {
 
   if (!targetAdminUser) {
     // If not found in current SUPERADMINs, check if they exist as a regular user
+    // We search by encrypted email because the DB stores it encrypted
     targetAdminUser = await prisma.user.findUnique({
       where: { email: encEmail },
     });
@@ -37,7 +39,8 @@ export async function ensureAdmin() {
 
   // Demote any SUPERADMINs that are not the target admin
   for (const user of currentSuperAdmins) {
-    if (user.email !== encEmail) {
+    // Compare plaintext emails
+    if (user.email !== email) {
       console.log(`Demoting user ${user.id} from SUPERADMIN role.`);
       await prisma.user.update({
         where: { id: user.id },
