@@ -8,8 +8,8 @@ self.addEventListener("push", function(event) {
     const origin = self.location.origin;
     const options = {
       body: payload.body,
-      icon: `${origin}/logo.svg`,
-      badge: `${origin}/logo.svg`,
+      icon: `${origin}/logo-1024x1024.png`,
+      badge: `${origin}/logo-1024x1024.png`,
       image: payload.image,
       vibrate: [200, 100, 200],
       data: payload.data,
