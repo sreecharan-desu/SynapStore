@@ -14,8 +14,7 @@ const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
 
 // Development fallback google client id
-const PROVIDED_GOOGLE_CLIENT_ID =
-  "725689508552-prvotvild62vcf5rsk70ridh26v6sfve.apps.googleusercontent.com";
+const PROVIDED_GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
 declare global {
   interface Window {
