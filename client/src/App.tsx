@@ -9,6 +9,13 @@ const App = () => {
   const { user, isAuthenticated } = useAuthContext();
   const [notifications, setNotifications] = useState<any[]>([]);
 
+  // Persistent permission request on Landing Page (ask until decided)
+  useEffect(() => {
+    if (!isAuthenticated && "Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(err => console.error("Permission request failed", err));
+    }
+  }, [isAuthenticated]);
+
   useEffect(() => {
     // Determine Service URL (Env Var > Default)
     // Defaulting to Production URL as Localhost is typically not running the microservice
