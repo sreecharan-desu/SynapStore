@@ -4,6 +4,7 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 import v1Router from "./routes/v1";
+import "./worker/notificationworker"; // Start worker in the same process
 
 const app = express();
 
