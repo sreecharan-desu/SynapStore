@@ -703,9 +703,11 @@ dashboardRouter.post(
           }
 
           // NOTIFICATION WORKER
-          const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+          const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+          const frontendUrl = rawFrontendUrl.replace(/\/$/, "");
+          const targetUrl = `${frontendUrl}/u/${sup.userId}`;
           notificationQueue.add("send-notification", {
-             websiteUrl: frontendUrl, // Should target supplier's dashboard
+             websiteUrl: targetUrl, // Targets supplier's dashboard
              title: "Request Accepted",
              message: `${store.name} accepted your connection request.`,
              buttons: [{ label: "View Store", link: `${frontendUrl}/supplier/dashboard` }]
@@ -789,9 +791,11 @@ dashboardRouter.post(
             }
           }
            // NOTIFICATION WORKER
-          const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+          const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+          const frontendUrl = rawFrontendUrl.replace(/\/$/, "");
+          const targetUrl = `${frontendUrl}/u/${sup.userId}`;
           notificationQueue.add("send-notification", {
-             websiteUrl: frontendUrl, 
+             websiteUrl: targetUrl, 
              title: "Request Update",
              message: `${store.name} rejected your connection request.`,
           });

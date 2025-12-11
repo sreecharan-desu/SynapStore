@@ -383,14 +383,23 @@ router.post(
         .catch(() => { });
 
       // Notify Store Admins via Push
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      notificationQueue.add("send-notification", {
-        websiteUrl: frontendUrl, // Ideally this would be store-specific
-        title: "New Supplier Request",
-        message: `${supplier.name} wants to connect with your store.`,
-        image: "https://cdn-icons-png.flaticon.com/512/263/263142.png", // Generic supplier icon
-        buttons: [{ label: "View Request", link: `${frontendUrl}/suppliers` }]
-      });
+      // Notify Store Admins via Push (Scoped to each admin)
+      const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const frontendUrl = rawFrontendUrl.replace(/\/$/, "");
+      
+      for (const admin of storeAdmins) {
+        if (admin.user.id) {
+           // Using /u/:userId as a stable, domain-based notification channel
+           const targetUrl = `${frontendUrl}/u/${admin.user.id}`;
+           notificationQueue.add("send-notification", {
+            websiteUrl: targetUrl, 
+            title: "New Supplier Request",
+            message: `${supplier.name} wants to connect with your store.`,
+            image: "https://cdn-icons-png.flaticon.com/512/263/263142.png", 
+            buttons: [{ label: "View Request", link: `${frontendUrl}/suppliers` }]
+          });
+        }
+      }
 
       return sendSuccess(res, "Supplier request sent", { request: reqRow }, 201);
     } catch (err) {

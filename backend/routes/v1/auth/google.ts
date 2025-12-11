@@ -74,7 +74,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       existingUser?.globalRole &&
       RESTRICTED_GOOGLE_ROLES.includes(existingUser.globalRole)
     ) {
-      return sendError(res, "Google login not allowed for this account type (Admin/Superadmin)", 403);
+      return sendError(res, "Google login not allowed for this account", 403);
     }
 
     // upsert user (google-verified => isverified true)

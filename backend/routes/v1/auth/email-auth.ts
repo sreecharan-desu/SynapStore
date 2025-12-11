@@ -592,13 +592,8 @@ router.post(
       }
 
       // Fire notification asynchronously
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      notificationQueue.add("send-notification", {
-        websiteUrl: frontendUrl,
-        title: "Account Verified",
-        message: `Welcome to SynapStore! Your email ${email} has been verified.`,
-        buttons: [{ label: "Go to Dashboard", link: `${frontendUrl}` }]
-      });
+      // Notification removed to prevent broadcast vulnerability (user not yet authenticated specifically)
+      // notificationQueue.add("send-notification", { ... });
 
       return sendSuccess(res, "OTP verified successfully");
     } catch (err: any) {
