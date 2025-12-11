@@ -9,6 +9,8 @@ import KeyFeatures from "../components/landingpage/KeyFeatures";
 import { motion, useScroll, useSpring, AnimatePresence } from "framer-motion";
 import { ArrowRight, Menu, X } from "lucide-react";
 
+
+
 const LandingPage: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
