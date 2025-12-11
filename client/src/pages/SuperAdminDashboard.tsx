@@ -265,10 +265,12 @@ const SuperAdminDashboard: React.FC = () => {
         e.preventDefault();
         setSending(true);
         try {
-            const res = await adminApi.sendNotification(notifyForm);
+            const res : any = await adminApi.sendNotification(notifyForm);
             if (res.data.success) {
                 alert("Notification dispatched successfully!");
                 setNotifyForm({ ...notifyForm, subject: "", message: "" });
+            } else if (res.data.success == false) {
+                alert(res.data.error)
             }
         } catch (err: any) {
             console.error(err);
