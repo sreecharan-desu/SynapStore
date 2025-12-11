@@ -1,10 +1,10 @@
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { RecoilRoot } from "recoil";
 import "./index.css";
 import App from "./App.tsx";
 import Login from "./pages/login.tsx";
-import Dashboard from "./pages/Dashboard";
+// Dashboard removed
 import StoreCreate from "./pages/StoreCreate";
 import Home from "./pages/Home";
 import RequireAuth from "./routes/RequireAuth";
@@ -59,14 +59,14 @@ createRoot(document.getElementById("root")!).render(
             path="/store/dashboard"
             element={
               <RequireAuth>
-                <RoleGuard allowedRoles={["STORE_OWNER"]}>
+                <RoleGuard allowedRoles={["STORE_OWNER", "USER", "MANAGER"]}>
                   <StoreOwnerDashboard />
                 </RoleGuard>
               </RequireAuth>
             }
           />
 
-          {/* Dashboard Routes with Layout */}
+          {/* Legacy Layout Routes (for sub-pages like suppliers) */}
           <Route
             path="/dashboard"
             element={
@@ -77,9 +77,10 @@ createRoot(document.getElementById("root")!).render(
               </RequireAuth>
             }
           >
-            <Route index element={<Dashboard />} />
+            {/* Index is now redirected at App level, or we can redirect explicit /dashboard access */}
+            <Route index element={<Navigate to="/store/dashboard" replace />} />
             <Route path="suppliers" element={<SuppliersPage />} />
-            <Route path="store/create" element={<StoreCreate />} /> {/* Moved inside layout or separate? Store Create usually standalone */}
+            <Route path="store/create" element={<StoreCreate />} />
           </Route>
 
           <Route

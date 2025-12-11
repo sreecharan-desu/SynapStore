@@ -7,9 +7,10 @@ import prisma from "../../../lib/prisma";
 import { requireRole } from "../../../middleware/requireRole";
 import { crypto$ } from "../../../lib/crypto";
 import { sendMail } from "../../../lib/mailer";
-// router from email-auth is unused here? removing.
+import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate } from "../../../lib/emailTemplates";
 // import router from "../auth/email-auth"; 
 import { sendSuccess, sendError, handlePrismaError, sendInternalError } from "../../../lib/api";
+import { notificationQueue } from "../../../lib/queue";
 
 type RoleEnum = Role;
 
@@ -184,7 +185,7 @@ dashboardRouter.get(
         recentSales,
         activity,
         suppliers,
-        unreadNotifications,
+        // unreadNotifications removed
         webhookFailures,
         saleRows,
         saleItemsAll,
@@ -289,7 +290,7 @@ dashboardRouter.get(
             isActive: true,
           },
         }),
-        prisma.notification.count({ where: { storeId, status: "QUEUED" } }),
+        // prisma.notification.count removed
         // prisma.webhookDelivery.count({ where: { storeId, success: false, retryCount: { gt: 0 } } }),
         Promise.resolve(0),
         // extra data for richer permutations
@@ -505,7 +506,7 @@ dashboardRouter.get(
           totalPendingReorders: 0,
           recentSalesCount,
           recentRevenue,
-          unreadNotifications,
+          unreadNotifications: 0,
           webhookFailures,
           inventoryTotals,
           reservationsCount: 0,
@@ -677,55 +678,38 @@ dashboardRouter.post(
       ]);
 
       // notify supplier (if supplier.userId exists)
+      // notify supplier (if supplier.userId exists)
       const sup = await prisma.supplier.findUnique({
         where: { id: reqRow.supplierId },
       });
       if (sup?.userId) {
-        // IN_APP
-        await prisma.notification.create({
-          data: {
-            storeId: store.id,
-            userId: sup.userId,
-            channel: "IN_APP",
-            recipient: sup.userId,
-            subject: "Supplier request accepted",
-            body: `Your request to supply ${store.name} was accepted`,
-            metadata: { supplierRequestId: id },
-            status: "QUEUED",
-          },
-        });
-
         // EMAIL - need to fetch user email (encrypted?)
         const supUser = await prisma.user.findUnique({
           where: { id: sup.userId },
           select: { email: true },
         });
         if (supUser?.email) {
-          // Email is already decrypted by Prisma extension
           const supEmail = supUser.email;
           if (supEmail) {
-            await prisma.notification.create({
-              data: {
-                storeId: store.id,
-                userId: sup.userId,
-                channel: "EMAIL",
-                recipient: supEmail,
-                subject: "Request Accepted!",
-                body: `Good news! Your request to supply ${store.name} has been accepted. You can now engage with this store.`,
-                status: "SENT",
-              },
-            });
-
             try {
               await sendMail({
                 to: supEmail,
                 subject: `Request Accepted: ${store.name}`,
-                text: `Good news!\n\nYour request to supply ${store.name} has been accepted. You can now engage with this store.`,
+                html: getRequestAcceptedEmailTemplate(store.name),
               });
             } catch (e) {
               console.error("Failed to send email to supplier:", e);
             }
           }
+
+          // NOTIFICATION WORKER
+          const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+          notificationQueue.add("send-notification", {
+             websiteUrl: frontendUrl, // Should target supplier's dashboard
+             title: "Request Accepted",
+             message: `${store.name} accepted your connection request.`,
+             buttons: [{ label: "View Store", link: `${frontendUrl}/supplier/dashboard` }]
+          });
         }
       }
 
@@ -786,51 +770,31 @@ dashboardRouter.post(
         where: { id: reqRow.supplierId },
       });
       if (sup?.userId) {
-        // IN_APP
-        await prisma.notification.create({
-          data: {
-            storeId: store.id,
-            userId: sup.userId,
-            channel: "IN_APP",
-            recipient: sup.userId,
-            subject: "Supplier request rejected",
-            body: `Request rejected for ${store.name}`,
-            metadata: { supplierRequestId: id },
-            status: "QUEUED",
-          },
-        });
-
         // EMAIL
         const supUser = await prisma.user.findUnique({
           where: { id: sup.userId },
           select: { email: true },
         });
         if (supUser?.email) {
-          // Email is already decrypted by Prisma extension
           const supEmail = supUser.email;
           if (supEmail) {
-            await prisma.notification.create({
-              data: {
-                storeId: store.id,
-                userId: sup.userId,
-                channel: "EMAIL",
-                recipient: supEmail, // store plain email in notification log for visibility? Or keep encrypted? Usually logs have plain.
-                subject: `Supplier Request Rejected`,
-                body: `Your request to supply ${store.name} was not accepted at this time.`,
-                status: "SENT",
-              },
-            });
-
             try {
               await sendMail({
                 to: supEmail,
                 subject: `Request Update: ${store.name}`,
-                text: `Hello,\n\nYour request to supply ${store.name} was not accepted at this time.`,
+                html: getRequestRejectedEmailTemplate(store.name),
               });
             } catch (e) {
               console.error("Failed to send email to supplier:", e);
             }
           }
+           // NOTIFICATION WORKER
+          const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+          notificationQueue.add("send-notification", {
+             websiteUrl: frontendUrl, 
+             title: "Request Update",
+             message: `${store.name} rejected your connection request.`,
+          });
         }
       }
 

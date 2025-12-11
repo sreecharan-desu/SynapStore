@@ -1,9 +1,9 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import v1Router from "./routes/v1";
-
-dotenv.config();
 
 const app = express();
 
@@ -44,19 +44,30 @@ app.use((err: any, _req: any, res: any, _next: any) => {
 });
 
 // Graceful shutdown
-const shutdown = () => {
-  console.log("Shutting down server...");
-  process.exit(0);
-};
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
-
-// Start server
 const PORT = Number(process.env.PORT) || 3000;
 import { ensureAdmin } from "./lib/init-admin";
+import { Server } from "http";
+
+let server: Server;
 
 ensureAdmin().then(() => {
-  app.listen(PORT, () => {
+  server = app.listen(PORT, () => {
     console.log(`Listening on port ${PORT}`);
   });
 });
+
+// Graceful shutdown
+const shutdown = () => {
+  console.log("Shutting down server...");
+  if (server) {
+    server.close(() => {
+      console.log("Server closed");
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

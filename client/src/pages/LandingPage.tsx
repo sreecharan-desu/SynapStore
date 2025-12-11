@@ -82,14 +82,11 @@ const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 md:px-8 flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group relative z-10">
-            <div className="relative w-11 h-11 flex items-center justify-center bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-600 rounded-xl shadow-lg shadow-emerald-500/30 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6 group-hover:shadow-emerald-500/50">
-              <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent rounded-xl" />
-              <img
-                src="/logo.svg"
-                alt="SynapStore Logo"
-                className="w-6 h-6 object-contain brightness-0 invert relative z-10"
-              />
-            </div>
+            <img
+              src="/logo.svg"
+              alt="SynapStore Logo"
+              className="w-10 h-10 object-contain transition-transform duration-300 group-hover:scale-110"
+            />
             <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 bg-clip-text text-transparent tracking-tight">
               SynapStore
             </span>

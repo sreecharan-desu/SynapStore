@@ -1,15 +1,23 @@
-
 import { createWorker } from "../lib/queue";
 import { Job } from "bullmq";
+import { sendNotification } from "../lib/notification";
 
 export const worker = createWorker(async (job: Job) => {
-  console.log("Processing notification job:", job.id);
-  // Placeholder: Add logic to handle 'EMAIL' or 'IN_APP' notifications
-  // e.g. using sendMail(job.data)
-}, 1);
+  console.log(`[Worker] Processing job ${job.id} of type ${job.name}`);
+
+  if (job.name === "send-notification") {
+    try {
+      await sendNotification(job.data);
+      console.log(`[Worker] Notification sent for job ${job.id}`);
+    } catch (err: any) {
+      console.error(`[Worker] Failed to send notification: ${err.message}`);
+      throw err;
+    }
+  }
+}, 5);
 
 worker.on("completed", (job) => {
-  console.log(`Job ${job.id} has completed!`);
+  console.log(`[Worker] Job ${job.id} completed!`);
 });
 
 worker.on("failed", (job, err) => {

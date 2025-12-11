@@ -4,7 +4,7 @@ import { Router } from "express";
 import authRouter from "./auth/email-auth";
 import googleRouter from "./auth/google";
 import storeRouter from "./store/store";
-import dashboardRouter from "./dashboard/dashboard";
+import dashboardRouter from "./store_owner/store_owner";
 import supplierRequestsRouter from "./suppliers/supplier";
 import adminRouter from "./admin/admin";
 

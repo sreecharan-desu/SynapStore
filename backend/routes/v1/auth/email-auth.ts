@@ -1,7 +1,9 @@
 // routes/v1/auth.ts
 import { Router } from "express";
 import { generateOtp, getOtpExpiryDate } from "../../../lib/otp";
-import { sendOtpEmail } from "../../../lib/mailer";
+import { sendMail } from "../../../lib/mailer";
+import { getOtpEmailTemplate } from "../../../lib/emailTemplates";
+
 import { hashPassword, comparePassword, signJwt } from "../../../lib/auth";
 import { z } from "zod";
 import prisma from "../../../lib/prisma";
@@ -16,6 +18,8 @@ import {
   sendInternalError,
   handlePrismaError,
 } from "../../../lib/api";
+import { notificationQueue } from "../../../lib/queue";
+import { sendNotification } from "../../../lib/notification";
 
 const router = Router();
 
@@ -254,7 +258,11 @@ router.post(
 
       // send OTP to plaintext email provided by client
       try {
-        await sendOtpEmail(email, otp);
+        await sendMail({
+          to: email,
+          subject: "Your SynapStore verification code",
+          html: getOtpEmailTemplate(otp),
+        });
       } catch (mailErr: any) {
         console.error("Failed to send OTP email:", mailErr);
         // Clean up OTP to avoid dead state if possible, or just fail
@@ -342,7 +350,11 @@ router.post(
       }
 
       try {
-        await sendOtpEmail(email, otp);
+        await sendMail({
+          to: email,
+          subject: "Your SynapStore verification code",
+          html: getOtpEmailTemplate(otp),
+        });
       } catch (mailErr: any) {
          console.error("Failed to send resend OTP email:", mailErr);
          return sendError(res, "Failed to send verification email. Please try again later.", 502);
@@ -573,6 +585,15 @@ router.post(
         // if transaction failed, still respond success but warn
          return sendSuccess(res, "OTP verified (state warning: failed to persist used status)", null, 200);
       }
+
+      // Fire notification asynchronously
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      notificationQueue.add("send-notification", {
+        websiteUrl: frontendUrl,
+        title: "Account Verified",
+        message: `Welcome to SynapStore! Your email ${email} has been verified.`,
+        buttons: [{ label: "Go to Dashboard", link: `${frontendUrl}` }]
+      });
 
       return sendSuccess(res, "OTP verified successfully");
     } catch (err: any) {

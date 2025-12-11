@@ -6,9 +6,19 @@ import { requireRole } from "../../../middleware/requireRole";
 import { signJwt } from "../../../lib/auth";
 
 import { sendSuccess, sendError, handlePrismaError, sendInternalError} from "../../../lib/api";
+import { decryptCell, dekFromEnv } from "../../../middleware/prisma_crypto_middleware";
 
 const router = Router();
 // Helper respond removed, using standard helpers from lib/api
+
+// Lazy load DEK to avoid import-hoisting issues with dotenv
+let _dek: Buffer;
+const getDek = () => {
+  if (!_dek) _dek = dekFromEnv();
+  return _dek;
+};
+
+
 
 /**
  * NOTE
@@ -210,11 +220,20 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
           where: { role: "STORE_OWNER" },
           take: 1,
           select: { userId: true, user: { select: { email: true } } }
-        }
-      }
+        },
+      },
     });
 
-    return sendSuccess(res, "Stores retrieved", { stores });
+    // Decrypt emails for store owners
+    const decryptedStores = stores.map(store => ({
+      ...store,
+      users: store.users.map(storeUser => ({
+        ...storeUser,
+        user: storeUser.user ? { ...storeUser.user, email: decryptEmail(storeUser.user.email) } : null,
+      })),
+    }));
+
+    return sendSuccess(res, "Stores retrieved", { stores: decryptedStores });
   } catch (err) {
     return sendInternalError(res, err);
   }
@@ -484,28 +503,36 @@ router.post(
 
       }
       
-      // Delete stores associated with the user if they were a STORE_OWNER
-      const userStores = await prisma.userStoreRole.findMany({
-        where: {
-          userId: userId,
-          role: "STORE_OWNER",
-        },
-        select: { storeId: true },
+      // 3. Remove user from any existing store roles (STORE_OWNER, MANAGER, USER)
+      // We do NOT delete the store itself immediately, we only remove the user's access.
+      // If the user was the ONLY owner, the store becomes ownerless (or we could choose to delete it).
+      // For safety, we will just remove the role.
+      const userRoles = await prisma.userStoreRole.findMany({
+        where: { userId },
+        select: { id: true, storeId: true, role: true }
       });
 
-      for (const storeRole of userStores) {
-        try {
-          await prisma.store.delete({
-            where: { id: storeRole.storeId },
+      if (userRoles.length > 0) {
+        // Delete all roles for this user
+        await prisma.userStoreRole.deleteMany({
+          where: { userId }
+        });
+
+        // Optional: Check for orphaned stores (stores with no users)
+        // This is a "nice to have" cleanup but risky if valuable data exists.
+        // We will log them for manual review instead of auto-deleting data.
+        for (const role of userRoles) {
+          const remainingUsers = await prisma.userStoreRole.count({
+            where: { storeId: role.storeId }
           });
-        } catch (e: any) {
-          console.error(`Failed to delete store ${storeRole.storeId} during user conversion:`, e);
-          // If foreign key constraint fails, we might leave it (or we could use a transaction/cascade manually elsewhere)
-          // For now, logging error is safer than failing the entire request since user is already updated.
-          if (e.code === 'P2003') {
-             // Optional: Force delete or delete related records if required.
-             // Given the complexity, we'll just log warning.
-             console.warn(`Could not delete store ${storeRole.storeId} due to existing relations.`);
+          
+          if (remainingUsers === 0) {
+            console.warn(`[ConvertSupplier] Store ${role.storeId} is now orphaned (no users). Consider deactivating.`);
+            // Optionally auto-suspend orphaned stores
+            await prisma.store.update({
+              where: { id: role.storeId },
+              data: { isActive: false }
+            }).catch(e => console.error("Failed to suspend orphaned store", e));
           }
         }
       }
@@ -845,4 +872,11 @@ router.get("/dashboard/analytics", requireRole("SUPERADMIN"), async (req: any, r
     return sendInternalError(res, err, "Failed to retrieve admin analytics");
   }
 });
+
+function decryptEmail(email: string | null): string | null {
+  if (!email) return null;
+  // Attempt decryption; if it fails (returns null), fallback to original (backward compat or plaintext)
+  const val = decryptCell(email, getDek());
+  return val !== null ? val : email;
+}
 

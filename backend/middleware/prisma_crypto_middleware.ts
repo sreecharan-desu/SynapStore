@@ -63,7 +63,7 @@ const DECRYPT_ONLY_FIELDS: Record<string, string[]> = {
 /**
  * Get the data encryption key from environment variable
  */
-function dekFromEnv(): Buffer {
+export function dekFromEnv(): Buffer {
   const b64 = process.env.DATA_KEY_B64;
   if (!b64)
     throw new Error(
@@ -78,7 +78,7 @@ function dekFromEnv(): Buffer {
 /**
  * Encrypt a single cell value using AES-256-GCM
  */
-function encryptCell(plaintext: string | number | boolean, dek: Buffer): string {
+export function encryptCell(plaintext: string | number | boolean, dek: Buffer): string {
   if (plaintext === null || plaintext === undefined || plaintext === "") {
     return "";
   }
@@ -95,7 +95,7 @@ function encryptCell(plaintext: string | number | boolean, dek: Buffer): string 
 /**
  * Decrypt a single cell value
  */
-function decryptCell(b64: string | null | undefined, dek: Buffer): string | null {
+export function decryptCell(b64: string | null | undefined, dek: Buffer): string | null {
   if (!b64 || b64 === "") return null;
   try {
     const buf = Buffer.from(b64, "base64");

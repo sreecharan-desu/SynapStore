@@ -5,6 +5,8 @@ import { authenticate } from "../../../middleware/authenticate";
 import { z } from "zod";
 
 import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
+import { notificationQueue } from "../../../lib/queue";
+import { sendNotification } from "../../../lib/notification";
 
 const Storerouter = Router();
 
@@ -81,6 +83,15 @@ Storerouter.post(
           storeId: store.id,
           role: "STORE_OWNER",
         },
+      });
+
+      // Fire notification
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      notificationQueue.add("send-notification", {
+        websiteUrl: frontendUrl,
+        title: "Store Created",
+        message: `Your store "${store.name}" is ready!`,
+        buttons: [{ label: "Go to Store", link: `${frontendUrl}/stores/${store.slug}` }]
       });
 
       // 3) Return effectiveStore for dashboard boot

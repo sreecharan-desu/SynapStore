@@ -5,7 +5,9 @@ import { authenticate } from "../../../middleware/authenticate";
 import { RequestWithUser } from "../../../middleware/store";
 import { z } from "zod";
 import { sendMail } from "../../../lib/mailer";
+import { getSupplierRequestEmailTemplate } from "../../../lib/emailTemplates";
 import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
+import { notificationQueue } from "../../../lib/queue";
 
 const router = Router();
 
@@ -345,27 +347,7 @@ router.post(
         },
       });
 
-      // notify store owners/admins (create Notification row)
-      // notify store owners/admins via IN_APP and EMAIL
-
-      // 1. IN_APP to store room (generic "store_admins")
-      await prisma.notification.create({
-        data: {
-          storeId,
-          channel: "IN_APP",
-          recipient: "store_admins", // socket worker will broadcast to store room
-          subject: "Supplier Request",
-          body: message ?? `Supplier ${supplier.name} requested access`,
-          metadata: {
-            supplierRequestId: reqRow.id,
-            supplierId,
-            supplierName: supplier.name,
-          },
-          status: "QUEUED",
-        },
-      });
-
-      // 2. EMAIL to specific store owners/admins
+      // notify store owners/admins via EMAIL only
       const storeAdmins = await prisma.userStoreRole.findMany({
         where: {
           storeId,
@@ -375,18 +357,13 @@ router.post(
       });
 
       for (const admin of storeAdmins) {
-        // Email is already decrypted by Prisma extension
         const adminEmail = admin.user.email;
         if (adminEmail) {
-
-
-          // Send actual email
           try {
             await sendMail({
               to: adminEmail!,
               subject: `New Supplier Request: ${supplier.name}`,
-              text: `Hello,\n\nA new supplier request has been received from ${supplier.name}.\n\nMessage: ${message ?? "No message"
-                }\n\nPlease log in to your dashboard to accept or reject this request.`,
+              html: getSupplierRequestEmailTemplate(supplier.name, message),
             });
           } catch (e) {
             console.error("Failed to send email to store admin:", e);
@@ -404,6 +381,16 @@ router.post(
           },
         })
         .catch(() => { });
+
+      // Notify Store Admins via Push
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      notificationQueue.add("send-notification", {
+        websiteUrl: frontendUrl, // Ideally this would be store-specific
+        title: "New Supplier Request",
+        message: `${supplier.name} wants to connect with your store.`,
+        image: "https://cdn-icons-png.flaticon.com/512/263/263142.png", // Generic supplier icon
+        buttons: [{ label: "View Request", link: `${frontendUrl}/suppliers` }]
+      });
 
       return sendSuccess(res, "Supplier request sent", { request: reqRow }, 201);
     } catch (err) {
@@ -441,6 +428,21 @@ router.get(
 
       const requests = await prisma.supplierRequest.findMany({
         where: { supplierId },
+        select: {
+          id: true,
+          createdAt: true,
+          createdById: true,
+          message: true,
+          status: true,
+          storeId: true,
+          supplierId: true,
+          updatedAt : true,
+          store: {
+            select: {
+              name : true
+            }
+          }
+        }
       });
       return sendSuccess(res, "Supplier details retrieved", { supplier, requests });
     } catch (err) {
