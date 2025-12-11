@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import HeroSection from "../components/landingpage/HeroSection";
 import HowItWorks from "../components/landingpage/HowItWorks";
 import AnimatedInventoryShowcase from "../components/landingpage/AnimatedList";
@@ -8,7 +7,7 @@ import Testimonials from "../components/landingpage/Testimonials";
 import Footer from "../components/landingpage/Footer";
 import KeyFeatures from "../components/landingpage/KeyFeatures";
 import { motion, useScroll, useSpring, AnimatePresence } from "framer-motion";
-import { ArrowRight, Menu, Package, X } from "lucide-react";
+import { ArrowRight, Menu, X } from "lucide-react";
 
 const LandingPage: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -20,7 +19,6 @@ const LandingPage: React.FC = () => {
     restDelta: 0.001
   });
 
-  const navigate = useNavigate();
 
   useEffect(() => {
     const handleScroll = () => {
