@@ -949,8 +949,8 @@ router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, r
 
              notificationQueue.add("send-notification", {
                 websiteUrl: frontendUrl,
-                title: `Hello ${u.username}`,
-                message: message,
+                title: `${subject}`,
+                message: `Hello ${u.username}. ${message}`,
                 buttons: [{ label: `Go to Dashboard`, link: `${frontendUrl}` }]
              });
         }
