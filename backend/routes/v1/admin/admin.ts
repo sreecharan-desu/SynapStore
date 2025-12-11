@@ -8,6 +8,10 @@ import { signJwt } from "../../../lib/auth";
 import { sendSuccess, sendError, handlePrismaError, sendInternalError} from "../../../lib/api";
 import { decryptCell, dekFromEnv } from "../../../middleware/prisma_crypto_middleware";
 
+import { sendMail } from "../../../lib/mailer";
+import { notificationQueue } from "../../../lib/queue";
+import { z } from "zod";
+
 const router = Router();
 // Helper respond removed, using standard helpers from lib/api
 
@@ -870,6 +874,97 @@ router.get("/dashboard/analytics", requireRole("SUPERADMIN"), async (req: any, r
     return sendSuccess(res, "Admin analytics retrieved", formattedData);
   } catch (err: any) {
     return sendInternalError(res, err, "Failed to retrieve admin analytics");
+  }
+});
+
+/* -----------------------
+   Admin - POST /v1/admin/notifications/send
+*/
+const sendNotificationSchema = z.object({
+  targetRole: z.enum(["ALL", "SUPPLIER", "STORE_OWNER"]).optional(),
+  targetUserIds: z.array(z.string()).optional(),
+  type: z.enum(["SYSTEM", "EMAIL", "BOTH"]),
+  subject: z.string().min(1),
+  message: z.string().min(1),
+});
+
+router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+     const body = sendNotificationSchema.parse(req.body);
+     const { targetRole, targetUserIds, type, subject, message } = body;
+
+     let users: any[] = [];
+     
+     // 1. Fetch Users
+     if (targetUserIds && targetUserIds.length > 0) {
+       users = await prisma.user.findMany({
+         where: { id: { in: targetUserIds } },
+         select: { id: true, email: true }
+       });
+     } else if (targetRole) {
+        if (targetRole === 'ALL') {
+             users = await prisma.user.findMany({ select: { id: true, email: true } });
+        } else if (targetRole === 'SUPPLIER') {
+             users = await prisma.user.findMany({ 
+                where: { globalRole: 'SUPPLIER' }, 
+                select: { id: true, email: true,username : true } 
+             });
+        } else if (targetRole === 'STORE_OWNER') {
+             users = await prisma.user.findMany({
+                where: { 
+                   OR: [
+                     { globalRole: 'STORE_OWNER' },
+                     // Also include those with role in Store
+                     { stores: { some: { role: 'STORE_OWNER' } } }
+                   ]
+                },
+                select: { id: true, email: true,username : true }
+             });
+        }
+     }
+
+     if (users.length === 0) return sendError(res, "No users found for criteria", 404);
+
+     // 2. Send
+     // Calculate operations but don't await them all in the main response loop to avoid blocking if list is huge.
+     // However, for admin panel feedback, it's nice to wait or at least ensure no errors. 
+     // We will run this in background after responding? Or respond after initiating?
+     // Let's iterate using standard loop to properly scope async operations.
+     
+     const dispatchPromises = users.map(async (u) => {
+        // Use the decrypted email helper
+        const email = decryptEmail(u.email); 
+        // Email
+        if ((type === "EMAIL" || type === "BOTH") && email) {
+             await sendMail({ to: email, subject, html: message }).catch(e => console.error(`Failed to email ${email}`, e));
+        }
+
+        // System
+        if (type === "SYSTEM" || type === "BOTH") {
+             // We use u.id as websiteUrl to target specific user
+             // The frontend App.tsx now listens to `user.id.u.synapstore.com` when authenticated.
+             // We MUST send a valid URL structure for the notification service to accept it (fixes 400 error).
+             
+             const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+
+             notificationQueue.add("send-notification", {
+                websiteUrl: frontendUrl,
+                title: `Hello ${u.username}`,
+                message: message,
+                buttons: [{ label: `Go to Dashboard`, link: `${frontendUrl}` }]
+             });
+        }
+     });
+     
+     // Wait for all dispatches (or remove await if you want fire-and-forget)
+     await Promise.all(dispatchPromises);
+     
+     return sendSuccess(res, `Notification dispatched to ${users.length} users.`);
+
+  } catch (err) {
+     // @ts-ignore
+     if (err instanceof z.ZodError) return handleZodError(res, err);
+     return sendInternalError(res, err);
   }
 });
 

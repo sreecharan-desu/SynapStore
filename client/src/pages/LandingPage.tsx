@@ -8,7 +8,7 @@ import Testimonials from "../components/landingpage/Testimonials";
 import Footer from "../components/landingpage/Footer";
 import KeyFeatures from "../components/landingpage/KeyFeatures";
 import { motion, useScroll, useSpring, AnimatePresence } from "framer-motion";
-import { ArrowRight, Menu, X } from "lucide-react";
+import { ArrowRight, Menu, Package, X } from "lucide-react";
 
 const LandingPage: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -68,56 +68,40 @@ const LandingPage: React.FC = () => {
         style={{ scaleX }}
       />
 
+      
+            
+
       {/* Navigation */}
       <motion.nav
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        id="main-nav"
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ease-in-out border-b ${scrolled
-          ? "bg-white/95 backdrop-blur-xl shadow-lg shadow-slate-200/50 border-slate-200/60 py-3"
-          : "bg-white/80 backdrop-blur-md border-white/20 py-4"
-          }`}
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ease-in-out border-b ${
+          scrolled
+            ? "bg-white/95 backdrop-blur-xl shadow-lg shadow-slate-200/50 border-slate-200/60"
+            : "bg-white/80 backdrop-blur-md border-white/20"
+        }`}
       >
-        <div className="max-w-7xl mx-auto px-6 md:px-8 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 group relative z-10">
-            <img
-              src="/logo.svg"
-              alt="SynapStore Logo"
-              className="w-10 h-10 object-contain transition-transform duration-300 group-hover:scale-110"
-            />
-            <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 bg-clip-text text-transparent tracking-tight">
+          <div className="flex items-center gap-3 group relative z-10 cursor-pointer">
+            <div className="w-38 h-38 mt-5 -mr-12 rounded-full flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
+              <img src="/logo.svg"/>
+            </div>
+            <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 bg-clip-text text-transparent tracking-tight">
               SynapStore
             </span>
-          </Link>
-
-          {/* Desktop Navigation Links */}
-          <div className="hidden md:flex items-center gap-1">
-            {navLinks.map((link, index) => (
-              <motion.button
-                key={link.id}
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.1 + index * 0.1 }}
-                onClick={() => scrollToSection(link.id)}
-                className="relative px-4 py-2 text-slate-700 font-medium text-sm rounded-lg transition-all duration-300 hover:text-emerald-600 group"
-              >
-                <span className="relative z-10">{link.label}</span>
-                <div className="absolute inset-0 bg-emerald-50 rounded-lg scale-0 group-hover:scale-100 transition-transform duration-300 origin-center" />
-              </motion.button>
-            ))}
           </div>
 
+ 
+
           {/* CTA Button & Mobile Menu Toggle */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <motion.button
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.4 }}
-              onClick={() => navigate("/login")}
-              className="hidden sm:flex group relative items-center gap-2 px-6 py-2.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 transition-all duration-300 hover:-translate-y-0.5 overflow-hidden"
-              aria-label="Get Started"
+              className="group relative flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 transition-all duration-300 hover:-translate-y-0.5 overflow-hidden"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <span className="relative z-10">Get Started</span>
@@ -130,13 +114,12 @@ const LandingPage: React.FC = () => {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.5 }}
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors duration-300"
-              aria-label="Toggle menu"
+              className="md:hidden p-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors duration-300"
             >
               {mobileMenuOpen ? (
-                <X className="w-6 h-6 text-slate-700" />
+                <X className="w-5 h-5 text-slate-700" />
               ) : (
-                <Menu className="w-6 h-6 text-slate-700" />
+                <Menu className="w-5 h-5 text-slate-700" />
               )}
             </motion.button>
           </div>
@@ -146,7 +129,6 @@ const LandingPage: React.FC = () => {
         <AnimatePresence>
           {mobileMenuOpen && (
             <>
-              {/* Backdrop */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -156,13 +138,12 @@ const LandingPage: React.FC = () => {
                 onClick={() => setMobileMenuOpen(false)}
               />
 
-              {/* Menu Panel */}
               <motion.div
                 initial={{ opacity: 0, x: "100%" }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: "100%" }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
-                className="fixed top-[73px] right-0 bottom-0 w-72 bg-white/95 backdrop-blur-xl shadow-2xl z-50 md:hidden border-l border-slate-200"
+                className="fixed top-20 right-0 bottom-0 w-72 bg-white/95 backdrop-blur-xl shadow-2xl z-50 md:hidden border-l border-slate-200"
               >
                 <div className="flex flex-col p-6 gap-2">
                   {navLinks.map((link, index) => (
@@ -182,10 +163,7 @@ const LandingPage: React.FC = () => {
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.3, delay: navLinks.length * 0.1 }}
-                    onClick={() => {
-                      navigate("/login");
-                      setMobileMenuOpen(false);
-                    }}
+                    onClick={() => setMobileMenuOpen(false)}
                     className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 transition-all duration-300"
                   >
                     <span>Get Started</span>
@@ -197,6 +175,8 @@ const LandingPage: React.FC = () => {
           )}
         </AnimatePresence>
       </motion.nav>
+
+   
 
       <main className="relative z-10 w-full">
         <HeroSection />

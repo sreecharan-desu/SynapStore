@@ -1,7 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
-import RequireAuth from "../../routes/RequireAuth";
-import DashboardNavigationGuard from "../DashboardNavigationGuard";
+import RequireAuth from "../guards/RequireAuth";
+import DashboardNavigationGuard from "../guards/DashboardNavigationGuard";
 
 export const DashboardLayout = () => {
     return (

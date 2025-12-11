@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { useAuthContext } from "../auth/AuthContext";
+// useNavigate removed as unused
+import { useAuthContext } from "../../context/AuthContext";
 
 export default function DashboardNavigationGuard() {
   const { isAuthenticated } = useAuthContext();

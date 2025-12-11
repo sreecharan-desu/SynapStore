@@ -124,7 +124,16 @@ const SuperAdminDashboard: React.FC = () => {
     const auth = useRecoilValue(authState);
     const setAuth = useSetRecoilState(authState);
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<"overview" | "analytics" | "stores" | "suppliers" | "users">("overview");
+    const [activeTab, setActiveTab] = useState<"overview" | "analytics" | "stores" | "suppliers" | "users" | "notifications">("overview");
+
+    // Notification State
+    const [notifyForm, setNotifyForm] = useState({
+        targetRole: "ALL",
+        type: "SYSTEM" as "SYSTEM" | "EMAIL" | "BOTH",
+        subject: "",
+        message: "",
+    });
+    const [sending, setSending] = useState(false);
 
     // Data State
     const [stats, setStats] = useState<AdminStats | null>(null);
@@ -252,6 +261,23 @@ const SuperAdminDashboard: React.FC = () => {
         }
     };
 
+    const handleSendNotification = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSending(true);
+        try {
+            const res = await adminApi.sendNotification(notifyForm);
+            if (res.data.success) {
+                alert("Notification dispatched successfully!");
+                setNotifyForm({ ...notifyForm, subject: "", message: "" });
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Error sending notification: " + err.message);
+        } finally {
+            setSending(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900">
             {/* Header */}
@@ -298,8 +324,8 @@ const SuperAdminDashboard: React.FC = () => {
                     </div>
 
                     {/* Navigation Tabs */}
-                    <div className="flex gap-1 mt-6 border-b border-slate-200">
-                        {(["overview", "analytics", "stores", "suppliers", "users"] as const).map((tab) => (
+                    <div className="flex gap-1 mt-6 border-b border-slate-200 overflow-x-auto">
+                        {(["overview", "analytics", "stores", "suppliers", "users", "notifications"] as const).map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => { setActiveTab(tab); setSearchQuery(""); }}
@@ -815,6 +841,91 @@ const SuperAdminDashboard: React.FC = () => {
                                     </tbody>
                                 </table>
                             </div>
+                        </motion.div>
+                    )}
+
+                    {activeTab === "notifications" && (
+                        <motion.div
+                            key="notifications"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.2 }}
+                            className="max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm p-8"
+                        >
+                            <div className="flex items-center gap-4 mb-8">
+                                <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center">
+                                    <AlertTriangle className="w-6 h-6 text-indigo-600" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-800">Send System Notification</h2>
+                                    <p className="text-sm text-slate-500">Dispatch alerts to users via Dashboard or Email</p>
+                                </div>
+                            </div>
+
+                            <form onSubmit={handleSendNotification} className="space-y-6">
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">Target Audience</label>
+                                        <select
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            value={notifyForm.targetRole}
+                                            onChange={e => setNotifyForm({ ...notifyForm, targetRole: e.target.value })}
+                                        >
+                                            <option value="ALL">All Users</option>
+                                            <option value="SUPPLIER">Suppliers Only</option>
+                                            <option value="STORE_OWNER">Store Owners Only</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">Delivery Method</label>
+                                        <select
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            value={notifyForm.type}
+                                            onChange={e => setNotifyForm({ ...notifyForm, type: e.target.value as any })}
+                                        >
+                                            <option value="SYSTEM">System Notification (In-App)</option>
+                                            <option value="EMAIL">Email Only</option>
+                                            <option value="BOTH">Both (System + Email)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Subject / Title</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="e.g. Scheduled Maintenance"
+                                        value={notifyForm.subject}
+                                        onChange={e => setNotifyForm({ ...notifyForm, subject: e.target.value })}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Message Body</label>
+                                    <textarea
+                                        required
+                                        rows={5}
+                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="Type your message here..."
+                                        value={notifyForm.message}
+                                        onChange={e => setNotifyForm({ ...notifyForm, message: e.target.value })}
+                                    />
+                                    <p className="text-xs text-slate-400 mt-2">HTML is supported for Emails.</p>
+                                </div>
+
+                                <div className="flex justify-end pt-4">
+                                    <Button
+                                        type="submit"
+                                        disabled={sending}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8"
+                                    >
+                                        {sending ? "Sending..." : "Dispatch Notification"}
+                                    </Button>
+                                </div>
+                            </form>
                         </motion.div>
                     )}
                 </AnimatePresence>

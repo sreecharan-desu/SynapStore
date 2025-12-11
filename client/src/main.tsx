@@ -6,11 +6,10 @@ import App from "./App.tsx";
 import Login from "./pages/login.tsx";
 // Dashboard removed
 import StoreCreate from "./pages/StoreCreate";
-import Home from "./pages/Home";
-import RequireAuth from "./routes/RequireAuth";
-import { AuthProvider } from "./auth/AuthContext";
-import LoginGuard from "./components/AuthRouteGuards/LoginGuard";
-import RoleGuard from "./components/AuthRouteGuards/RoleGuard";
+import RequireAuth from "./components/guards/RequireAuth";
+import { AuthProvider } from "./context/AuthContext";
+import LoginGuard from "./components/guards/LoginGuard";
+import RoleGuard from "./components/guards/RoleGuard";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
 import SuppliersPage from "./pages/suppliers/SuppliersPage";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
@@ -92,7 +91,7 @@ createRoot(document.getElementById("root")!).render(
             }
           />
 
-          <Route path="/home" element={<Home />} />
+
         </Routes>
       </BrowserRouter>
     </AuthProvider>

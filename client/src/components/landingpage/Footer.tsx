@@ -167,11 +167,11 @@ export default function CTAAndFooter() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 mb-8 items-start">
             {/* Brand Column */}
             <div className="animate-fadeInUp stagger-1">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="logo-container w-12 h-12 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl flex items-center justify-center shadow-md border border-emerald-200/50">
-                  <img src="/logo.svg" alt="SynapStore logo" className="w-8 h-8" />
+              <div className="flex items-center gap-5 mb-4">
+                <div className="logo-container">
+                  <img src="/logo.svg" alt="SynapStore logo" className="w-32 h-32 object-contain" />
                 </div>
-                <span className="text-2xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 bg-clip-text text-transparent">
+                <span className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 bg-clip-text text-transparent">
                   SynapStore
                 </span>
               </div>

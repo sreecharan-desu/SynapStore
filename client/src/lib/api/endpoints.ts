@@ -62,4 +62,7 @@ export const adminApi = {
     deleteUser: (userId: string) => client.delete(`api/v1/admin/users/${userId}`),
     
     getDashboardAnalytics: () => client.get<{ success: boolean; data: any }>("api/v1/admin/dashboard/analytics"),
+    
+    sendNotification: (data: { targetRole?: string; targetUserIds?: string[]; type: "SYSTEM" | "EMAIL" | "BOTH"; subject: string; message: string }) => 
+        client.post<{ success: boolean; message: string }>("api/v1/admin/notifications/send", data),
 };

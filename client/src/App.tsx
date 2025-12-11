@@ -1,45 +1,79 @@
 import { Navigate } from "react-router-dom";
-import { useAuthContext } from "./auth/AuthContext";
+import { useAuthContext } from "./context/AuthContext";
 import LandingPage from "./pages/LandingPage";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { SynapNotificationClient } from "./utils/NotificationClient";
+import { NotificationToastContainer } from "./components/ui/NotificationToast";
 
 const App = () => {
+  const { user, isAuthenticated } = useAuthContext();
+  const [notifications, setNotifications] = useState<any[]>([]);
+
   useEffect(() => {
     // Determine Service URL (Env Var > Default)
-    const SERVICE_URL = import.meta.env.VITE_NOTIFICATION_SERVICE_URL || "http://localhost:4000";
+    // Defaulting to Production URL as Localhost is typically not running the microservice
+    const SERVICE_URL = import.meta.env.VITE_NOTIFICATION_SERVICE_URL || "https://notification-service-synapstore.vercel.app";
     
-    // Identifier: Hostname
-    const targetId = window.location.hostname; // e.g., localhost or my-site.com
+    // Identifier: User ID if logged in, else Hostname
+    // We append a pseudo-domain to the user ID to satisfy the Notification Service's URL validation
+    // while ensuring the hostname matches for routing.
+    const targetId = (isAuthenticated && user?.id) 
+        ? `${user.id}.u.synapstore.com` 
+        : window.location.hostname;
     
-    if (import.meta.env.VITE_ENABLE_NOTIFICATIONS === "true") {
+    // Default true if not explicitly set to false
+    const shouldEnable = import.meta.env.VITE_ENABLE_NOTIFICATIONS !== "false"; 
+    
+    if (shouldEnable) {
       const client = new SynapNotificationClient(targetId, SERVICE_URL);
       
       client.onNotification((data: any) => {
         console.log("Recv Notification:", data);
-        // Only using system notifications now (handled by sw.js)
+        const newNotif = {
+            id: Date.now().toString(),
+            title: data.title || "Notification",
+            message: data.message || "",
+            image: data.image,
+            link: data.link || (data.buttons && data.buttons[0]?.link),
+            timestamp: Date.now()
+        };
+        setNotifications(prev => [newNotif, ...prev]);
+
+        // Auto dismiss after 5s
+        setTimeout(() => {
+            setNotifications(prev => prev.filter(n => n.id !== newNotif.id));
+        }, 5000);
       });
       
       // Request Background Permission
       client.enablePushNotifications();
-    }
-  }, []);
 
-  const { user, isAuthenticated } = useAuthContext();
+      return () => {
+        client.disconnect();
+      }
+    }
+  }, [isAuthenticated, user?.id]);
+
+  const dismissNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
 
   // If user is already logged in, send them to their specific dashboard
-  if (isAuthenticated && user) {
-    if (user.globalRole === "SUPERADMIN") {
-      return <Navigate to="/admin/dashboard" replace />;
-    } else if (user.globalRole === "SUPPLIER") {
-      return <Navigate to="/supplier/dashboard" replace />;
-    } else {
-      // STORE_OWNER, USER, MANAGER -> Store Dashboard
-      return <Navigate to="/store/dashboard" replace />;
+  const getRedirect = () => {
+    if (isAuthenticated && user) {
+        if (user.globalRole === "SUPERADMIN") return <Navigate to="/admin/dashboard" replace />;
+        if (user.globalRole === "SUPPLIER") return <Navigate to="/supplier/dashboard" replace />;
+        return <Navigate to="/store/dashboard" replace />;
     }
-  }
+    return <LandingPage />;
+  };
 
-  return <LandingPage />;
+  return (
+    <>
+        {getRedirect()}
+        <NotificationToastContainer notifications={notifications} onDismiss={dismissNotification} />
+    </>
+  );
 };
 
 export default App;

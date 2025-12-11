@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuthContext } from "../auth/AuthContext";
+import { useAuthContext } from "../../context/AuthContext";
 import { useRecoilValue } from "recoil";
-import { authStatus } from "../state/auth";
+import { authStatus } from "../../state/auth";
 
 type Props = {
   children: React.ReactNode;

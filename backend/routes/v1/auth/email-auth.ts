@@ -407,6 +407,11 @@ router.post(
         return sendError(res, "This account has been temporarily disabled/suspended", 403, { code: "user_not_active" });
       }
 
+      if (!user.passwordHash) {
+          // User exists but has no password (e.g. Google Auth only)
+          return sendError(res, "Invalid credentials", 401);
+      }
+
       const ok = await comparePassword(password, user.passwordHash);
       if (!ok) return sendError(res, "Invalid credentials", 401);
 

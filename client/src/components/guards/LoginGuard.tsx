@@ -1,5 +1,5 @@
 import { Navigate } from "react-router-dom";
-import { useAuthContext } from "../../auth/AuthContext";
+import { useAuthContext } from "../../context/AuthContext";
 import { useRecoilValue } from "recoil";
 import { authState } from "../../state/auth";
 
