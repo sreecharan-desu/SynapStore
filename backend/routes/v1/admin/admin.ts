@@ -903,22 +903,25 @@ router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, r
        });
      } else if (targetRole) {
         if (targetRole === 'ALL') {
-             users = await prisma.user.findMany({ select: { id: true, email: true } });
+             users = await prisma.user.findMany({
+                where: { globalRole: { not: "SUPERADMIN" } },
+                select: { id: true, email: true }
+             });
         } else if (targetRole === 'SUPPLIER') {
              users = await prisma.user.findMany({ 
                 where: { globalRole: 'SUPPLIER' }, 
-                select: { id: true, email: true,username : true } 
+                select: { id: true, email: true, username: true } 
              });
         } else if (targetRole === 'STORE_OWNER') {
              users = await prisma.user.findMany({
                 where: { 
+                   globalRole: { not: "SUPERADMIN" }, // Exclude SUPERADMIN
                    OR: [
                      { globalRole: 'STORE_OWNER' },
-                     // Also include those with role in Store
                      { stores: { some: { role: 'STORE_OWNER' } } }
                    ]
                 },
-                select: { id: true, email: true,username : true }
+                select: { id: true, email: true, username: true }
              });
         }
      }
@@ -926,25 +929,13 @@ router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, r
      if (users.length === 0) return sendError(res, "No users found for criteria", 404);
 
      // 2. Send
-     // Calculate operations but don't await them all in the main response loop to avoid blocking if list is huge.
-     // However, for admin panel feedback, it's nice to wait or at least ensure no errors. 
-     // We will run this in background after responding? Or respond after initiating?
-     // Let's iterate using standard loop to properly scope async operations.
-     
      const dispatchPromises = users.map(async (u) => {
-        // Use the decrypted email helper
         const email = decryptEmail(u.email); 
-        // Email
         if ((type === "EMAIL" || type === "BOTH") && email) {
              await sendMail({ to: email, subject, html: message }).catch(e => console.error(`Failed to email ${email}`, e));
         }
 
-        // System
         if (type === "SYSTEM" || type === "BOTH") {
-             // We use u.id as websiteUrl to target specific user
-             // The frontend App.tsx now listens to `user.id.u.synapstore.com` when authenticated.
-             // We MUST send a valid URL structure for the notification service to accept it (fixes 400 error).
-             
              const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
 
              notificationQueue.add("send-notification", {
@@ -956,7 +947,6 @@ router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, r
         }
      });
      
-     // Wait for all dispatches (or remove await if you want fire-and-forget)
      await Promise.all(dispatchPromises);
      
      return sendSuccess(res, `Notification dispatched to ${users.length} users.`);
