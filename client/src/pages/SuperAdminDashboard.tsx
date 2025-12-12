@@ -1,25 +1,22 @@
 // src/pages/SuperAdminDashboard.tsx
 import React, { useEffect, useState } from "react";
-import { useRecoilValue } from "recoil";
-import { authState } from "../state/auth";
-import { motion, AnimatePresence } from "framer-motion";
+import { useRecoilValue, useSetRecoilState } from "recoil";
+import { authState, clearAuthState } from "../state/auth";
+import { motion, AnimatePresence, animate } from "framer-motion";
 import {
-    Shield, Users, Store as StoreIcon, Activity, Search,
+    Users, Store as StoreIcon, Activity, Search,
     Package, Truck, LogOut, Trash2,
     PieChart, AlertTriangle, Wallet,
+    BarChart3, Bell, Lock, UserPlus, Settings, X, ArrowRightLeft
 } from "lucide-react";
-
+import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { adminApi } from "../lib/api/endpoints";
 import type { User, Store, Supplier, AdminStats } from "../lib/types";
-
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { useSetRecoilState } from "recoil";
-import { clearAuthState } from "../state/auth";
+import { FaUserNurse } from "react-icons/fa";
 
 // --- Types ---
-
-// Local interfaces removed in favor of shared types
 
 interface AnalyticsData {
     overview: {
@@ -57,41 +54,102 @@ interface AnalyticsData {
 
 // --- Components ---
 
+const Counter = ({ value }: { value: number }) => {
+    const nodeRef = React.useRef<HTMLSpanElement>(null);
+
+    useEffect(() => {
+        const node = nodeRef.current;
+        if (!node) return;
+
+        const controls = animate(0, value, {
+            duration: 2,
+            ease: "easeOut",
+            onUpdate(val) {
+                node.textContent = Math.round(val).toLocaleString();
+            },
+        });
+
+        return () => controls.stop();
+    }, [value]);
+
+    return <span ref={nodeRef} />;
+};
+
 const StatCard = ({ icon: Icon, label, value, color, delay }: any) => (
     <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay }}
-        className="bg-white/60 backdrop-blur-xl border border-white/50 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all"
+        transition={{ delay, type: "spring", stiffness: 300, damping: 30 }}
+        whileHover={{ y: -5, boxShadow: "0 20px 40px -15px rgba(0,0,0,0.1)" }}
+        className="relative overflow-hidden bg-white/70 backdrop-blur-2xl border border-white/60 rounded-[2rem] p-6 shadow-sm group cursor-default"
     >
-        <div className="flex items-center justify-between mb-4">
-            <div className={`w-12 h-12 bg-gradient-to-br ${color} rounded-xl flex items-center justify-center shadow-inner`}>
+        {/* Background gradient blob */}
+        <div className={`absolute -right-6 -top-6 w-32 h-32 bg-gradient-to-br ${color} opacity-[0.05] blur-2xl rounded-full group-hover:opacity-[0.1] transition-opacity duration-500`} />
+
+        <div className="flex items-center justify-between relative z-10">
+            <div className={`p-4 bg-gradient-to-br ${color} rounded-2xl shadow-lg transform group-hover:scale-110 transition-transform duration-300 ease-out`}>
                 <Icon className="w-6 h-6 text-white" />
             </div>
             <div className="text-right">
-                <p className="text-2xl font-bold text-slate-800">{value}</p>
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{label}</p>
+                <motion.div
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: delay + 0.2 }}
+                >
+                    <h3 className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
+                        {typeof value === 'number' ? <Counter value={value} /> : value}
+                    </h3>
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-1.5">{label}</p>
+                </motion.div>
             </div>
         </div>
+
+        {/* Bottom shine line */}
+        <div className={`absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r ${color} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
     </motion.div>
 );
 
-const ActivityItem = ({ activity }: { activity: any }) => (
-    <div className="flex items-center gap-4 p-4 hover:bg-white/50 rounded-xl transition-colors border-b border-slate-100 last:border-0">
-        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-            <Activity className="w-5 h-5" />
-        </div>
-        <div className="flex-1">
-            <p className="text-sm font-medium text-slate-800">
-                <span className="text-purple-600 font-bold">{activity.action}</span>
-                {activity.resource && <span className="text-slate-500"> on {activity.resource}</span>}
-            </p>
-            <p className="text-xs text-slate-400">
-                {new Date(activity.createdAt).toLocaleString()}
-            </p>
-        </div>
-    </div>
-);
+const getActivityIcon = (action: string) => {
+    const act = action.toUpperCase();
+    if (act.includes("LOGIN")) return { icon: Lock, color: "text-emerald-500", bg: "bg-emerald-50" };
+    if (act.includes("REGISTER") || act.includes("USER")) return { icon: UserPlus, color: "text-blue-500", bg: "bg-blue-50" };
+    if (act.includes("STORE")) return { icon: StoreIcon, color: "text-purple-500", bg: "bg-purple-50" };
+    if (act.includes("DELETE")) return { icon: Trash2, color: "text-red-500", bg: "bg-red-50" };
+    if (act.includes("UPDATE")) return { icon: Settings, color: "text-orange-500", bg: "bg-orange-50" };
+    return { icon: Activity, color: "text-slate-500", bg: "bg-slate-50" };
+};
+
+const ActivityItem = ({ activity, index }: { activity: any; index: number }) => {
+    const { icon: Icon, color, bg } = getActivityIcon(activity.action);
+    return (
+        <motion.div
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.05 + 0.3 }}
+            className="flex items-start gap-4 p-4 hover:bg-slate-50/80 rounded-xl transition-all border-b border-slate-100 last:border-0 group cursor-default"
+        >
+            <div className={`w-10 h-10 rounded-full ${bg} flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-sm`}>
+                <Icon className={`w-5 h-5 ${color}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
+                    {activity.action}
+                </p>
+                <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
+                    {activity.user && (
+                        <span className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-medium">
+                            {activity.user.username}
+                        </span>
+                    )}
+                    {activity.resource && <span className="truncate text-slate-400">on {activity.resource}</span>}
+                </div>
+            </div>
+            <div className="text-xs font-mono text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-1 rounded">
+                {new Date(activity.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+        </motion.div>
+    );
+};
 
 const StatusBadge = ({ isActive }: { isActive: boolean }) => (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isActive
@@ -124,6 +182,16 @@ const SuperAdminDashboard: React.FC = () => {
     const auth = useRecoilValue(authState);
     const setAuth = useSetRecoilState(authState);
     const navigate = useNavigate();
+
+    const NAV_ITEMS = [
+        { label: 'Overview', icon: BarChart3, tab: 'overview' },
+        { label: 'Analytics', icon: PieChart, tab: 'analytics' },
+        { label: 'Stores', icon: StoreIcon, tab: 'stores' },
+        { label: 'Suppliers', icon: Truck, tab: 'suppliers' },
+        { label: 'Users', icon: Users, tab: 'users' },
+        { label: 'Notifications', icon: Bell, tab: 'notifications' },
+    ];
+
     const [activeTab, setActiveTab] = useState<"overview" | "analytics" | "stores" | "suppliers" | "users" | "notifications">("overview");
 
     // Notification State
@@ -134,6 +202,7 @@ const SuperAdminDashboard: React.FC = () => {
         message: "",
     });
     const [sending, setSending] = useState(false);
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
     // Data State
     const [stats, setStats] = useState<AdminStats | null>(null);
@@ -145,6 +214,13 @@ const SuperAdminDashboard: React.FC = () => {
 
     // Search / Filter
     const [searchQuery, setSearchQuery] = useState("");
+
+    const [storeToDelete, setStoreToDelete] = useState<{ id: string; name: string } | null>(null);
+    const [storeToToggle, setStoreToToggle] = useState<{ id: string; name: string; isActive: boolean } | null>(null);
+    const [supplierToDelete, setSupplierToDelete] = useState<{ id: string; name: string } | null>(null);
+    const [supplierToToggle, setSupplierToToggle] = useState<{ id: string; name: string; isActive: boolean } | null>(null);
+    const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
+    const [userToConvert, setUserToConvert] = useState<{ id: string; name: string } | null>(null);
 
     // Effects
     useEffect(() => {
@@ -179,37 +255,70 @@ const SuperAdminDashboard: React.FC = () => {
     };
 
     // Handlers
-    const handleSearch = (e: React.FormEvent) => {
-        e.preventDefault();
-        fetchData();
+
+
+    const initiateToggleStore = (store: Store) => {
+        setStoreToToggle({ id: store.id, name: store.name, isActive: store.isActive || false });
     };
 
-    const toggleStoreStatus = async (storeId: string, currentStatus: boolean) => {
-        if (!confirm(`Are you sure you want to ${currentStatus ? 'suspend' : 'activate'} this store?`)) return;
+    const performToggleStore = async () => {
+        if (!storeToToggle) return;
         try {
-            const res = await adminApi.suspendStore(storeId, !currentStatus);
-            if (res.data.success) fetchData();
+            const res = await adminApi.suspendStore(storeToToggle.id, !storeToToggle.isActive);
+            if (res.data.success) {
+                fetchData();
+                setStoreToToggle(null);
+            }
         } catch (err) {
             console.error(err);
         }
     };
 
-    const toggleSupplierStatus = async (supplierId: string, currentStatus: boolean) => {
-        if (!confirm(`Are you sure you want to ${currentStatus ? 'suspend' : 'activate'} this supplier?`)) return;
+    const initiateToggleSupplier = (supplier: Supplier) => {
+        setSupplierToToggle({ id: supplier.id, name: supplier.name, isActive: supplier.isActive || false });
+    };
+
+    const performToggleSupplier = async () => {
+        if (!supplierToToggle) return;
         try {
-            const res = await adminApi.suspendSupplier(supplierId, !currentStatus);
-            if (res.data.success) fetchData();
+            const res = await adminApi.suspendSupplier(supplierToToggle.id, !supplierToToggle.isActive);
+            if (res.data.success) {
+                fetchData();
+                setSupplierToToggle(null);
+            }
         } catch (err) {
             console.error(err);
         }
     };
 
-    const convertToSupplier = async (userId: string, username: string) => {
-        if (!confirm(`Are you sure you want to convert user "${username}" to a Supplier? This will give them supplier access.`)) return;
+    const initiateDeleteSupplier = (supplierId: string, supplierName: string) => {
+        setSupplierToDelete({ id: supplierId, name: supplierName });
+    };
+
+    const performDeleteSupplier = async () => {
+        if (!supplierToDelete) return;
         try {
-            const res = await adminApi.convertToSupplier(userId);
+            await adminApi.deleteSupplier(supplierToDelete.id);
+            setSupplierToDelete(null);
+            console.log(`Supplier ${supplierToDelete.name} deleted successfully.`);
+            fetchData();
+        } catch (err: any) {
+            console.error(err);
+            alert("Error: " + err.message);
+        }
+    };
+
+    const initiateConvertUser = (userId: string, username: string) => {
+        setUserToConvert({ id: userId, name: username });
+    };
+
+    const performConvertUser = async () => {
+        if (!userToConvert) return;
+        try {
+            const res = await adminApi.convertToSupplier(userToConvert.id);
             if (res.data) {
-                alert(`User ${username} converted to supplier successfully.`);
+                // alert(`User ${userToConvert.name} converted to supplier successfully.`);
+                setUserToConvert(null);
                 fetchData();
             }
         } catch (err: any) {
@@ -218,11 +327,15 @@ const SuperAdminDashboard: React.FC = () => {
         }
     };
 
-    const deleteUser = async (userId: string, username: string) => {
-        if (!confirm(`Are you sure you want to PERMANENTLY DELETE user "${username}"? This action cannot be undone.`)) return;
+    const initiateDeleteUser = (userId: string, username: string) => {
+        setUserToDelete({ id: userId, name: username });
+    };
+
+    const performDeleteUser = async () => {
+        if (!userToDelete) return;
         try {
-            await adminApi.deleteUser(userId);
-            alert(`User ${username} deleted successfully.`);
+            await adminApi.deleteUser(userToDelete.id);
+            setUserToDelete(null);
             fetchData();
         } catch (err: any) {
             console.error(err);
@@ -230,11 +343,15 @@ const SuperAdminDashboard: React.FC = () => {
         }
     };
 
-    const deleteStore = async (storeId: string, storeName: string) => {
-        if (!confirm(`Are you sure you want to PERMANENTLY DELETE store "${storeName}"? This action cannot be undone.`)) return;
+    const initiateDeleteStore = (storeId: string, storeName: string) => {
+        setStoreToDelete({ id: storeId, name: storeName });
+    };
+
+    const performDeleteStore = async () => {
+        if (!storeToDelete) return;
         try {
-            await adminApi.deleteStore(storeId);
-            alert(`Store ${storeName} deleted successfully.`);
+            await adminApi.deleteStore(storeToDelete.id);
+            setStoreToDelete(null);
             fetchData();
         } catch (err: any) {
             console.error(err);
@@ -242,30 +359,22 @@ const SuperAdminDashboard: React.FC = () => {
         }
     };
 
-    const deleteSupplier = async (supplierId: string, supplierName: string) => {
-        if (!confirm(`Are you sure you want to PERMANENTLY DELETE supplier "${supplierName}"? This action cannot be undone.`)) return;
-        try {
-            await adminApi.deleteSupplier(supplierId);
-            alert(`Supplier ${supplierName} deleted successfully.`);
-            fetchData();
-        } catch (err: any) {
-            console.error(err);
-            alert("Error: " + err.message);
-        }
-    };
+
 
     const handleLogout = () => {
-        if (confirm("Are you sure you want to logout?")) {
-            setAuth(clearAuthState());
-            navigate("/login");
-        }
+        setShowLogoutConfirm(true);
+    };
+
+    const performLogout = () => {
+        setAuth(clearAuthState());
+        navigate("/login");
     };
 
     const handleSendNotification = async (e: React.FormEvent) => {
         e.preventDefault();
         setSending(true);
         try {
-            const res:any = await adminApi.sendNotification(notifyForm);
+            const res: any = await adminApi.sendNotification(notifyForm);
             if (res.data?.success) {
                 alert("Notification dispatched successfully!");
                 setNotifyForm({ ...notifyForm, subject: "", message: "" });
@@ -287,68 +396,96 @@ const SuperAdminDashboard: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-6 py-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-gradient-to-tr from-violet-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                                <Shield className="w-5 h-5 text-white" />
-                            </div>
+                            <motion.div
+                                initial={{ scale: 0.5, opacity: 0, rotate: -180 }}
+                                animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                                transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                                whileHover={{ scale: 1.1, rotate: 10, boxShadow: "0px 10px 25px rgba(79, 70, 229, 0.4)" }}
+                                className="w-12 h-12 bg-gradient-to-tr from-violet-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 cursor-pointer"
+                            >
+                                <FaUserNurse className="w-6 h-6 text-white" />
+                            </motion.div>
                             <div>
-                                <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                                <motion.h1
+                                    initial={{ x: -20, opacity: 0 }}
+                                    animate={{ x: 0, opacity: 1 }}
+                                    transition={{ delay: 0.2, duration: 0.5 }}
+                                    className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent"
+                                >
                                     Admin Console
-                                </h1>
-                                <p className="text-xs text-slate-500 font-medium">Global System Management</p>
+                                </motion.h1>
+                                <motion.p
+                                    initial={{ x: -20, opacity: 0 }}
+                                    animate={{ x: 0, opacity: 1 }}
+                                    transition={{ delay: 0.3, duration: 0.5 }}
+                                    className="text-xs text-slate-500 font-medium"
+                                >
+                                    Pharmacy Management System
+                                </motion.p>
                             </div>
                         </div>
 
                         <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg border border-slate-200/50">
-                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <motion.div
+                                initial={{ y: -10, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.4 }}
+                                whileHover={{ scale: 1.05, backgroundColor: "#f3f4f6" }}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg border border-slate-200/50 cursor-default"
+                            >
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
                                 <span className="text-xs font-semibold text-slate-600 tracking-wide">SYSTEM ONLINE</span>
-                            </div>
-                            <div className="h-8 w-[1px] bg-slate-200" />
-                            <div className="flex items-center gap-3">
+                            </motion.div>
+
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 32, opacity: 1 }}
+                                transition={{ delay: 0.5 }}
+                                className="w-[1px] bg-slate-200"
+                            />
+
+                            <motion.div
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: 0.6, type: "spring" }}
+                                className="flex items-center gap-3"
+                            >
                                 <div className="text-right hidden sm:block">
                                     <p className="text-sm font-semibold text-slate-800">{auth.user?.username}</p>
                                     <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{auth.user?.globalRole}</p>
                                 </div>
-                                <div className="w-9 h-9 bg-slate-900 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                                    {auth.user?.username?.charAt(0).toUpperCase()}
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={handleLogout}
-                                    className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50"
-                                    title="Logout"
+                                <motion.div
+                                    whileHover={{ scale: 1.1, rotate: 5 }}
+                                    className="w-9 h-9 bg-slate-900 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md cursor-pointer border-2 border-slate-900"
                                 >
-                                    <LogOut className="w-5 h-5" />
-                                </Button>
-                            </div>
+                                    {auth.user?.username?.charAt(0).toUpperCase()}
+                                </motion.div>
+                                <motion.div
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                >
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleLogout}
+                                        className="ml-2 !bg-red-600 !text-white hover:!bg-red-700 border !border-red-600 px-6 gap-2 transition-all duration-300 shadow-md shadow-red-500/30"
+                                        title="Logout"
+                                    >
+                                        <LogOut className="w-4 h-4" />
+                                        <span className="font-semibold">Sign Out</span>
+                                    </Button>
+                                </motion.div>
+                            </motion.div>
                         </div>
-                    </div>
-
-                    {/* Navigation Tabs */}
-                    <div className="flex gap-1 mt-6 border-b border-slate-200 overflow-x-auto">
-                        {(["overview", "analytics", "stores", "suppliers", "users", "notifications"] as const).map((tab) => (
-                            <button
-                                key={tab}
-                                onClick={() => { setActiveTab(tab); setSearchQuery(""); }}
-                                className={`px-4 py-2 text-sm font-medium relative transition-colors ${activeTab === tab ? "text-indigo-600" : "text-slate-500 hover:text-slate-800"
-                                    }`}
-                            >
-                                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                                {activeTab === tab && (
-                                    <motion.div
-                                        layoutId="activeTab"
-                                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600"
-                                    />
-                                )}
-                            </button>
-                        ))}
                     </div>
                 </div>
             </header>
 
             {/* Main Content Area */}
-            <main className="max-w-7xl mx-auto px-6 py-8">
+            <main className="max-w-7xl mx-auto px-6 py-8 pb-32">
                 <AnimatePresence mode="wait">
                     {activeTab === "overview" && (
                         <motion.div
@@ -398,7 +535,6 @@ const SuperAdminDashboard: React.FC = () => {
                                             <Activity className="w-5 h-5 text-indigo-500" />
                                             Recent System Activity
                                         </h3>
-                                        <Button variant="ghost" size="sm" className="text-slate-400">View All</Button>
                                     </div>
                                     <div className="max-h-[400px] overflow-y-auto">
                                         {loading ? (
@@ -406,8 +542,8 @@ const SuperAdminDashboard: React.FC = () => {
                                         ) : stats?.recentActivity.length === 0 ? (
                                             <div className="p-8 text-center text-slate-400">No recent activity</div>
                                         ) : (
-                                            stats?.recentActivity.map((act) => (
-                                                <ActivityItem key={act.id} activity={act} />
+                                            stats?.recentActivity.map((act, idx) => (
+                                                <ActivityItem key={act.id} activity={act} index={idx} />
                                             ))
                                         )}
                                     </div>
@@ -558,8 +694,8 @@ const SuperAdminDashboard: React.FC = () => {
                                     {analytics.recentCriticalActivity.length === 0 ? (
                                         <p className="text-slate-400 text-center py-4">No critical actions recorded recently.</p>
                                     ) : (
-                                        analytics.recentCriticalActivity.map((act) => (
-                                            <ActivityItem key={act.id} activity={act} />
+                                        analytics.recentCriticalActivity.map((act, idx) => (
+                                            <ActivityItem key={act.id} activity={act} index={idx} />
                                         ))
                                     )}
                                 </div>
@@ -581,21 +717,26 @@ const SuperAdminDashboard: React.FC = () => {
                                     <StoreIcon className="w-5 h-5 text-indigo-500" />
                                     Registered Stores
                                 </h2>
-                                <form onSubmit={handleSearch} className="flex gap-2">
+                                <div className="flex gap-2">
                                     <div className="relative">
                                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                         <input
                                             type="text"
-                                            placeholder="Search stores..."
+                                            placeholder="Search by name..."
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
+                                            className="pl-9 pr-9 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64 shadow-sm"
                                         />
+                                        {searchQuery && (
+                                            <p
+                                                onClick={() => setSearchQuery("")}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </p>
+                                        )}
                                     </div>
-                                    <Button type="submit" variant="default" disabled={loading}>
-                                        {loading ? "Searching..." : "Search"}
-                                    </Button>
-                                </form>
+                                </div>
                             </div>
 
                             <div className="overflow-x-auto">
@@ -610,38 +751,55 @@ const SuperAdminDashboard: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {stores.map((store) => (
-                                            <tr key={store.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-6 py-4 font-medium text-slate-900">{store.name}</td>
-                                                <td className="px-6 py-4 text-slate-500 font-mono text-xs bg-slate-100/50 rounded px-2 w-fit">{store.slug}</td>
-                                                <td className="px-6 py-4 text-slate-500">
-                                                    {store.users?.[0]?.user?.email || "No Owner"}
+                                        {stores.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((store, index) => (
+                                            <motion.tr
+                                                key={store.id}
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ delay: index * 0.05 }}
+                                                className="hover:bg-indigo-50/50 transition-colors group cursor-default"
+                                            >
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{store.name}</span>
+                                                        <span className="text-xs text-slate-400">ID: {store.id.slice(0, 8)}...</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="font-mono text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded border border-slate-200 group-hover:bg-white group-hover:border-indigo-200 transition-colors">
+                                                        {store.slug}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 text-white text-[10px] flex items-center justify-center font-bold">
+                                                            {store.users?.[0]?.user?.email?.[0].toUpperCase() || "?"}
+                                                        </div>
+                                                        <span className="text-slate-600 text-sm">{store.users?.[0]?.user?.email || "No Owner"}</span>
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <StatusBadge isActive={store.isActive || false} />
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
+                                                    <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
                                                         <Button
-                                                            variant="ghost"
                                                             size="sm"
-                                                            className={store.isActive ? "text-amber-600 hover:text-amber-700 hover:bg-amber-50" : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"}
-                                                            onClick={() => toggleStoreStatus(store.id, store.isActive || false)}
+                                                            className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200"
+                                                            onClick={() => initiateToggleStore(store)}
                                                         >
                                                             {store.isActive ? "Suspend" : "Activate"}
                                                         </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="text-slate-400 hover:text-red-600 hover:bg-red-50"
-                                                            onClick={() => deleteStore(store.id, store.name)}
+                                                        <p
+                                                            className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110"
+                                                            onClick={() => initiateDeleteStore(store.id, store.name)}
                                                             title="Delete Store"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
-                                                        </Button>
+                                                        </p>
                                                     </div>
                                                 </td>
-                                            </tr>
+                                            </motion.tr>
                                         ))}
                                         {!loading && stores.length === 0 && (
                                             <tr>
@@ -670,21 +828,26 @@ const SuperAdminDashboard: React.FC = () => {
                                     <Truck className="w-5 h-5 text-indigo-500" />
                                     Global Suppliers
                                 </h2>
-                                <form onSubmit={handleSearch} className="flex gap-2">
+                                <div className="flex gap-2">
                                     <div className="relative">
                                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                         <input
                                             type="text"
-                                            placeholder="Search suppliers..."
+                                            placeholder="Search by name..."
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
+                                            className="pl-9 pr-9 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64 shadow-sm"
                                         />
+                                        {searchQuery && (
+                                            <p
+                                                onClick={() => setSearchQuery("")}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </p>
+                                        )}
                                     </div>
-                                    <Button type="submit" variant="default" disabled={loading}>
-                                        {loading ? "Searching..." : "Search"}
-                                    </Button>
-                                </form>
+                                </div>
                             </div>
 
                             <div className="overflow-x-auto">
@@ -699,7 +862,7 @@ const SuperAdminDashboard: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {suppliers.map((supplier) => (
+                                        {suppliers.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((supplier) => (
                                             <tr key={supplier.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-6 py-4 font-medium text-slate-900">{supplier.name}</td>
                                                 <td className="px-6 py-4 text-slate-500">{supplier.contactName || "-"}</td>
@@ -710,28 +873,25 @@ const SuperAdminDashboard: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    
+
                                                     <StatusBadge isActive={supplier.isActive || false} />
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
+                                                    <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
                                                         <Button
-                                                            variant="ghost"
                                                             size="sm"
-                                                            className={supplier.isActive ? "text-amber-600 hover:text-amber-700 hover:bg-amber-50" : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"}
-                                                            onClick={() => toggleSupplierStatus(supplier.id, supplier.isActive || false)}
+                                                            className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200"
+                                                            onClick={() => initiateToggleSupplier(supplier)}
                                                         >
                                                             {supplier.isActive ? "Suspend" : "Activate"}
                                                         </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="text-slate-400 hover:text-red-600 hover:bg-red-50"
-                                                            onClick={() => deleteSupplier(supplier.id, supplier.name)}
+                                                        <p
+                                                            className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110"
+                                                            onClick={() => initiateDeleteSupplier(supplier.id, supplier.name)}
                                                             title="Delete Supplier"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
-                                                        </Button>
+                                                        </p>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -764,21 +924,26 @@ const SuperAdminDashboard: React.FC = () => {
                                     <Users className="w-5 h-5 text-indigo-500" />
                                     User Management
                                 </h2>
-                                <form onSubmit={handleSearch} className="flex gap-2">
+                                <div className="flex gap-2">
                                     <div className="relative">
                                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                         <input
                                             type="text"
-                                            placeholder="Search users..."
+                                            placeholder="Search by username or email..."
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
+                                            className="pl-9 pr-9 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64 shadow-sm"
                                         />
+                                        {searchQuery && (
+                                            <p
+                                                onClick={() => setSearchQuery("")}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </p>
+                                        )}
                                     </div>
-                                    <Button type="submit" variant="default" disabled={loading}>
-                                        {loading ? "Searching..." : "Search"}
-                                    </Button>
-                                </form>
+                                </div>
                             </div>
 
                             <div className="overflow-x-auto">
@@ -793,7 +958,10 @@ const SuperAdminDashboard: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {users.map((user) => (
+                                        {users.filter(u =>
+                                            u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                            u.email.toLowerCase().includes(searchQuery.toLowerCase())
+                                        ).map((user) => (
                                             <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-6 py-4 font-medium text-slate-900">{user.username}</td>
                                                 <td className="px-6 py-4 text-slate-500">{user.email}</td>
@@ -809,22 +977,23 @@ const SuperAdminDashboard: React.FC = () => {
                                                 </td>
                                                 <td className="px-6 py-4 text-slate-500">Joined: {new Date(user.createdAt || "").toLocaleDateString()}</td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
+                                                    <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
                                                         {user.globalRole !== 'SUPPLIER' && user.globalRole !== 'SUPERADMIN' && (
                                                             <Button
-                                                                variant="default"
                                                                 size="sm"
-                                                                className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 border border-indigo-200"
-                                                                onClick={() => convertToSupplier(user.id, user.username)}
+                                                                variant="outline"
+                                                                className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 gap-2 font-medium"
+                                                                onClick={() => initiateConvertUser(user.id, user.username)}
                                                             >
+                                                                <ArrowRightLeft className="w-3.5 h-3.5" />
                                                                 Convert to Supplier
                                                             </Button>
                                                         )}
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
-                                                            className="text-slate-400 hover:text-red-600 hover:bg-red-50"
-                                                            onClick={() => deleteUser(user.id, user.username)}
+                                                            className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110"
+                                                            onClick={() => initiateDeleteUser(user.id, user.username)}
                                                             title="Delete User"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
@@ -932,7 +1101,385 @@ const SuperAdminDashboard: React.FC = () => {
                     )}
                 </AnimatePresence>
             </main>
-        </div>
+
+            {/* Logout Confirmation Modal */}
+            <AnimatePresence>
+                {showLogoutConfirm && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setShowLogoutConfirm(false)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
+                                    <LogOut className="w-8 h-8 text-red-500 translate-x-0.5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Sign Out</h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to end your session? You'll need to sign in again.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setShowLogoutConfirm(false)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                        onClick={performLogout}
+                                    >
+                                        Yes, Sign Out
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Delete Store Confirmation Modal */}
+            <AnimatePresence>
+                {storeToDelete && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setStoreToDelete(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
+                                    <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Delete Store?</h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to permanently delete <span className="font-semibold text-slate-900">"{storeToDelete.name}"</span>?
+                                        <br />
+                                        <span className="text-xs text-red-500 mt-1 block">This action cannot be undone.</span>
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setStoreToDelete(null)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                        onClick={performDeleteStore}
+                                    >
+                                        Yes, Delete
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Suspend/Activate Store Confirmation Modal */}
+            <AnimatePresence>
+                {storeToToggle && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setStoreToToggle(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${storeToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
+                                    {storeToToggle.isActive ? (
+                                        <Lock className="w-8 h-8 text-amber-500" />
+                                    ) : (
+                                        <Activity className="w-8 h-8 text-emerald-500" />
+                                    )}
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">
+                                        {storeToToggle.isActive ? "Suspend Store?" : "Activate Store?"}
+                                    </h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to {storeToToggle.isActive ? "suspend" : "activate"} access for <span className="font-semibold text-slate-900">"{storeToToggle.name}"</span>?
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setStoreToToggle(null)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${storeToToggle.isActive
+                                            ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
+                                            : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
+                                            }`}
+                                        onClick={performToggleStore}
+                                    >
+                                        Confirm
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Delete Supplier Confirmation Modal */}
+            <AnimatePresence>
+                {supplierToDelete && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setSupplierToDelete(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
+                                    <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Delete Supplier?</h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to permanently delete <span className="font-semibold text-slate-900">"{supplierToDelete.name}"</span>?
+                                        <br />
+                                        <span className="text-xs text-red-500 mt-1 block">This action cannot be undone.</span>
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setSupplierToDelete(null)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                        onClick={performDeleteSupplier}
+                                    >
+                                        Yes, Delete
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Suspend/Activate Supplier Confirmation Modal */}
+            <AnimatePresence>
+                {supplierToToggle && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setSupplierToToggle(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${supplierToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
+                                    {supplierToToggle.isActive ? (
+                                        <Lock className="w-8 h-8 text-amber-500" />
+                                    ) : (
+                                        <Activity className="w-8 h-8 text-emerald-500" />
+                                    )}
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">
+                                        {supplierToToggle.isActive ? "Suspend Supplier?" : "Activate Supplier?"}
+                                    </h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to {supplierToToggle.isActive ? "suspend" : "activate"} access for <span className="font-semibold text-slate-900">"{supplierToToggle.name}"</span>?
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setSupplierToToggle(null)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${supplierToToggle.isActive
+                                            ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
+                                            : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
+                                            }`}
+                                        onClick={performToggleSupplier}
+                                    >
+                                        Confirm
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Delete User Confirmation Modal */}
+            <AnimatePresence>
+                {userToDelete && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setUserToDelete(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
+                                    <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Delete User?</h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to permanently delete <span className="font-semibold text-slate-900">"{userToDelete.name}"</span>?
+                                        <br />
+                                        <span className="text-xs text-red-500 mt-1 block">This action cannot be undone.</span>
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setUserToDelete(null)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                        onClick={performDeleteUser}
+                                    >
+                                        Yes, Delete
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Convert User to Supplier Confirmation Modal */}
+            <AnimatePresence>
+                {userToConvert && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setUserToConvert(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-2">
+                                    <ArrowRightLeft className="w-8 h-8 text-indigo-500" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Convert to Supplier?</h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to upgrade <span className="font-semibold text-slate-900">"{userToConvert.name}"</span> to a Supplier account?
+                                        <br />
+                                        <span className="text-xs text-indigo-500 mt-1 block">They will gain access to supplier features.</span>
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setUserToConvert(null)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className="h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-lg shadow-indigo-500/20 font-semibold"
+                                        onClick={performConvertUser}
+                                    >
+                                        Confirm
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Dock Navigation */}
+            <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
+                <div className="pointer-events-auto">
+                    <Dock className="bg-white/80 backdrop-blur-xl border border-slate-200/50 shadow-2xl rounded-2xl dark:bg-white/80 dark:border-slate-200/50">
+                        {NAV_ITEMS.map((item) => (
+                            <DockItem key={item.tab} onClick={() => setActiveTab(item.tab as any)}>
+                                <DockLabel>{item.label}</DockLabel>
+                                <DockIcon>
+                                    <item.icon className={`w-6 h-6 ${activeTab === item.tab ? 'text-indigo-600' : 'text-slate-500'}`} />
+                                </DockIcon>
+                            </DockItem>
+                        ))}
+                    </Dock>
+                </div>
+            </div>
+        </div >
     );
 };
 

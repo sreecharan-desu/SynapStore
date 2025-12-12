@@ -1,10 +1,11 @@
-import { LogOut, Loader2, Building2, Truck, Rocket, ArrowRight } from "lucide-react";
-import { useState } from "react";
+import { LogOut, Loader2, Building2, Truck, Rocket, ArrowRight, Check } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
 import { jsonFetch } from "../utils/api";
 import { motion, AnimatePresence } from "framer-motion";
+import { DottedSurface } from "../components/ui/dotted-surface";
 
 type StoreResponse = {
   success: boolean;
@@ -29,13 +30,37 @@ const StoreCreate = () => {
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
-  const [timezone, setTimezone] = useState(defaultTimezone);
-  const [currency, setCurrency] = useState(defaultCurrency);
+  const [timezone] = useState(defaultTimezone);
+  const [currency] = useState(defaultCurrency);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [step, setStep] = useState<"details" | "theme">("details");
+  const [theme, setTheme] = useState("green");
+  const [avatar, setAvatar] = useState("fruit-strawberry");
   const [selectedRole, setSelectedRole] =
     useState<"STORE_OWNER" | "SUPPLIER" | null>(null);
+
+  const avatars = [
+    { id: "fruit-strawberry", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f353.svg", name: "Strawberry" },
+    { id: "fruit-pineapple", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f34d.svg", name: "Pineapple" },
+    { id: "fruit-watermelon", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f349.svg", name: "Watermelon" },
+    { id: "fruit-grapes", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f347.svg", name: "Grapes" },
+  ];
+
+  const colors = [
+    { id: "green", hex: "#059669", ring: "ring-emerald-500", name: "Green" }, // emerald-600
+    { id: "red", hex: "#dc2626", ring: "ring-red-500", name: "Red" }, // red-600
+    { id: "orange", hex: "#f97316", ring: "ring-orange-500", name: "Orange" }, // orange-500
+    { id: "blue", hex: "#2563eb", ring: "ring-blue-500", name: "Blue" }, // blue-600
+    { id: "black", hex: "#0f172a", ring: "ring-slate-900", name: "Black" }, // slate-900
+  ];
+
+  useEffect(() => {
+    if (!auth.needsStoreSetup && auth.effectiveStore) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [auth.needsStoreSetup, auth.effectiveStore, navigate]);
 
   const slugify = (value: string) =>
     value
@@ -64,8 +89,21 @@ const StoreCreate = () => {
     navigate("/login");
   };
 
-  const createStore = async (e: React.FormEvent) => {
+  const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) {
+      setError("Store name is required.");
+      return;
+    }
+    if (!slug.trim()) {
+      setError("Store slug is required.");
+      return;
+    }
+    setError(null);
+    setStep("theme");
+  };
+
+  const createStore = async () => {
     setError(null);
     setSuccess(null);
 
@@ -95,6 +133,7 @@ const StoreCreate = () => {
           slug: slugify(slug),
           timezone,
           currency,
+          settings: { theme, avatar }, // Passing theme and avatar in settings
         }),
         token: auth.token,
       });
@@ -105,8 +144,11 @@ const StoreCreate = () => {
         needsStoreSetup: false,
       });
 
+      localStorage.setItem("selectedTheme", theme);
+      localStorage.setItem("selectedAvatar", avatar);
+
       setSuccess("Store created successfully. Redirecting to dashboard...");
-      setTimeout(() => navigate("/dashboard"), 500);
+      setTimeout(() => navigate("/dashboard", { replace: true }), 500);
     } catch (err: any) {
       setError(err?.message || "Could not create store. Please try again.");
     } finally {
@@ -115,7 +157,9 @@ const StoreCreate = () => {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-emerald-100 p-6">
+    <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-emerald-100 p-4 md:p-6">
+      <DottedSurface className="hidden md:block" />
+
       {/* Background Blobs */}
       <motion.div
         animate={{
@@ -140,7 +184,7 @@ const StoreCreate = () => {
 
       <button
         onClick={handleLogout}
-        className="absolute top-6 right-6 flex items-center gap-2 text-slate-500 hover:text-emerald-600 transition-colors z-50 bg-white/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-white/80 shadow-sm"
+        className="hidden md:flex absolute top-6 right-6 items-center gap-2 text-slate-500 hover:text-emerald-600 transition-colors z-50 bg-white/50 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-white/80 shadow-sm"
       >
         <span className="text-sm font-medium">Logout</span>
         <LogOut className="w-4 h-4" />
@@ -153,7 +197,15 @@ const StoreCreate = () => {
         className="w-full max-w-4xl bg-white/80 backdrop-blur-xl border border-white/60 rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-2 relative z-10"
       >
         {/* Left Panel: Info */}
-        <div className="p-8 md:p-10 bg-gradient-to-br from-emerald-50/50 to-teal-50/20 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col justify-center">
+        <div className="relative p-8 md:p-10 bg-gradient-to-br from-emerald-50/50 to-teal-50/20 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col justify-center">
+          {/* Mobile Logout Button */}
+          <button
+            onClick={handleLogout}
+            className="md:hidden absolute top-4 right-4 flex items-center gap-2 text-slate-500 hover:text-emerald-600 transition-colors bg-white/50 hover:bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm text-xs border border-slate-100/50"
+          >
+            <span>Logout</span>
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
           <div className="mb-6">
             <div className="w-12 h-12 bg-white rounded-2xl shadow-lg shadow-emerald-100 flex items-center justify-center mb-6">
               <Rocket className="w-6 h-6 text-emerald-600" />
@@ -286,122 +338,217 @@ const StoreCreate = () => {
                 </button>
               </motion.div>
             ) : (
-              <motion.div
-                key="store-form"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-              >
-                <form onSubmit={createStore} className="space-y-5">
+              // Store Owner Flow: Step 1 vs Step 2
+              step === "details" ? (
+                <motion.div
+                  key="store-form"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                >
+                  <form onSubmit={handleNext} className="space-y-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-xl font-bold text-slate-800">
+                        Store Details
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRole(null)}
+                        className="text-xs text-slate-400 hover:text-emerald-600 transition-colors"
+                      >
+                        Change Role
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="group">
+                        <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-1.5 ml-1">
+                          Store Name
+                        </label>
+                        <input
+                          type="text"
+                          value={name}
+                          onChange={(e) => handleNameChange(e.target.value)}
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium"
+                          placeholder="e.g. Sunrise Pharmacy"
+                          disabled={loading}
+                        />
+                      </div>
+
+                      <div className="group">
+                        <div className="flex justify-start gap-2 mb-1.5 ml-1">
+                          <label className="text-slate-700 text-xs font-bold uppercase tracking-wider">
+                            Store Slug
+                          </label>
+                          <span className="text-[10px] text-slate-400 py-0.5 bg-slate-100 px-1.5 rounded border border-slate-200">URL Safe</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={slug}
+                          onChange={(e) => setSlug(e.target.value)}
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-mono text-sm"
+                          placeholder="e.g. sunrise-pharmacy"
+                          disabled={loading}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="group">
+                          <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-1.5 ml-1">
+                            Timezone
+                          </label>
+                          <input
+                            type="text"
+                            value="Asia/Kolkata"
+                            readOnly
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 font-medium focus:outline-none cursor-not-allowed"
+                          />
+                        </div>
+
+                        <div className="group">
+                          <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-1.5 ml-1">
+                            Currency
+                          </label>
+                          <input
+                            type="text"
+                            value="INR (₹)"
+                            readOnly
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 font-medium focus:outline-none cursor-not-allowed"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={handleNext}
+                        className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold text-sm shadow-lg shadow-slate-900/20 hover:shadow-slate-900/40 transition-all active:scale-[0.99] flex items-center justify-center gap-2 group"
+                      >
+                        Next Step
+                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="theme-selection"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="space-y-6"
+                >
                   <div className="flex items-center justify-between mb-2">
                     <h2 className="text-xl font-bold text-slate-800">
-                      Store Details
+                      Customize Look
                     </h2>
                     <button
                       type="button"
-                      onClick={() => setSelectedRole(null)}
+                      onClick={() => setStep("details")}
                       className="text-xs text-slate-400 hover:text-emerald-600 transition-colors"
                     >
-                      Change Role
+                      Back to Details
                     </button>
                   </div>
 
                   <div className="space-y-4">
-                    <div className="group">
-                      <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-1.5 ml-1">
-                        Store Name
+                    <div>
+                      <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-3 ml-1">
+                        Choose Brand Color
                       </label>
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => handleNameChange(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium"
-                        placeholder="e.g. Sunrise Pharmacy"
-                        disabled={loading}
-                      />
-                    </div>
-
-                    <div className="group">
-                      <div className="flex justify-start gap-2 mb-1.5 ml-1">
-                        <label className="text-slate-700 text-xs font-bold uppercase tracking-wider">
-                          Store Slug
-                        </label>
-                        <span className="text-[10px] text-slate-400 py-0.5 bg-slate-100 px-1.5 rounded border border-slate-200">URL Safe</span>
-                      </div>
-                      <input
-                        type="text"
-                        value={slug}
-                        onChange={(e) => setSlug(e.target.value)}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-mono text-sm"
-                        placeholder="e.g. sunrise-pharmacy"
-                        disabled={loading}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="group">
-                        <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-1.5 ml-1">
-                          Timezone
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={timezone}
-                            onChange={(e) => setTimezone(e.target.value)}
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none cursor-pointer text-sm font-medium"
-                            disabled={loading}
+                      <div className="flex flex-wrap gap-3">
+                        {colors.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => setTheme(c.id)}
+                            style={{ backgroundColor: c.hex }}
+                            className={`w-12 h-12 rounded-full transition-all flex items-center justify-center ${theme === c.id
+                              ? `ring-4 ${c.ring}/30 scale-110 shadow-lg`
+                              : 'hover:scale-110 shadow-sm hover:shadow-md'
+                              }`}
+                            title={c.name}
                           >
-                            <option value="Asia/Kolkata">Asia/Kolkata</option>
-                          </select>
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            {theme === c.id && <Check className="w-6 h-6 text-white drop-shadow-md" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-3 ml-1">
+                        Choose Your Avatar
+                      </label>
+                      <div className="flex gap-4">
+                        {avatars.map((av) => (
+                          <p
+                            key={av.id}
+                            onClick={() => setAvatar(av.id)}
+                            className={`cursor-pointer relative w-16 h-16 rounded-full overflow-hidden border-2 transition-all bg-transparent ${avatar === av.id ? 'border-emerald-500 ring-4 ring-emerald-500/20 scale-110' : 'border-slate-100 hover:border-emerald-200'
+                              }`}
+                          >
+                            <img src={av.src} alt="Avatar" className="w-full h-full object-cover" />
+                            {avatar === av.id && (
+                              <div className="absolute inset-0 bg-emerald-500/10 flex items-center justify-center">
+                                <Check className="w-6 h-6 text-emerald-600 drop-shadow-sm" />
+                              </div>
+                            )}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-3 ml-1">
+                        Store Avatar Preview
+                      </label>
+                      <div className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                        {/* Dynamic Preview */}
+                        <div className="relative">
+                          <img
+                            src={avatars.find(a => a.id === avatar)?.src}
+                            alt="Selected Avatar"
+                            className="w-16 h-16 rounded-full border-2 border-white shadow-lg bg-transparent"
+                          />
+                          <div
+                            className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-[10px] text-white font-bold"
+                            style={{ backgroundColor: colors.find(c => c.id === theme)?.hex || '#059669' }}
+                          >
+                            {name.charAt(0).toUpperCase()}
                           </div>
                         </div>
-                      </div>
-
-                      <div className="group">
-                        <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-1.5 ml-1">
-                          Currency
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={currency}
-                            onChange={(e) => setCurrency(e.target.value)}
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none cursor-pointer text-sm font-medium"
-                            disabled={loading}
-                          >
-                            <option value="INR">INR (₹)</option>
-                          </select>
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                          </div>
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-slate-700">Display Icon</p>
+                          <p className="text-xs text-slate-400">Generated from store name</p>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="pt-2">
+                  <div className="pt-4">
                     <button
-                      type="submit"
+                      onClick={createStore}
                       disabled={loading}
-                      className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-3.5 rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 group"
+                      className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl shadow-slate-900/20 transition-all active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 group hover:bg-slate-800"
                     >
                       {loading ? (
                         <Loader2 className="animate-spin w-5 h-5" />
                       ) : (
                         <>
                           Create Store
-                          <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                          <Rocket className="w-5 h-5 group-hover:-translate-y-1 transition-transform" />
                         </>
                       )}
                     </button>
                   </div>
-                </form>
-              </motion.div>
+                </motion.div>
+              )
             )}
           </AnimatePresence>
         </div>
-      </motion.div>
-    </div>
+      </motion.div >
+    </div >
   );
 };
 
