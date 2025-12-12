@@ -162,31 +162,10 @@ export default function CTAAndFooter() {
       </section>
 
       {/* FOOTER */}
-      <footer className="bg-white border-t border-slate-200">
+      <footer className="bg-white">
         <div className="max-w-7xl mx-auto px-6 py-16">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 mb-8 items-start">
-            {/* Brand Column */}
-            <div className="animate-fadeInUp stagger-1">
-              <div className="flex items-center gap-5 mb-4">
-                <div className="logo-container">
-                  <img src="/logo.svg" alt="SynapStore logo" className="w-32 h-32 object-contain" />
-                </div>
-                <span className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 bg-clip-text text-transparent">
-                  SynapStore
-                </span>
-              </div>
-            </div>
-
-            {/* Description Column */}
-            <div className="md:col-span-2 animate-fadeInUp stagger-2 flex items-center">
-              <p className="text-slate-700 leading-relaxed text-base md:text-lg max-w-3xl font-medium">
-                Smart pharmacy inventory management trusted by pharmacies nationwide.
-              </p>
-            </div>
-          </div>
-
           {/* Bottom Bar */}
-          <div className="border-t border-slate-200 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="border-t border-slate-200 pt-8 flex flex-col md:flex-row justify-between items-center gap-2">
             <p className="text-sm text-slate-600 font-medium">
               &copy; {year} SynapStore. All rights reserved.
             </p>

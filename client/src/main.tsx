@@ -4,6 +4,7 @@ import { RecoilRoot } from "recoil";
 import "./index.css";
 import App from "./App.tsx";
 import Login from "./pages/login.tsx";
+import { Toaster } from "react-hot-toast";
 // Dashboard removed
 import StoreCreate from "./pages/StoreCreate";
 import RequireAuth from "./components/guards/RequireAuth";
@@ -19,6 +20,7 @@ import StoreOwnerDashboard from "./pages/StoreOwnerDashboard";
 createRoot(document.getElementById("root")!).render(
   <RecoilRoot>
     <AuthProvider>
+      <Toaster position="top-center" reverseOrder={false} />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<App />} />

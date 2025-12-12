@@ -1,12 +1,13 @@
 // src/pages/login.tsx
 import React, { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useSetRecoilState } from "recoil";
 import { authState, type AuthUser, type EffectiveStore } from "../state/auth";
 import { jsonFetch } from "../utils/api";
 // Icons
 import { FcGoogle } from "react-icons/fc";
-import { Mail, Lock, ArrowRight, Loader2, CheckCircle2, RefreshCw, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, ArrowRight, Loader2, RefreshCw, Eye, EyeOff, ChevronLeft } from "lucide-react";
 // Animation
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -53,16 +54,118 @@ const getGoogleClientId = (): string => {
 
 type SigninResponse = {
   data: {
-      token: string;
-  user: AuthUser;
-  effectiveStore: EffectiveStore | null;
-  needsStoreSetup?: boolean;
-  needsStoreSelection?: boolean;
-  suppliers?: any[];
-  supplierId?: { id: string } | null;
-  stores?: any[];
+    token: string;
+    user: AuthUser;
+    effectiveStore: EffectiveStore | null;
+    needsStoreSetup?: boolean;
+    needsStoreSelection?: boolean;
+    suppliers?: any[];
+    supplierId?: { id: string } | null;
+    stores?: any[];
   }
 
+};
+
+// Sub-component for Google Button to handle mounting/unmounting correctly
+const GoogleSignInButton: React.FC<{
+  googleClientId: string;
+  onCredential: (credential: string) => void;
+  onError: (msg: string) => void;
+}> = ({ googleClientId, onCredential, onError }) => {
+  const btnRef = useRef<HTMLDivElement>(null);
+  const [rendered, setRendered] = useState(false);
+
+  useEffect(() => {
+    if (!googleClientId) return;
+
+    let script: HTMLScriptElement | null = null;
+
+    const initializeGsi = () => {
+      if (!window.google?.accounts?.id && !script) {
+        // Script not present, unlikely if handled globally but safety first
+        return;
+      }
+
+      try {
+        if (window.google?.accounts?.id) {
+          window.google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: (resp: any) => {
+              if (resp.credential) {
+                onCredential(resp.credential);
+              } else {
+                onError("No credential returned");
+              }
+            },
+          });
+
+          if (btnRef.current) {
+            window.google.accounts.id.renderButton(btnRef.current, {
+              theme: "outline",
+              size: "large",
+              type: "standard",
+              shape: "pill",
+              text: "continue_with",
+              width: "100%"
+            });
+            setRendered(true);
+          }
+        }
+      } catch (e) {
+        console.error("GSI Init Error", e);
+        onError("Failed to initialize Google Sign-In");
+      }
+    };
+
+    // Check availability or load script
+    if (!window.google?.accounts?.id) {
+      const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+      if (!existingScript) {
+        script = document.createElement("script");
+        script.src = "https://accounts.google.com/gsi/client";
+        script.async = true;
+        script.defer = true;
+        script.onload = initializeGsi;
+        script.onerror = () => onError("Could not load Google script");
+        document.head.appendChild(script);
+      } else {
+        // Script exists but maybe not loaded? poll slightly
+        const timer = setInterval(() => {
+          if (window.google?.accounts?.id) {
+            clearInterval(timer);
+            initializeGsi();
+          }
+        }, 100);
+        return () => clearInterval(timer);
+      }
+    } else {
+      initializeGsi();
+    }
+  }, [googleClientId, onCredential, onError]);
+
+  const manualSignIn = () => {
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.prompt();
+    } else {
+      onError("Google Identity not available");
+    }
+  };
+
+  return (
+    <div className="min-h-[50px] flex justify-center w-full">
+      <div ref={btnRef} className="w-full flex justify-center" />
+      {!rendered && (
+        <button
+          onClick={manualSignIn}
+          type="button"
+          className="w-full flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 py-3 rounded-full font-medium hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm hover:shadow-md active:scale-[0.98]"
+        >
+          <FcGoogle className="w-5 h-5" />
+          <span className="text-sm cursor-pointer">Continue with Google</span>
+        </button>
+      )}
+    </div>
+  );
 };
 
 const Login: React.FC = () => {
@@ -83,14 +186,9 @@ const Login: React.FC = () => {
   );
   const [timer, setTimer] = useState(0);
 
-  // loading / messages
+  // loading
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
-  // Google button container ref + render flag
-  const googleBtnRef = useRef<HTMLDivElement | null>(null);
-  const [googleRendered, setGoogleRendered] = useState(false);
   const googleClientId = getGoogleClientId();
 
   useEffect(() => {
@@ -150,8 +248,7 @@ const Login: React.FC = () => {
 
   const register = async () => {
     setLoading(true);
-    setError(null);
-    setSuccess(null);
+
     try {
       const body = await jsonFetch("/api/v1/auth/register", {
         method: "POST",
@@ -164,10 +261,10 @@ const Login: React.FC = () => {
       setShowOtp(true);
       setIsSignup(true);
       setTimer(RESEND_COOLDOWN);
-      setSuccess("OTP sent to your email");
+      toast.success("OTP sent to your email");
       return body;
     } catch (err: any) {
-      setError(err.message || "Registration failed");
+      toast.error(err.message || "Registration failed");
       throw err;
     } finally {
       setLoading(false);
@@ -176,21 +273,20 @@ const Login: React.FC = () => {
 
   const signin = async () => {
     setLoading(true);
-    setError(null);
-    setSuccess(null);
     try {
       const body = await jsonFetch<SigninResponse>("/api/v1/auth/signin", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
       if (body.data.token) {
+        toast.success((body as any).message || "Login successful");
         handleAuthSuccess(body);
       } else {
         throw new Error("no token returned");
       }
       return body;
     } catch (err: any) {
-      setError(err.message || "Sign in failed");
+      toast.error(err.message || "Sign in failed");
       throw err;
     } finally {
       setLoading(false);
@@ -199,21 +295,20 @@ const Login: React.FC = () => {
 
   const handleGoogleCredential = async (credential: string) => {
     setLoading(true);
-    setError(null);
-    setSuccess(null);
     try {
       const body = await jsonFetch<SigninResponse>("/api/v1/oauth/google", {
         method: "POST",
         body: JSON.stringify({ idToken: credential }),
       });
       if (body.data.token) {
+        toast.success((body as any).message || "Login successful");
         handleAuthSuccess(body);
       } else {
         throw new Error("No token returned from Google auth endpoint");
       }
       return body;
     } catch (err: any) {
-      setError(err.message || "Google sign-in failed");
+      toast.error(err.message || "Google sign-in failed");
       throw err;
     } finally {
       setLoading(false);
@@ -222,21 +317,19 @@ const Login: React.FC = () => {
 
   const resendOtp = async () => {
     if (!email) {
-      setError("Please provide an email to resend OTP");
+      toast.error("Please provide an email to resend OTP");
       return;
     }
     setLoading(true);
-    setError(null);
-    setSuccess(null);
     try {
       await jsonFetch("/api/v1/auth/resend-otp", {
         method: "POST",
         body: JSON.stringify({ email }),
       });
       setTimer(RESEND_COOLDOWN);
-      setSuccess("OTP resent");
+      toast.success("OTP resent");
     } catch (err: any) {
-      setError(err.message || "Could not resend OTP");
+      toast.error(err.message || "Could not resend OTP");
     } finally {
       setLoading(false);
     }
@@ -245,12 +338,10 @@ const Login: React.FC = () => {
   const verifyOtp = async () => {
     const code = otp.join("");
     if (code.length < OTP_LENGTH) {
-      setError(`Please enter the ${OTP_LENGTH}-digit OTP`);
+      toast.error(`Please enter the ${OTP_LENGTH}-digit OTP`);
       return;
     }
     setLoading(true);
-    setError(null);
-    setSuccess(null);
     try {
       await jsonFetch("/api/v1/auth/verify-otp", {
         method: "POST",
@@ -261,9 +352,9 @@ const Login: React.FC = () => {
       setOtp(Array.from({ length: OTP_LENGTH }).map(() => ""));
       setEmail("");
       setPassword("");
-      setSuccess("OTP verified - you can now sign in");
+      toast.success("OTP verified - you can now sign in");
     } catch (err: any) {
-      setError(err.message || "OTP verification failed");
+      toast.error(err.message || "OTP verification failed");
     } finally {
       setLoading(false);
     }
@@ -271,10 +362,8 @@ const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
     if (!email || !password) {
-      setError("Email and password are required");
+      toast.error("Email and password are required");
       return;
     }
 
@@ -285,7 +374,7 @@ const Login: React.FC = () => {
         await signin();
       }
     } catch {
-      // errors already set
+      // errors displayed via toast in register/signin
     }
   };
 
@@ -319,93 +408,19 @@ const Login: React.FC = () => {
     last?.focus();
   };
 
-  useEffect(() => {
-    try {
-      (window as any).GOOGLE_CLIENT_ID = googleClientId;
-    } catch {
-      /* ignore */
-    }
-
-    let script: HTMLScriptElement | null = null;
-    let initialized = false;
-
-    const loadAndInit = () => {
-      if (!googleClientId) return;
-      if (!window.google || !window.google.accounts || !window.google.accounts.id) {
-        if (!script) return;
-      }
-
-      try {
-        if (initialized || !window.google?.accounts?.id) return;
-        initialized = true;
-
-        window.google.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: (resp: any) => {
-            if (resp && resp.credential) {
-              handleGoogleCredential(resp.credential).catch(() => { });
-            } else {
-              setError("Google sign-in failed: no credential returned");
-            }
-          },
-        });
-
-        if (googleBtnRef.current) {
-          try {
-            window.google.accounts.id.renderButton(googleBtnRef.current, {
-              theme: "outline",
-              size: "large",
-              type: "standard",
-            });
-            setGoogleRendered(true);
-          } catch (err) {
-            console.warn("Google button render failed", err);
-            setGoogleRendered(false);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to initialize Google Identity", err);
-        setGoogleRendered(false);
-      }
-    };
-
-    if (!document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
-      script = document.createElement("script");
-      script.src = "https://accounts.google.com/gsi/client";
-      script.async = true;
-      script.defer = true;
-      script.onload = () => loadAndInit();
-      script.onerror = () => {
-        setError("Could not load Google Identity script");
-        setGoogleRendered(false);
-      };
-      document.head.appendChild(script);
-    } else {
-      loadAndInit();
-    }
-
-    const retryTimer = setTimeout(loadAndInit, 600);
-    return () => clearTimeout(retryTimer);
-  }, [googleClientId]);
-
-  const manualGoogleSignIn = () => {
-    if (!googleClientId) {
-      setError("Google Client ID not configured.");
-      return;
-    }
-    if (!window.google?.accounts?.id) {
-      setError("Google Identity not available in this browser.");
-      return;
-    }
-    try {
-      window.google.accounts.id.prompt();
-    } catch {
-      setError("Could not start Google sign-in flow");
-    }
-  };
-
   return (
-    <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-emerald-100">
+    <div className="min-h-screen relative flex items-center justify-center overflow-hidden  from-emerald-50 via-white to-emerald-100">
+      {/* Desktop Back Navigation */}
+      <p
+
+        className="hidden md:block absolute top-8 left-8 z-50 p-2 cursor-pointer 
+             bg-transparent border-none outline-none 
+             text-gray-400 hover:text-gray-600 transition-colors"
+        aria-label="Back to landing page"
+      >
+        <ChevronLeft className="w-8 h-8" onClick={() => navigate("/")} />
+      </p>
+
       {/* Dynamic Background Elements */}
       <motion.div
         animate={{
@@ -434,7 +449,7 @@ const Login: React.FC = () => {
         transition={{ duration: 0.6, ease: "easeOut" }}
         className="relative z-10 w-full max-w-lg p-6"
       >
-        <div className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-3xl shadow-2xl overflow-hidden p-8 md:p-10">
+        <div className="relative bg-white/80 backdrop-blur-xl border border-white/50 rounded-3xl shadow-2xl overflow-hidden p-8 md:p-10">
 
           {/* Header */}
           <div className="text-center mb-8">
@@ -525,21 +540,7 @@ const Login: React.FC = () => {
                 transition={{ duration: 0.3 }}
               >
                 <form onSubmit={handleSubmit} className="space-y-5">
-                  {(error || success) && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      className={`text-sm p-3 rounded-lg flex items-center gap-2 ${error ? "bg-red-50 text-red-600 border border-red-100" : "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                        }`}
-                    >
-                      {error ? (
-                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4 shrink-0" />
-                      )}
-                      {error || success}
-                    </motion.div>
-                  )}
+
 
                   <div className="space-y-4">
                     <div className="relative group">
@@ -598,18 +599,11 @@ const Login: React.FC = () => {
                   <div className="h-px bg-gray-200 flex-1" />
                 </div>
 
-                <div className="min-h-[50px] flex justify-center">
-                  <div ref={googleBtnRef} />
-                  {!googleRendered && (
-                    <button
-                      onClick={() => manualGoogleSignIn()}
-                      className="w-full flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-50 transition-colors shadow-sm"
-                    >
-                      <FcGoogle className="w-5 h-5" />
-                      <span className="text-sm">Google</span>
-                    </button>
-                  )}
-                </div>
+                <GoogleSignInButton
+                  googleClientId={googleClientId}
+                  onCredential={(cred) => handleGoogleCredential(cred).catch(() => { })}
+                  onError={(msg) => toast.error(msg)}
+                />
 
                 <div className="mt-8 text-center">
                   <p className="text-sm text-gray-500">
@@ -617,8 +611,6 @@ const Login: React.FC = () => {
                     <b
                       onClick={() => {
                         setIsSignup(!isSignup);
-                        setError(null);
-                        setSuccess(null);
                       }}
                       className="font-semibold cursor-pointer text-emerald-600 hover:text-emerald-700 hover:underline transition-all ml-1"
                     >
