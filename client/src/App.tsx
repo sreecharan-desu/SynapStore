@@ -9,16 +9,26 @@ const App = () => {
   const { user, isAuthenticated } = useAuthContext();
   const [notifications, setNotifications] = useState<any[]>([]);
 
+  // Persistent permission request on Landing Page (ask until decided)
+  useEffect(() => {
+    if (!isAuthenticated && "Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(err => console.error("Permission request failed", err));
+    }
+  }, [isAuthenticated]);
+
   useEffect(() => {
     // Determine Service URL (Env Var > Default)
     // Defaulting to Production URL as Localhost is typically not running the microservice
     const SERVICE_URL = import.meta.env.VITE_NOTIFICATION_SERVICE_URL || "https://notification-service-synapstore.vercel.app";
     
     // Identifier: User ID if logged in, else Hostname
-    // We append a pseudo-domain to the user ID to satisfy the Notification Service's URL validation
-    // while ensuring the hostname matches for routing.
+    // Using /u/:userId as a stable, domain-based notification channel to match backend
+    // Normalize URL to remove trailing slash
+    const rawUrl = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
+    const FRONTEND_URL = rawUrl.replace(/\/$/, "");
+    
     const targetId = (isAuthenticated && user?.id) 
-        ? `${user.id}.u.synapstore.com` 
+        ? `${FRONTEND_URL}/u/${user.id}` 
         : window.location.hostname;
     
     // Default true if not explicitly set to false

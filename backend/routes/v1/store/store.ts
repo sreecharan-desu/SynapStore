@@ -86,9 +86,13 @@ Storerouter.post(
       });
 
       // Fire notification
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const frontendUrl = rawFrontendUrl.replace(/\/$/, "");
+
+      // Using /u/:userId as a stable, domain-based notification channel
+      const targetUrl = `${frontendUrl}/u/${req.user.id}`;
       notificationQueue.add("send-notification", {
-        websiteUrl: frontendUrl,
+        websiteUrl: targetUrl,
         title: "Store Created",
         message: `Your store "${store.name}" is ready!`,
         buttons: [{ label: "Go to Store", link: `${frontendUrl}/stores/${store.slug}` }]
