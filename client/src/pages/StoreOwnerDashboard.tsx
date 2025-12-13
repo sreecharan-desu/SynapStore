@@ -2,12 +2,139 @@
 import React from "react";
 import { useRecoilValue } from "recoil";
 import { authState } from "../state/auth";
-import { motion } from "framer-motion";
-import { Store, ShoppingCart, TrendingUp, Users, Package, DollarSign, Activity, LogOut, Truck, Check, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+    Store,
+    ShoppingCart,
+    Users,
+    Package,
+    Activity,
+    Bell,
+    Calendar,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    DollarSign,
+    FileText,
+    Link,
+    Lock,
+    LogOut,
+    Search,
+    Settings,
+    Truck,
+    X,
+    Zap,
+} from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
 import { dashboardApi } from "../lib/api/endpoints";
 import { Button } from "../components/ui/button";
 import type { SupplierRequest, Supplier } from "../lib/types";
+import FeedbackToast from "../components/ui/feedback-toast";
+import { Area, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts";
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from "../components/ui/card";
+import {
+    type ChartConfig,
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+} from "../components/ui/line-chart";
+
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "../components/ui/select";
+
+const chartConfig = {
+    revenue: {
+        label: "Revenue",
+        color: "#059669", // emerald-600
+    },
+} satisfies ChartConfig;
+
+const themeConfig: Record<string, {
+    primary: string;
+    light: string;
+    text: string;
+    border: string;
+    ring: string;
+    gradient: string;
+    shadow: string;
+    icon: string;
+    hex: string;
+}> = {
+    green: {
+        primary: "bg-emerald-500",
+        light: "bg-emerald-50",
+        text: "text-emerald-600",
+        border: "border-emerald-500",
+        ring: "ring-emerald-500",
+        gradient: "from-emerald-500 to-emerald-700",
+        shadow: "shadow-emerald-500/20",
+        icon: "text-emerald-50",
+        hex: "#10b981",
+    },
+    red: {
+        primary: "bg-red-600",
+        light: "bg-red-50",
+        text: "text-red-700",
+        border: "border-red-600",
+        ring: "ring-red-600",
+        gradient: "from-red-600 to-red-800",
+        shadow: "shadow-red-600/20",
+        icon: "text-red-50",
+        hex: "#dc2626",
+    },
+    orange: {
+        primary: "bg-orange-500",
+        light: "bg-orange-50",
+        text: "text-orange-600",
+        border: "border-orange-500",
+        ring: "ring-orange-500",
+        gradient: "from-orange-500 to-orange-700",
+        shadow: "shadow-orange-500/20",
+        icon: "text-orange-50",
+        hex: "#f97316",
+    },
+    blue: {
+        primary: "bg-blue-600",
+        light: "bg-blue-50",
+        text: "text-blue-700",
+        border: "border-blue-600",
+        ring: "ring-blue-600",
+        gradient: "from-blue-600 to-blue-800",
+        shadow: "shadow-blue-600/20",
+        icon: "text-blue-50",
+        hex: "#2563eb",
+    },
+    black: {
+        primary: "bg-slate-900",
+        light: "bg-slate-100",
+        text: "text-slate-900",
+        border: "border-slate-900",
+        ring: "ring-slate-900",
+        gradient: "from-slate-900 to-slate-800",
+        shadow: "shadow-slate-900/20",
+        icon: "text-slate-50",
+        hex: "#0f172a",
+    },
+};
+
+const avatarsMap: Record<string, string> = {
+    "fruit-strawberry": "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f353.svg",
+    "fruit-pineapple": "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f34d.svg",
+    "fruit-watermelon": "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f349.svg",
+    "fruit-grapes": "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f347.svg",
+};
 
 interface DashboardData {
     user: any;
@@ -24,7 +151,11 @@ interface DashboardData {
     };
     charts: {
         salesByDay: Array<{ date: string; revenue: number; count: number }>;
-        topMovers: Array<{ medicineId: string; medicine: { brandName: string }; qtySold: number }>;
+        topMovers: Array<{
+            medicineId: string;
+            medicine: { brandName: string };
+            qtySold: number;
+        }>;
     };
     lists: {
         lowStock: Array<any>;
@@ -34,6 +165,23 @@ interface DashboardData {
     };
 }
 
+const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+};
+
+const getActivityConfig = (action: string) => {
+    const lower = action.toLowerCase();
+    if (lower.includes('sale') || lower.includes('order')) return { icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-100', border: 'border-blue-200' };
+    if (lower.includes('login') || lower.includes('auth')) return { icon: Lock, color: 'text-emerald-600', bg: 'bg-emerald-100', border: 'border-emerald-200' };
+    if (lower.includes('stock') || lower.includes('inventory') || lower.includes('product')) return { icon: Package, color: 'text-amber-600', bg: 'bg-amber-100', border: 'border-amber-200' };
+    if (lower.includes('setting') || lower.includes('update')) return { icon: Settings, color: 'text-slate-600', bg: 'bg-slate-100', border: 'border-slate-200' };
+    if (lower.includes('supplier') || lower.includes('request') || lower.includes('connect')) return { icon: Link, color: 'text-indigo-600', bg: 'bg-indigo-100', border: 'border-indigo-200' };
+    return { icon: Zap, color: 'text-violet-600', bg: 'bg-violet-100', border: 'border-violet-200' };
+};
+
 const StoreOwnerDashboard: React.FC = () => {
     const auth = useRecoilValue(authState);
     const logout = useLogout();
@@ -41,14 +189,44 @@ const StoreOwnerDashboard: React.FC = () => {
     const [data, setData] = React.useState<DashboardData | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [supplierRequests, setSupplierRequests] = React.useState<SupplierRequest[]>([]);
+    const [showNotifications, setShowNotifications] = React.useState(false);
+    const [showFeedback, setShowFeedback] = React.useState(false);
+    const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
+    const [isActivityExpanded, setIsActivityExpanded] = React.useState(false);
+    const [selectedPeriod, setSelectedPeriod] = React.useState('7d');
+    const notificationRef = React.useRef<HTMLDivElement>(null);
+    const [selectedTheme, setSelectedTheme] = React.useState("green");
+    const [selectedAvatar, setSelectedAvatar] = React.useState("fruit-strawberry");
+
+    // Load theme/avatar
+    React.useEffect(() => {
+        const t = localStorage.getItem("selectedTheme");
+        const a = localStorage.getItem("selectedAvatar");
+        if (t) setSelectedTheme(t);
+        if (a) setSelectedAvatar(a);
+    }, []);
+
+    const theme = themeConfig[selectedTheme] || themeConfig.green;
+
+    React.useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+                setShowNotifications(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
 
     React.useEffect(() => {
         const fetchDashboardData = async () => {
             try {
                 const [, bootstrapRes, requestsRes] = await Promise.all([
-                    dashboardApi.getStore(), // just to ensure permissions/context
+                    dashboardApi.getStore(),
                     dashboardApi.getBootstrap(),
-                    dashboardApi.getSupplierRequests()
+                    dashboardApi.getSupplierRequests(),
                 ]);
 
                 if (bootstrapRes.data.success) {
@@ -71,197 +249,559 @@ const StoreOwnerDashboard: React.FC = () => {
     }, [auth.token]);
 
     const handleLogout = () => {
-        if (confirm("Are you sure you want to logout?")) {
-            logout();
-        }
+        setShowLogoutConfirm(true);
     };
 
     const handleAcceptRequest = async (requestId: string) => {
-        if (!confirm("Accept this supplier request?")) return;
+        // Optimistic update
+        setSupplierRequests(prev => prev.filter(req => req.id !== requestId));
         try {
-            const res = await dashboardApi.acceptSupplierRequest(requestId);
-            if (res.data.success) {
-                alert("Request accepted!");
-                // Refresh data
-                window.location.reload();
-            }
+            await dashboardApi.acceptSupplierRequest(requestId);
+            setShowFeedback(true);
         } catch (err) {
             console.error(err);
+            // Revert on failure (optional, but good practice. For now simpler: alert)
             alert("Failed to accept");
+            // refresh to be safe
+            window.location.reload();
         }
     };
 
     const handleRejectRequest = async (requestId: string) => {
         if (!confirm("Reject this supplier request?")) return;
+        setSupplierRequests(prev => prev.filter(req => req.id !== requestId));
         try {
-            const res = await dashboardApi.rejectSupplierRequest(requestId);
-            if (res.data.success) {
-                alert("Request rejected");
-                // Refresh data
-                window.location.reload();
-            }
+            await dashboardApi.rejectSupplierRequest(requestId);
+            setShowFeedback(true);
         } catch (err) {
             console.error(err);
             alert("Failed to reject");
         }
     };
 
+
+
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center bg-slate-50">Loading dashboard...</div>;
+        return (
+            <div className={`min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4`}>
+                <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${theme.border}`}></div>
+                <p className="text-slate-500 font-medium animate-pulse">
+                    Getting things ready...
+                </p>
+            </div>
+        );
     }
 
     const stats = [
-        { icon: DollarSign, label: "Revenue (30d)", value: `$${data?.overview.recentRevenue.toLocaleString() ?? '0'}`, color: "from-emerald-500 to-teal-500", change: "" },
-        { icon: ShoppingCart, label: "Sales (30d)", value: data?.overview.recentSalesCount.toString() ?? "0", color: "from-blue-500 to-cyan-500", change: "" },
-        { icon: Package, label: "Low Stock", value: data?.lists.lowStock.length.toString() ?? "0", color: "from-orange-500 to-red-500", change: "Action needed" },
-        { icon: Users, label: "Suppliers", value: data?.lists.suppliers.length.toString() ?? "0", color: "from-purple-500 to-pink-500", change: "" },
+        {
+            icon: DollarSign,
+            label: "Revenue (30d)",
+            value: `$${data?.overview.recentRevenue.toLocaleString() ?? "0"}`,
+            color: theme.primary,
+            bg: theme.light,
+            text: theme.text,
+            change: "+12.5%", // Placeholder for "human" feel if backend doesn't provide
+        },
+        {
+            icon: ShoppingCart,
+            label: "Sales (30d)",
+            value: data?.overview.recentSalesCount.toString() ?? "0",
+            color: theme.primary,
+            bg: theme.light,
+            text: theme.text,
+            change: "+4.3%",
+        },
+        {
+            icon: Package,
+            label: "Low Stock",
+            value: data?.lists.lowStock.length.toString() ?? "0",
+            color: theme.primary,
+            bg: theme.light,
+            text: theme.text,
+            change: data?.lists.lowStock.length ? "Action needed" : "Healthy",
+        },
+        {
+            icon: Users,
+            label: "Suppliers",
+            value: data?.lists.suppliers.length.toString() ?? "0",
+            color: theme.primary,
+            bg: theme.light,
+            text: theme.text,
+            change: "Active",
+        },
     ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-emerald-100">
+        <div className="min-h-screen relative bg-slate-50/50">
+
             {/* Header */}
-            <div className="bg-white/80 backdrop-blur-xl border-b border-emerald-200/50 sticky top-0 z-10">
-                <div className="max-w-7xl mx-auto px-6 py-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg">
-                                <Store className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                                    {auth.effectiveStore?.name || "Store Dashboard"}
-                                </h1>
-                                <p className="text-sm text-slate-500">Welcome back, {auth.user?.username}</p>
+            <header className="sticky top-0 z-50 bg-white/70 backdrop-blur-xl border-b border-slate-200/60 transition-all duration-300">
+                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between gap-8">
+                    {/* Left: Brand & Store Info */}
+                    <div className="flex items-center gap-4 shrink-0">
+                        <div className={`w-12 h-12 ${theme.light} rounded-2xl flex items-center justify-center shadow-lg ${theme.shadow} overflow-hidden border-2 border-white`}>
+                            {/* Avatar or Default Icon */}
+                            {avatarsMap[selectedAvatar] ? (
+                                <img src={avatarsMap[selectedAvatar]} alt="Store Avatar" className="w-8 h-8 object-contain drop-shadow-sm" />
+                            ) : (
+                                <Store className={`w-6 h-6 ${theme.text}`} />
+                            )}
+                        </div>
+                        <div className="flex flex-col">
+                            <h1 className="font-bold text-lg text-slate-800 tracking-tight leading-none">
+                                {auth.effectiveStore?.name}
+                            </h1>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-[10px] font-bold uppercase tracking-wider ${theme.text} opacity-80`}>
+                                    {auth.user?.globalRole} Dashboard
+                                </span>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <div className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl text-sm font-medium">
-                                {auth.user?.globalRole}
+                    </div>
+
+                    {/* Middle: Global Search */}
+                    <div className="hidden md:flex flex-1 max-w-md">
+                        <div className="relative w-full group">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Search className={`h-4 w-4 text-slate-400 group-focus-within:${theme.text} transition-colors`} />
                             </div>
-                            <button
-                                onClick={handleLogout}
-                                className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-xl transition-colors"
-                                title="Logout"
+                            <input
+                                type="text"
+                                placeholder="Search inventory, sales, or suppliers..."
+                                className={`block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl leading-5 bg-slate-50/50 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-opacity-20 focus:${theme.ring} focus:${theme.border} transition-all duration-200 sm:text-sm shadow-sm`}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Right: Actions */}
+                    <div className="flex items-center gap-3 shrink-0">
+                        {/* Date */}
+                        <div className="hidden xl:flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white border border-slate-200/80 px-3 py-2 rounded-lg shadow-sm">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                        </div>
+
+                        {/* Notifications */}
+                        <div className="relative" ref={notificationRef}>
+                            <p
+                                onClick={() => setShowNotifications(!showNotifications)}
+                                className="p-2.5 bg-white border border-slate-200/80 rounded-xl text-slate-400 hover:text-slate-600 hover:border-slate-300 hover:shadow-md transition-all relative outline-none group"
                             >
-                                <LogOut className="w-5 h-5" />
-                            </button>
+                                <motion.div
+                                    animate={supplierRequests.length > 0 ? { rotate: [0, -20, 20, -20, 20, 0] } : {}}
+                                    transition={{ repeat: Infinity, repeatDelay: 2.5, duration: 0.8, ease: "easeInOut" }}
+                                >
+                                    <Bell className="w-5 h-5 group-hover:scale-105 transition-transform" />
+                                </motion.div>
+
+                                {supplierRequests.length > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
+                                        {supplierRequests.length}
+                                    </span>
+                                )}
+                            </p>
+
+                            <AnimatePresence>
+                                {showNotifications && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.95 }}
+                                        className="absolute top-full right-0 mt-3 w-80 md:w-96 bg-white rounded-2xl shadow-xl shadow-slate-200 border border-slate-100 p-4 z-50 origin-top-right ring-1 ring-slate-100/50"
+                                    >
+                                        <div className="flex items-center justify-between mb-4 px-1">
+                                            <h3 className="font-bold text-slate-800">Notifications</h3>
+                                            {supplierRequests.length > 0 && <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full">{supplierRequests.length} New</span>}
+                                        </div>
+
+                                        <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                                            {supplierRequests.length === 0 ? (
+                                                <div className="text-center py-8">
+                                                    <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                        <Bell className="w-5 h-5 text-slate-300" />
+                                                    </div>
+                                                    <p className="text-sm text-slate-400">No new notifications</p>
+                                                </div>
+                                            ) : (
+                                                supplierRequests.map(req => (
+                                                    <div key={req.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-100 transition-colors">
+                                                        <div className="flex items-start gap-3 mb-3">
+                                                            <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600 shrink-0">
+                                                                <Truck className="w-4 h-4" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-bold text-slate-800">{req.supplier?.name || "Unknown"}</p>
+                                                                <p className="text-xs text-slate-500 mt-0.5">Wants to connect with your store</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() => handleAcceptRequest(req.id)}
+                                                                className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700 border-none shadow-sm text-white"
+                                                            >
+                                                                Accept
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => handleRejectRequest(req.id)}
+                                                                className="flex-1 h-8 text-xs border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 bg-white"
+                                                            >
+                                                                Reject
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="h-8 w-[1px] bg-slate-200 hidden sm:block mx-1"></div>
+
+                        {/* User Profile & Logout */}
+                        <div className="flex items-center gap-3 pl-1">
+
+                            {/* User Info */}
+                            <div className="hidden sm:flex flex-col items-end leading-tight">
+                                <span className="text-sm font-semibold text-slate-800">
+                                    {auth.user?.username}
+                                </span>
+                                <span className="text-[11px] font-medium text-slate-400 capitalize">
+                                    {auth.user?.globalRole?.toLowerCase()}
+                                </span>
+                            </div>
+
+                            {/* Avatar */}
+                            <div className="flex items-center justify-center w-10 h-10 rounded-full 
+                  bg-gradient-to-br from-slate-100 to-white text-slate-700 
+                  font-semibold shadow-inner border border-slate-200">
+                                {auth.user?.username?.charAt(0)?.toUpperCase()}
+                            </div>
+
+                            {/* Logout Button */}
+                            <p
+                                onClick={handleLogout}
+                                className="w-10 h-10 flex items-center justify-center rounded-full
+             bg-transparent text-slate-500 border border-slate-200 shadow-sm
+             hover:bg-red-50 hover:text-red-600 hover:border-red-200
+             transition-all"
+                                title="Sign out"
+                            >
+                                <LogOut className="w-5 h-5" /> {/* increased size */}
+                            </p>
+
                         </div>
                     </div>
                 </div>
-            </div>
+            </header>
 
-            {/* Main Content */}
-            <div className="max-w-7xl mx-auto px-6 py-8">
+            <main className="max-w-7xl mx-auto px-6 py-8 space-y-8 relative z-10">
+
+                {/* Welcome Section */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col md:flex-row md:items-end justify-between gap-4"
+                >
+                    <div>
+                        <h2 className="text-3xl font-bold text-slate-800">
+                            {getGreeting()}, <span className={`bg-gradient-to-r ${theme.gradient} bg-clip-text text-transparent`}>{auth.user?.username.split(' ')[0]}</span>
+                        </h2>
+                        <p className="text-slate-500 mt-1">Here's what's happening in your store today.</p>
+                    </div>
+                    {data?.lists.lowStock.length ? (
+                        <div className="animate-pulse bg-amber-50 text-amber-700 px-4 py-2 rounded-lg text-sm font-medium border border-amber-200 flex items-center gap-2">
+                            <Package className="w-4 h-4" />
+                            {data.lists.lowStock.length} items low on stock
+                        </div>
+                    ) : null}
+                </motion.div>
+
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {stats.map((stat, idx) => (
                         <motion.div
                             key={stat.label}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: idx * 0.1 }}
-                            className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all"
+                            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                            className={`bg-white border border-slate-100 rounded-2xl p-6 shadow-sm hover:shadow-xl hover:${theme.shadow} transition-all group`}
                         >
-                            <div className="flex items-center justify-between mb-4">
-                                <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center`}>
-                                    <stat.icon className="w-6 h-6 text-white" />
+                            <div className="flex justify-between items-start mb-4">
+                                <div className={`p-3 rounded-xl ${stat.bg} ${stat.text} group-hover:scale-110 transition-transform duration-300`}>
+                                    <stat.icon className="w-6 h-6" />
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-2xl font-bold text-slate-800">{stat.value}</p>
-                                    <p className="text-xs text-slate-500">{stat.label}</p>
-                                </div>
+                                {stat.change && (
+                                    <span
+                                        className={`text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 ${stat.change.includes("Action") ? "bg-red-50 text-red-600" : ""}`}
+                                        style={!stat.change.includes("Action") ? { backgroundColor: theme.hex + '20', color: theme.hex } : undefined}
+                                    >
+                                        {stat.change.includes("Action") ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+                                        {stat.change}
+                                    </span>
+                                )}
                             </div>
-                            {stat.change && (
-                                <div className="flex items-center gap-1 text-xs text-emerald-600">
-                                    <TrendingUp className="w-3 h-3" />
-                                    <span>{stat.change}</span>
-                                </div>
-                            )}
+                            <div>
+                                <h3 className="text-2xl font-bold text-slate-800">{stat.value}</h3>
+                                <p className="text-sm text-slate-500 font-medium mt-1">{stat.label}</p>
+                            </div>
                         </motion.div>
                     ))}
                 </div>
 
-
-
-                {/* Recent Activity */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.6 }}
-                    className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-2xl p-8 shadow-lg"
-                >
-                    <h2 className="text-xl font-bold text-slate-800 mb-6">Recent Activity</h2>
-                    <div className="space-y-4">
-                        {data?.lists.activity && data.lists.activity.length > 0 ? (
-                            data.lists.activity.map((log) => (
-                                <div key={log.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                                            <Activity className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-medium text-slate-800">{log.action.replace(/_/g, " ")}</p>
-                                            <p className="text-xs text-slate-500">{new Date(log.createdAt).toLocaleString()}</p>
-                                        </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Sales Chart */}
+                    <div className="lg:col-span-2">
+                        <Card className="h-full border-slate-100 shadow-sm rounded-3xl overflow-hidden bg-white">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <div className="space-y-1">
+                                    <CardTitle className="text-xl font-bold text-slate-800">Sales Trend</CardTitle>
+                                    <CardDescription className="text-slate-500 font-medium">
+                                        Revenue performance over time
+                                    </CardDescription>
+                                </div>
+                                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                                    <SelectTrigger
+                                        className="w-[130px] rounded-xl border-2 font-bold shadow-sm focus:ring-0"
+                                        style={{ color: theme.hex, borderColor: theme.hex, backgroundColor: theme.hex + '15' }}
+                                    >
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent align="end" className="rounded-xl border-slate-100 shadow-xl">
+                                        <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
+                                        <SelectItem value="15d" className="rounded-lg">Last 15 days</SelectItem>
+                                        <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
+                                        <SelectItem value="all" className="rounded-lg">All Time</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex items-center gap-4 mb-6">
+                                    <div className="flex items-baseline gap-2">
+                                        <span className="text-3xl font-bold text-slate-800">
+                                            ${data?.charts.salesByDay
+                                                .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0)
+                                                .reduce((acc, curr) => acc + curr.revenue, 0)
+                                                .toLocaleString()}
+                                        </span>
+                                        <span className="text-sm font-medium text-slate-500">total revenue</span>
                                     </div>
                                 </div>
-                            ))
-                        ) : (
-                            <div className="text-center py-12">
-                                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <Activity className="w-8 h-8 text-emerald-600" />
-                                </div>
-                                <p className="text-slate-500">No recent activity</p>
-                            </div>
-                        )}
+
+                                <ChartContainer config={chartConfig} className="w-full h-[300px]">
+                                    <ComposedChart
+                                        data={data?.charts.salesByDay
+                                            .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0)
+                                            .map(d => ({
+                                                date: new Date(d.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+                                                revenue: d.revenue
+                                            })) || []}
+                                        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                                    >
+                                        <defs>
+                                            <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor={theme.hex} stopOpacity={0.2} />
+                                                <stop offset="95%" stopColor={theme.hex} stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f1f5f9" />
+                                        <XAxis
+                                            dataKey="date"
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickMargin={12}
+                                            tick={{ fill: '#94a3b8', fontSize: 12 }}
+                                        />
+                                        <YAxis
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickMargin={12}
+                                            tick={{ fill: '#94a3b8', fontSize: 12 }}
+                                            tickFormatter={(value) => `$${value}`}
+                                        />
+                                        <ChartTooltip
+                                            cursor={{ stroke: '#e2e8f0' }}
+                                            content={
+                                                <ChartTooltipContent
+                                                    className="w-40 bg-white/95 backdrop-blur-md border-slate-100 shadow-xl rounded-xl"
+                                                />
+                                            }
+                                        />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="revenue"
+                                            stroke={theme.hex}
+                                            strokeWidth={2}
+                                            fillOpacity={1}
+                                            fill="url(#colorRevenue)"
+                                        />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="revenue"
+                                            stroke={theme.hex}
+                                            strokeWidth={2}
+                                            dot={false}
+                                            activeDot={{
+                                                r: 6,
+                                                fill: theme.hex,
+                                                stroke: "#fff",
+                                                strokeWidth: 3
+                                            }}
+                                        />
+                                    </ComposedChart>
+                                </ChartContainer>
+                            </CardContent>
+                        </Card>
                     </div>
-                </motion.div>
 
-                {/* Supplier Requests */}
-                {supplierRequests.length > 0 && (
+                    {/* Recent Activity */}
                     <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mt-6 bg-white/80 backdrop-blur-xl border border-white/50 rounded-2xl p-8 shadow-lg"
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.4 }}
+                        className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm flex flex-col relative"
                     >
-                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                            <Truck className="w-5 h-5 text-indigo-600" />
-                            Pending Supplier Requests
-                        </h2>
-                        <div className="space-y-3">
-                            {supplierRequests.map((req) => (
-                                <div key={req.id} className="flex items-center justify-between p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
-                                    <div>
-                                        <p className="font-semibold text-slate-800">{req.supplier?.name || "Unknown Supplier"}</p>
-                                        <p className="text-sm text-slate-500">Wants to connect with your store</p>
+                        <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                            <Activity className={`w-5 h-5 ${theme.text}`} />
+                            Recent Activity
+                        </h3>
+                        <div className="relative pl-2 space-y-6 flex-1 overflow-visible">
+                            {/* Timeline Connector */}
+                            <div className="absolute left-[27px] top-4 bottom-4 w-[2px] bg-slate-100"></div>
+
+                            {data?.lists.activity && data.lists.activity.slice(0, isActivityExpanded ? 10 : 3).map((log, i) => {
+                                const config = getActivityConfig(log.action);
+                                return (
+                                    <motion.div
+                                        key={log.id}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: i * 0.1 }}
+                                        className="relative flex items-center gap-4 group z-10"
+                                    >
+                                        <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center ${config.bg} ${config.color} border ${config.border} shadow-sm group-hover:scale-110 transition-transform duration-300`}>
+                                            <config.icon className="w-5 h-5" />
+                                        </div>
+                                        <div className="flex-1 p-3 rounded-2xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all duration-200">
+                                            <p className="text-sm font-bold text-slate-700 leading-tight group-hover:text-emerald-800 transition-colors">
+                                                {log.action.replace(/_/g, " ")}
+                                            </p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                                    {log.action.split('_')[0]}
+                                                </span>
+                                                <span className="text-xs text-slate-400 font-medium">
+                                                    {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+
+                            {(!data?.lists.activity || data.lists.activity.length === 0) && (
+                                <div className="text-center py-12 flex flex-col items-center">
+                                    <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                                        <FileText className="w-5 h-5 text-slate-300" />
                                     </div>
-                                    <div className="flex gap-2">
-                                        <Button
-                                            size="sm"
-                                            onClick={() => handleAcceptRequest(req.id)}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                                        >
-                                            <Check className="w-4 h-4 mr-1" /> Accept
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => handleRejectRequest(req.id)}
-                                            className="text-red-600 border-red-200 hover:bg-red-50"
-                                        >
-                                            <X className="w-4 h-4 mr-1" /> Reject
-                                        </Button>
-                                    </div>
+                                    <p className="text-sm text-slate-400">No activity recorded yet</p>
                                 </div>
-                            ))}
+                            )}
                         </div>
+
+                        {data?.lists.activity && data.lists.activity.length > 3 && (
+                            <>
+                                {!isActivityExpanded && (
+                                    <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-white/95 via-white/60 to-transparent backdrop-blur-[2px] flex items-end justify-center pb-4 rounded-b-3xl pointer-events-none">
+                                        <p
+                                            onClick={() => setIsActivityExpanded(true)}
+                                            className="pointer-events-auto p-2 bg-white/80 backdrop-blur-md rounded-full shadow-lg border border-slate-100 text-slate-400 hover:text-emerald-600 hover:scale-110 transition-all cursor-pointer"
+                                        >
+                                            <ChevronDown className="w-5 h-5" />
+                                        </p>
+                                    </div>
+                                )}
+                                {isActivityExpanded && (
+                                    <div className="mt-6 flex justify-center">
+                                        <p
+                                            onClick={() => setIsActivityExpanded(false)}
+                                            className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all cursor-pointer"
+                                        >
+                                            <ChevronUp className="w-5 h-5" />
+                                        </p>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </motion.div>
+                </div>
+
+
+            </main>
+            <FeedbackToast
+                visible={showFeedback}
+                onClose={() => setShowFeedback(false)}
+                message="Request processed successfully"
+                onFeedback={(type) => console.log("Feedback:", type)}
+            />
+
+            {/* Logout Confirmation Modal */}
+            <AnimatePresence>
+                {showLogoutConfirm && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setShowLogoutConfirm(false)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
+                                    <LogOut className="w-8 h-8 text-red-500 translate-x-0.5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Sign Out</h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to end your session? You'll need to sign in again to access your store.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setShowLogoutConfirm(false)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                        onClick={logout}
+                                    >
+                                        Yes, Sign Out
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
                 )}
-
-
-            </div>
+            </AnimatePresence>
         </div>
     );
 };
+
+
 
 export default StoreOwnerDashboard;

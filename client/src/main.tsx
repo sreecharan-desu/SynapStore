@@ -12,6 +12,7 @@ import { AuthProvider } from "./context/AuthContext";
 import LoginGuard from "./components/guards/LoginGuard";
 import RoleGuard from "./components/guards/RoleGuard";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
+import { ChatbotWidget } from "./components/ChatbotWidget";
 import SuppliersPage from "./pages/suppliers/SuppliersPage";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import SupplierDashboard from "./pages/SupplierDashboard";
@@ -21,6 +22,7 @@ createRoot(document.getElementById("root")!).render(
   <RecoilRoot>
     <AuthProvider>
       <Toaster position="top-center" reverseOrder={false} />
+      <ChatbotWidget />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<App />} />
