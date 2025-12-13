@@ -86,8 +86,6 @@ export const ChatbotWidget = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isOpen]);
 
-    if (!isAuthenticated) return null;
-
     const [isWet, setIsWet] = useState(false);
 
     useEffect(() => {
@@ -96,6 +94,8 @@ export const ChatbotWidget = () => {
             return () => clearTimeout(timer);
         }
     }, [isWet]);
+
+    if (!isAuthenticated) return null;
 
     const handleSendMessage = async () => {
         if (!inputValue.trim()) return;
