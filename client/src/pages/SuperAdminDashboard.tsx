@@ -7,7 +7,8 @@ import {
     Users, Store as StoreIcon, Activity, Search,
     Package, Truck, LogOut, Trash2,
     PieChart, AlertTriangle, Wallet,
-    BarChart3, Bell, Lock, UserPlus, Settings, X, ArrowRightLeft
+    BarChart3, Bell, Lock, UserPlus, Settings, X, ArrowRightLeft,
+    Send, Mail, MessageSquare, CheckCircle2
 } from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { adminApi } from "../lib/api/endpoints";
@@ -15,6 +16,7 @@ import type { User, Store, Supplier, AdminStats } from "../lib/types";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { FaUserNurse } from "react-icons/fa";
+import { MdNotificationsActive } from "react-icons/md";
 
 // --- Types ---
 
@@ -342,6 +344,8 @@ const SuperAdminDashboard: React.FC = () => {
             alert("Error: " + err.message);
         }
     };
+
+
 
     const initiateDeleteStore = (storeId: string, storeName: string) => {
         setStoreToDelete({ id: storeId, name: storeName });
@@ -950,10 +954,10 @@ const SuperAdminDashboard: React.FC = () => {
                                 <table className="w-full text-left text-sm">
                                     <thead className="bg-slate-50 border-b border-slate-200">
                                         <tr>
-                                            <th className="px-6 py-4 font-semibold text-slate-700">Username</th>
-                                            <th className="px-6 py-4 font-semibold text-slate-700">Email</th>
+                                            <th className="px-6 py-4 font-semibold text-slate-700">User Details</th>
+                                            <th className="px-6 py-4 font-semibold text-slate-700">Email Address</th>
                                             <th className="px-6 py-4 font-semibold text-slate-700">Role</th>
-                                            <th className="px-6 py-4 font-semibold text-slate-700">Joined</th>
+                                            <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
                                             <th className="px-6 py-4 font-semibold text-slate-700 text-right">Actions</th>
                                         </tr>
                                     </thead>
@@ -961,46 +965,63 @@ const SuperAdminDashboard: React.FC = () => {
                                         {users.filter(u =>
                                             u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
                                             u.email.toLowerCase().includes(searchQuery.toLowerCase())
-                                        ).map((user) => (
-                                            <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-6 py-4 font-medium text-slate-900">{user.username}</td>
-                                                <td className="px-6 py-4 text-slate-500">{user.email}</td>
+                                        ).map((user, index) => (
+                                            <motion.tr
+                                                key={user.id}
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ delay: index * 0.05 }}
+                                                className="hover:bg-indigo-50/50 transition-colors group cursor-default"
+                                            >
                                                 <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.globalRole === 'SUPERADMIN'
-                                                        ? "bg-purple-100 text-purple-800"
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{user.username}</span>
+                                                        <span className="text-xs text-slate-400">ID: {user.id.slice(0, 8)}...</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-slate-600 to-slate-400 text-white text-[10px] flex items-center justify-center font-bold uppercase">
+                                                            {user.username.charAt(0)}
+                                                        </div>
+                                                        <span className="text-slate-600 text-sm">{user.email}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${user.globalRole === 'SUPERADMIN'
+                                                        ? "bg-purple-100 text-purple-800 border-purple-200"
                                                         : user.globalRole === 'SUPPLIER'
-                                                            ? "bg-emerald-100 text-emerald-800"
-                                                            : "bg-slate-100 text-slate-800"
+                                                            ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                                                            : "bg-slate-100 text-slate-800 border-slate-200"
                                                         }`}>
                                                         {user.globalRole || "USER"}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-slate-500">Joined: {new Date(user.createdAt || "").toLocaleDateString()}</td>
+                                                <td className="px-6 py-4">
+                                                    <StatusBadge isActive={user.isActive || false} />
+                                                </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
                                                         {user.globalRole !== 'SUPPLIER' && user.globalRole !== 'SUPERADMIN' && (
                                                             <Button
                                                                 size="sm"
-                                                                variant="outline"
-                                                                className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 gap-2 font-medium"
+                                                                className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200 h-8 gap-2 font-medium"
                                                                 onClick={() => initiateConvertUser(user.id, user.username)}
                                                             >
                                                                 <ArrowRightLeft className="w-3.5 h-3.5" />
-                                                                Convert to Supplier
+                                                                Convert
                                                             </Button>
                                                         )}
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110"
+                                                        <p
+                                                            className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110 cursor-pointer"
                                                             onClick={() => initiateDeleteUser(user.id, user.username)}
                                                             title="Delete User"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
-                                                        </Button>
+                                                        </p>
                                                     </div>
                                                 </td>
-                                            </tr>
+                                            </motion.tr>
                                         ))}
                                         {!loading && users.length === 0 && (
                                             <tr>
@@ -1018,85 +1039,178 @@ const SuperAdminDashboard: React.FC = () => {
                     {activeTab === "notifications" && (
                         <motion.div
                             key="notifications"
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.2 }}
-                            className="max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm p-8"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ duration: 0.4, type: "spring", bounce: 0.3 }}
+                            className="max-w-4xl mx-auto"
                         >
-                            <div className="flex items-center gap-4 mb-8">
-                                <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center">
-                                    <AlertTriangle className="w-6 h-6 text-indigo-600" />
-                                </div>
-                                <div>
-                                    <h2 className="text-xl font-bold text-slate-800">Send System Notification</h2>
-                                    <p className="text-sm text-slate-500">Dispatch alerts to users via Dashboard or Email</p>
+                            <div className="bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/60 overflow-hidden relative">
+                                {/* Decorative background elements */}
+                                <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                                <div className="absolute bottom-0 left-0 w-64 h-64 bg-fuchsia-500/10 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none" />
+
+                                <div className="p-8 md:p-10 relative z-10">
+                                    <div className="flex items-center gap-4 mb-8">
+                                        <motion.div
+                                            initial={{ scale: 0.8, opacity: 0 }}
+                                            animate={{ scale: 1, opacity: 1 }}
+                                            transition={{ delay: 0.1 }}
+                                            className="w-12 h-12 bg-transparent rounded-xl flex items-center justify-center border-2 border-indigo-100"
+                                        >
+                                            <MdNotificationsActive className="w-6 h-6 text-indigo-600" />
+                                        </motion.div>
+                                        <div>
+                                            <motion.h2
+                                                initial={{ x: -20, opacity: 0 }}
+                                                animate={{ x: 0, opacity: 1 }}
+                                                transition={{ delay: 0.2 }}
+                                                className="text-2xl font-bold text-slate-900 tracking-tight"
+                                            >
+                                                Broadcast Center
+                                            </motion.h2>
+                                            <motion.p
+                                                initial={{ x: -20, opacity: 0 }}
+                                                animate={{ x: 0, opacity: 1 }}
+                                                transition={{ delay: 0.3 }}
+                                                className="text-slate-500 text-sm"
+                                            >
+                                                Send important updates and announcements to your network.
+                                            </motion.p>
+                                        </div>
+                                    </div>
+
+                                    <form onSubmit={handleSendNotification} className="space-y-8">
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                            {/* Target Audience */}
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ delay: 0.4 }}
+                                                className="space-y-4"
+                                            >
+                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Target Audience</label>
+                                                <div className="grid grid-cols-1 gap-3">
+                                                    {[
+                                                        { value: 'ALL', label: 'All Users', icon: Users },
+                                                        { value: 'SUPPLIER', label: 'Suppliers Only', icon: Truck },
+                                                        { value: 'STORE_OWNER', label: 'Store Owners', icon: StoreIcon },
+                                                    ].map((opt) => (
+                                                        <div
+                                                            key={opt.value}
+                                                            onClick={() => setNotifyForm({ ...notifyForm, targetRole: opt.value })}
+                                                            className={`group flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 relative overflow-hidden ${notifyForm.targetRole === opt.value
+                                                                ? 'border-black bg-slate-50 shadow-sm'
+                                                                : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50'
+                                                                }`}
+                                                        >
+                                                            <div className={`p-2 rounded-lg transition-colors duration-200 ${notifyForm.targetRole === opt.value ? 'bg-black text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-slate-700'}`}>
+                                                                <opt.icon className="w-4 h-4" />
+                                                            </div>
+                                                            <span className={`text-sm font-bold transition-colors ${notifyForm.targetRole === opt.value ? 'text-black' : 'text-slate-600'}`}>{opt.label}</span>
+                                                            {notifyForm.targetRole === opt.value && (
+                                                                <motion.div layoutId="audience-check" className="absolute right-3 text-black">
+                                                                    <CheckCircle2 className="w-5 h-5" />
+                                                                </motion.div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </motion.div>
+
+                                            {/* Delivery Method */}
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ delay: 0.5 }}
+                                                className="space-y-4"
+                                            >
+                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Delivery Method</label>
+                                                <div className="grid grid-cols-1 gap-3">
+                                                    {[
+                                                        { value: 'SYSTEM', label: 'In-App Notification', icon: Bell },
+                                                        { value: 'EMAIL', label: 'Email Only', icon: Mail },
+                                                        { value: 'BOTH', label: 'Both Channels', icon: Send },
+                                                    ].map((opt) => (
+                                                        <div
+                                                            key={opt.value}
+                                                            onClick={() => setNotifyForm({ ...notifyForm, type: opt.value as any })}
+                                                            className={`group flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 relative overflow-hidden ${notifyForm.type === opt.value
+                                                                ? 'border-black bg-slate-50 shadow-sm'
+                                                                : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50'
+                                                                }`}
+                                                        >
+                                                            <div className={`p-2 rounded-lg transition-colors duration-200 ${notifyForm.type === opt.value ? 'bg-black text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-slate-700'}`}>
+                                                                <opt.icon className="w-4 h-4" />
+                                                            </div>
+                                                            <span className={`text-sm font-bold transition-colors ${notifyForm.type === opt.value ? 'text-black' : 'text-slate-600'}`}>{opt.label}</span>
+                                                            {notifyForm.type === opt.value && (
+                                                                <motion.div layoutId="method-check" className="absolute right-3 text-black">
+                                                                    <CheckCircle2 className="w-5 h-5" />
+                                                                </motion.div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </motion.div>
+                                        </div>
+
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ delay: 0.6 }}
+                                            className="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-100"
+                                        >
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Subject Line</label>
+                                                <div className="relative group">
+                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors">
+                                                        <MessageSquare className="w-5 h-5" />
+                                                    </span>
+                                                    <input
+                                                        required
+                                                        type="text"
+                                                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300"
+                                                        placeholder="e.g., Scheduled Maintenance"
+                                                        value={notifyForm.subject}
+                                                        onChange={e => setNotifyForm({ ...notifyForm, subject: e.target.value })}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Message Body</label>
+                                                <textarea
+                                                    required
+                                                    rows={6}
+                                                    className="w-full px-6 py-4 bg-white border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300 resize-none leading-relaxed"
+                                                    placeholder="Type your important announcement here..."
+                                                    value={notifyForm.message}
+                                                    onChange={e => setNotifyForm({ ...notifyForm, message: e.target.value })}
+                                                />
+                                                <div className="flex justify-between items-center text-xs text-slate-400 px-1">
+                                                    <span>HTML formatting supported for emails</span>
+                                                    <span>{notifyForm.message.length} characters</span>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+
+                                        <div className="flex justify-end pt-4">
+                                            <Button
+                                                type="submit"
+                                                disabled={sending}
+                                                className={`relative overflow-hidden h-14 px-10 rounded-xl text-white text-lg font-bold shadow-xl transition-all duration-300 ${sending ? 'bg-slate-400 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800 hover:scale-[1.02] hover:shadow-slate-900/20'
+                                                    }`}
+                                            >
+                                                <span className="relative z-10 flex items-center gap-3">
+                                                    {sending ? "Dispatching..." : "Send Broadcast"}
+                                                    {!sending && <Send className="w-5 h-5" />}
+                                                </span>
+                                            </Button>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
-
-                            <form onSubmit={handleSendNotification} className="space-y-6">
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">Target Audience</label>
-                                        <select
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                            value={notifyForm.targetRole}
-                                            onChange={e => setNotifyForm({ ...notifyForm, targetRole: e.target.value })}
-                                        >
-                                            <option value="ALL">All Users</option>
-                                            <option value="SUPPLIER">Suppliers Only</option>
-                                            <option value="STORE_OWNER">Store Owners Only</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">Delivery Method</label>
-                                        <select
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                            value={notifyForm.type}
-                                            onChange={e => setNotifyForm({ ...notifyForm, type: e.target.value as any })}
-                                        >
-                                            <option value="SYSTEM">System Notification (In-App)</option>
-                                            <option value="EMAIL">Email Only</option>
-                                            <option value="BOTH">Both (System + Email)</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Subject / Title</label>
-                                    <input
-                                        required
-                                        type="text"
-                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                        placeholder="e.g. Scheduled Maintenance"
-                                        value={notifyForm.subject}
-                                        onChange={e => setNotifyForm({ ...notifyForm, subject: e.target.value })}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Message Body</label>
-                                    <textarea
-                                        required
-                                        rows={5}
-                                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                        placeholder="Type your message here..."
-                                        value={notifyForm.message}
-                                        onChange={e => setNotifyForm({ ...notifyForm, message: e.target.value })}
-                                    />
-                                    <p className="text-xs text-slate-400 mt-2">HTML is supported for Emails.</p>
-                                </div>
-
-                                <div className="flex justify-end pt-4">
-                                    <Button
-                                        type="submit"
-                                        disabled={sending}
-                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8"
-                                    >
-                                        {sending ? "Sending..." : "Dispatch Notification"}
-                                    </Button>
-                                </div>
-                            </form>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -1463,6 +1577,9 @@ const SuperAdminDashboard: React.FC = () => {
                     </div>
                 )}
             </AnimatePresence>
+
+
+
 
             {/* Dock Navigation */}
             <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
