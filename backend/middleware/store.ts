@@ -7,6 +7,7 @@ export type RequestWithUser = Request & {
   user?: {
     username: string;
     id: string;
+    email?: string;
     globalRole?: Role | null;
   };
   store?: Partial<Store> | null | any;

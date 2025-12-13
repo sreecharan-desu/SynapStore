@@ -6,11 +6,13 @@ import { authState, authStatus } from "../state/auth";
 type AuthContextValue = {
   user: any | null;
   isAuthenticated: boolean;
+  effectiveStore :any
 };
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   isAuthenticated: false,
+  effectiveStore: null,
 });
 
 const STORAGE_KEY = "auth:encUser";
@@ -72,6 +74,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     () => ({
       user: auth.user ?? storedUser,
       isAuthenticated: status.isAuthenticated,
+      effectiveStore : status.effectiveStore
     }),
     [auth.user, storedUser, status.isAuthenticated]
   );

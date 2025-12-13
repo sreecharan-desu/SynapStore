@@ -5,7 +5,7 @@ import { authenticate } from "../../../middleware/authenticate";
 import { RequestWithUser } from "../../../middleware/store";
 import { z } from "zod";
 import { sendMail } from "../../../lib/mailer";
-import { getSupplierRequestEmailTemplate } from "../../../lib/emailTemplates";
+import { getSupplierRequestEmailTemplate, getNotificationEmailTemplate } from "../../../lib/emailTemplates";
 import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
 
@@ -58,7 +58,7 @@ router.post(
         return handleZodError(res, parsed.error);
       }
 
-      const user = req.user!;
+      const user:any = req.user!;
       const payload = parsed.data;
 
       // 1. Check if user is already associated with a supplier (prioritize this to allow profile updates)
@@ -158,6 +158,19 @@ router.post(
           where: { id: user.id },
           data: { globalRole: "SUPPLIER" },
         });
+      }
+
+      // EMAIL NOTIFICATION: Supplier Profile Update
+      if (user.email) {
+          sendMail({
+            to: user.email,
+            subject: "Supplier Profile Updated",
+            html: getNotificationEmailTemplate(
+              "Supplier Profile Updated",
+              `Your supplier profile for "<strong>${supplier.name}</strong>" has been successfully saved.<br/><br/>
+               You can now manage your catalog and connection requests.`
+            ),
+          }).catch(e => console.error("Failed to send supplier profile update email", e));
       }
 
       return sendSuccess(res, "Supplier profile created/updated", { supplier }, 201);
@@ -383,23 +396,8 @@ router.post(
         .catch(() => { });
 
       // Notify Store Admins via Push
-      // Notify Store Admins via Push (Scoped to each admin)
-      const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-      const frontendUrl = rawFrontendUrl.replace(/\/$/, "");
-      
-      for (const admin of storeAdmins) {
-        if (admin.user.id) {
-           // Using /u/:userId as a stable, domain-based notification channel
-           const targetUrl = `${frontendUrl}/u/${admin.user.id}`;
-           notificationQueue.add("send-notification", {
-            websiteUrl: targetUrl, 
-            title: "New Supplier Request",
-            message: `${supplier.name} wants to connect with your store.`,
-            image: "https://cdn-icons-png.flaticon.com/512/263/263142.png", 
-            buttons: [{ label: "View Request", link: `${frontendUrl}/suppliers` }]
-          });
-        }
-      }
+      // Notify Store Admins via Push removed as per requirement (only Email now)
+
 
       return sendSuccess(res, "Supplier request sent", { request: reqRow }, 201);
     } catch (err) {

@@ -271,7 +271,7 @@ dashboardRouter.get(
         prisma.activityLog.findMany({
           where: { storeId },
           orderBy: { createdAt: "desc" },
-          take: 50,
+          take: 4,
           select: {
             id: true,
             userId: true,
@@ -702,16 +702,8 @@ dashboardRouter.post(
             }
           }
 
-          // NOTIFICATION WORKER
-          const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-          const frontendUrl = rawFrontendUrl.replace(/\/$/, "");
-          const targetUrl = `${frontendUrl}/u/${sup.userId}`;
-          notificationQueue.add("send-notification", {
-             websiteUrl: targetUrl, // Targets supplier's dashboard
-             title: "Request Accepted",
-             message: `${store.name} accepted your connection request.`,
-             buttons: [{ label: "View Store", link: `${frontendUrl}/supplier/dashboard` }]
-          });
+          // NOTIFICATION WORKER removed as per requirement
+
         }
       }
 
@@ -790,15 +782,8 @@ dashboardRouter.post(
               console.error("Failed to send email to supplier:", e);
             }
           }
-           // NOTIFICATION WORKER
-          const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-          const frontendUrl = rawFrontendUrl.replace(/\/$/, "");
-          const targetUrl = `${frontendUrl}/u/${sup.userId}`;
-          notificationQueue.add("send-notification", {
-             websiteUrl: targetUrl, 
-             title: "Request Update",
-             message: `${store.name} rejected your connection request.`,
-          });
+           // NOTIFICATION WORKER removed as per requirement
+
         }
       }
 

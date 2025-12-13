@@ -26,7 +26,7 @@ export async function sendNotification(payload: NotifyPayload) {
       headers: { "Content-Type": "application/json" }
     });
     
-    // console.log("[Notification] Sent successfully:", response.data.data?.id);
+    console.log("[Notification] Sent successfully:", response.data.data?.id);
     return response.data;
   } catch (error: any) {
     console.error("[Notification] Failed to send:", error.message);

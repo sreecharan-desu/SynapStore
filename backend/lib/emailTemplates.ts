@@ -161,3 +161,15 @@ export function getReceiptEmailTemplate(storeName: string, receiptData: any): st
     </p>
   `);
 }
+
+export function getNotificationEmailTemplate(title: string, message: string): string {
+  return wrapContent(`
+    <h2 style="${HEADING_STYLES}">${title}</h2>
+    <p style="${PARAGRAPH_STYLES}">
+      ${message}
+    </p>
+    <p style="${PARAGRAPH_STYLES}; font-size: 14px; color: #718096; margin-top: 20px;">
+      If this wasn't you, please contact support immediately.
+    </p>
+  `);
+}

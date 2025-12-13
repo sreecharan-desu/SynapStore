@@ -229,9 +229,9 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
     });
 
     // Decrypt emails for store owners
-    const decryptedStores = stores.map(store => ({
+    const decryptedStores = stores.map((store:any) => ({
       ...store,
-      users: store.users.map(storeUser => ({
+      users: store.users.map((storeUser:any) => ({
         ...storeUser,
         user: storeUser.user ? { ...storeUser.user, email: decryptEmail(storeUser.user.email) } : null,
       })),
@@ -483,13 +483,20 @@ router.post(
     try {
       const { userId } = req.params;
       
-      const user = await prisma.user.findUnique({ where: { id: userId } });
+      const user = await prisma.user.findFirst({ where: { id: userId }, select: { username: true, stores: { select: { store: { select: { slug: true } } } } } });
+      console.log(user)
       if (!user) return sendError(res, "User not found", 404);
 
       await prisma.user.update({
         where: { id: userId },
         data: { globalRole: "SUPPLIER" },
       });
+
+      // await prisma.store.delete({
+      //   where: {
+      //     slug : user.stores[0].slug
+      //   }
+      // })
 
       // Ensure supplier profile exists
       const existingProfile = await prisma.supplier.findUnique({
@@ -536,7 +543,7 @@ router.post(
             await prisma.store.update({
               where: { id: role.storeId },
               data: { isActive: false }
-            }).catch(e => console.error("Failed to suspend orphaned store", e));
+            }).catch((e:any) => console.error("Failed to suspend orphaned store", e));
           }
         }
       }
@@ -858,12 +865,12 @@ router.get("/dashboard/analytics", requireRole("SUPERADMIN"), async (req: any, r
         sales: dailySalesTrends,
       },
       distributions: {
-        paymentMethods: salesByPaymentMethod.map(p => ({
+        paymentMethods: salesByPaymentMethod.map((p:any) => ({
             method: p.paymentMethod,
             count: p._count.id,
             revenue: p._sum.totalValue
         })),
-        userRoles: usersByGlobalRole.map(r => ({
+        userRoles: usersByGlobalRole.map((r:any) => ({
             role: r.globalRole ?? "NONE",
             count: r._count.id
         })),

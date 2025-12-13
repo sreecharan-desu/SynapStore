@@ -6,6 +6,286 @@ datasource db {
   provider = "postgresql"
 }
 
+model Store {
+  id               String            @id @default(uuid())
+  name             String
+  slug             String            @unique
+  timezone         String            @default("Asia/Kolkata")
+  currency         String            @default("INR")
+  settings         Json?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  activityLogs     ActivityLog[]
+  inventory        InventoryBatch[]
+  medicines        Medicine[]
+  otps             Otp[]
+  sales            Sale[]
+  stockMovements   StockMovement[]
+  suppliers        Supplier[]
+  supplierRequests SupplierRequest[]
+  supplierStores   SupplierStore[]
+  uploads          Upload[]
+  users            UserStoreRole[]
+
+  @@index([slug])
+}
+
+model User {
+  id             String          @id @default(uuid())
+  username       String          @unique
+  email          String          @unique
+  passwordHash   String?
+  imageUrl       String?
+  phone          String?         @unique
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  isverified     Boolean         @default(false)
+  globalRole     Role?
+  activityLogs   ActivityLog[]
+  otps           Otp[]
+  sales          Sale[]
+  stockMovements StockMovement[]
+  suppliers      Supplier?
+  stores         UserStoreRole[]
+}
+
+model UserStoreRole {
+  id        String   @id @default(uuid())
+  userId    String
+  storeId   String
+  role      Role
+  createdAt DateTime @default(now())
+  store     Store    @relation(fields: [storeId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, storeId])
+  @@index([storeId])
+  @@index([userId])
+}
+
+model Supplier {
+  id               String            @id @default(uuid())
+  supLegacyId      Int?
+  storeId          String?
+  name             String
+  address          String?
+  phone            String?
+  contactName      String?
+  defaultLeadTime  Int?
+  defaultMOQ       Int?
+  externalMeta     Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  isActive         Boolean           @default(true)
+  userId           String?           @unique
+  store            Store?            @relation(fields: [storeId], references: [id])
+  user             User?             @relation(fields: [userId], references: [id])
+  supplierRequests SupplierRequest[]
+  supplierStores   SupplierStore[]
+  medicines        Medicine[]        @relation("MedicineToSupplier")
+}
+
+model Medicine {
+  id             String           @id @default(uuid())
+  ndc            String?
+  storeId        String
+  sku            String?
+  brandName      String
+  genericName    String?
+  dosageForm     String?
+  strength       String?
+  uom            String?
+  category       String?
+  taxInfo        Json?
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  inventory      InventoryBatch[]
+  store          Store            @relation(fields: [storeId], references: [id])
+  saleItems      SaleItem[]
+  stockMovements StockMovement[]
+  suppliers      Supplier[]       @relation("MedicineToSupplier")
+
+  @@index([storeId, brandName])
+  @@index([storeId, ndc])
+}
+
+model InventoryBatch {
+  id            String          @id @default(uuid())
+  storeId       String
+  medicineId    String
+  batchNumber   String?
+  qtyReceived   Int             @default(0)
+  qtyAvailable  Int             @default(0)
+  qtyReserved   Int             @default(0)
+  expiryDate    DateTime?
+  purchasePrice Decimal?        @db.Decimal(12, 2)
+  mrp           Decimal?        @db.Decimal(12, 2)
+  receivedAt    DateTime?
+  location      String?
+  version       Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  medicine      Medicine        @relation(fields: [medicineId], references: [id])
+  store         Store           @relation(fields: [storeId], references: [id])
+  saleItems     SaleItem[]
+  movements     StockMovement[]
+
+  @@index([storeId, medicineId])
+  @@index([storeId, batchNumber])
+  @@index([storeId, expiryDate])
+  @@index([storeId, expiryDate, medicineId])
+}
+
+model Upload {
+  id        String       @id @default(uuid())
+  storeId   String
+  filename  String?
+  status    UploadStatus @default(PENDING)
+  metadata  Json?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt @default(now())
+  store     Store        @relation(fields: [storeId], references: [id])
+
+  @@index([storeId, status])
+}
+
+model StockMovement {
+  id            String              @id @default(uuid())
+  storeId       String
+  inventoryId   String
+  medicineId    String
+  delta         Int
+  reason        StockMovementReason
+  note          String?
+  performedById String?
+  saleItemId    String?
+  createdAt     DateTime            @default(now())
+  inventory     InventoryBatch      @relation(fields: [inventoryId], references: [id])
+  medicine      Medicine            @relation(fields: [medicineId], references: [id])
+  performedBy   User?               @relation(fields: [performedById], references: [id])
+  saleItem      SaleItem?           @relation(fields: [saleItemId], references: [id])
+  store         Store               @relation(fields: [storeId], references: [id])
+
+  @@index([storeId, medicineId])
+  @@index([storeId, createdAt])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  storeId   String
+  userId    String?
+  action    String
+  payload   Json?
+  createdAt DateTime @default(now())
+  store     Store    @relation(fields: [storeId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([storeId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorType  String?
+  storeId    String?
+  action     String
+  resource   String?
+  resourceId String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([storeId, actorId])
+}
+
+model Sale {
+  id            String         @id @default(uuid())
+  storeId       String
+  createdById   String?
+  subtotal      Decimal?       @db.Decimal(12, 2)
+  tax           Decimal?       @db.Decimal(12, 2)
+  discounts     Decimal?       @db.Decimal(12, 2)
+  totalValue    Decimal?       @db.Decimal(12, 2)
+  paymentMethod PaymentMethod?
+  paymentStatus PaymentStatus  @default(PENDING)
+  externalRef   String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdBy     User?          @relation(fields: [createdById], references: [id])
+  store         Store          @relation(fields: [storeId], references: [id])
+  items         SaleItem[]
+
+  @@index([storeId, paymentStatus])
+}
+
+model SaleItem {
+  id               String          @id @default(uuid())
+  saleId           String
+  medicineId       String
+  inventoryBatchId String?
+  qty              Int
+  unitPrice        Decimal?        @db.Decimal(12, 2)
+  lineTotal        Decimal?        @db.Decimal(12, 2)
+  createdAt        DateTime        @default(now())
+  inventoryBatch   InventoryBatch? @relation(fields: [inventoryBatchId], references: [id])
+  medicine         Medicine        @relation(fields: [medicineId], references: [id])
+  sale             Sale            @relation(fields: [saleId], references: [id])
+  stockMovements   StockMovement[]
+
+  @@index([saleId])
+  @@index([medicineId])
+}
+
+model Otp {
+  id        String   @id @default(uuid())
+  userId    String?
+  storeId   String?
+  phone     String
+  otpHash   String
+  salt      String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  store     Store?   @relation(fields: [storeId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([phone])
+  @@index([storeId])
+}
+
+model SupplierStore {
+  id         String    @id @default(uuid())
+  supplierId String
+  storeId    String
+  linkedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  store      Store     @relation(fields: [storeId], references: [id])
+  supplier   Supplier  @relation(fields: [supplierId], references: [id])
+
+  @@unique([supplierId, storeId], name: "supplierId_storeId")
+  @@index([storeId])
+  @@index([supplierId])
+}
+
+model SupplierRequest {
+  id          String                @id @default(uuid())
+  supplierId  String
+  storeId     String
+  message     String?
+  status      SupplierRequestStatus @default(PENDING)
+  createdById String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  store       Store                 @relation(fields: [storeId], references: [id])
+  supplier    Supplier              @relation(fields: [supplierId], references: [id])
+
+  @@index([storeId, status])
+  @@index([supplierId, status])
+}
+
 enum Role {
   SUPERADMIN
   ADMIN
@@ -59,8 +339,6 @@ enum ReorderStatus {
   FAILED
 }
 
-
-
 enum PaymentMethod {
   CASH
   CARD
@@ -77,314 +355,8 @@ enum PaymentStatus {
   PARTIALLY_REFUNDED
 }
 
-model Store {
-  id            String    @id @default(uuid())
-  name          String
-  slug          String    @unique
-  timezone      String    @default("Asia/Kolkata")
-  currency      String    @default("INR")
-  settings      Json?
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  users                 UserStoreRole[]
-  medicines             Medicine[]
-  suppliers             Supplier[]
-  inventory             InventoryBatch[]
-  uploads               Upload[]
-  activityLogs          ActivityLog[]
-  stockMovements        StockMovement[]
-  otps                  Otp[]
-  sales                 Sale[]
-
-  @@index([slug])
-  supplierStores SupplierStore[]
-  supplierRequests SupplierRequest[]
-}
-
-model User {
-  id           String    @id @default(uuid())
-  username     String    @unique
-  email        String    @unique
-  passwordHash String?
-  imageUrl     String?
-  phone        String?   @unique
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  isverified   Boolean   @default(false)
-
-  globalRole   Role?
-
-  stores       UserStoreRole[]
-  otps         Otp[]
-  activityLogs ActivityLog[]
-
-  stockMovements StockMovement[]
-
-
-
-
-  suppliers Supplier[]
-
-
-  sales Sale[]
-}
-
-model UserStoreRole {
-  id        String   @id @default(uuid())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  store     Store    @relation(fields: [storeId], references: [id])
-  storeId   String
-  role      Role
-  createdAt DateTime @default(now())
-
-  @@unique([userId, storeId])
-  @@index([storeId])
-  @@index([userId])
-}
-
-model Supplier {
-  id               String   @id @default(uuid())
-  supLegacyId      Int?
-  store            Store?   @relation(fields: [storeId], references: [id])
-  storeId          String?
-  name             String
-  address          String?
-  phone            String?
-  contactName      String?
-  defaultLeadTime  Int?
-  defaultMOQ       Int?
-  externalMeta     Json?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  isActive         Boolean  @default(true)
-
-  user             User?    @relation(fields: [userId], references: [id])
-  userId           String?  @unique
-
-  medicines        Medicine[]
-
-  supplierStores SupplierStore[]
-
-  supplierRequests SupplierRequest[]
-}
-
-
-
-model Medicine {
-  id            String    @id @default(uuid())
-  ndc           String?
-  store         Store     @relation(fields: [storeId], references: [id])
-  storeId       String
-  sku           String?
-  brandName     String
-  genericName   String?
-  dosageForm    String?
-  strength      String?
-  uom           String?
-  category      String?
-  taxInfo       Json?
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  inventory     InventoryBatch[]
-  stockMovements StockMovement[]
-  suppliers     Supplier[]
-  saleItems     SaleItem[]
-
-  @@index([storeId, brandName])
-  @@index([storeId, ndc])
-}
-
-model InventoryBatch {
-  id            String    @id @default(uuid())
-  store         Store     @relation(fields: [storeId], references: [id])
-  storeId       String
-  medicine      Medicine  @relation(fields: [medicineId], references: [id])
-  medicineId    String
-  batchNumber   String?
-  qtyReceived   Int       @default(0)
-  qtyAvailable  Int       @default(0)
-  qtyReserved   Int       @default(0)
-  expiryDate    DateTime?
-  purchasePrice Decimal?  @db.Decimal(12, 2)
-  mrp           Decimal?  @db.Decimal(12, 2)
-  receivedAt    DateTime?
-  location      String?
-  version       Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  movements     StockMovement[]
-  saleItems     SaleItem[]
-
-  @@index([storeId, medicineId])
-  @@index([storeId, batchNumber])
-  @@index([storeId, expiryDate])
-  @@index([storeId, expiryDate, medicineId])
-}
-
-model Upload {
-  id            String     @id @default(uuid())
-  store         Store      @relation(fields: [storeId], references: [id])
-  storeId       String
-  filename      String?
-  status        UploadStatus @default(PENDING)
-  metadata      Json?      // for ML feedback/errors
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-
-  @@index([storeId, status])
-}
-
-
-
-model StockMovement {
-  id            String    @id @default(uuid())
-  store         Store     @relation(fields: [storeId], references: [id])
-  storeId       String
-  inventory     InventoryBatch @relation(fields: [inventoryId], references: [id])
-  inventoryId   String
-  medicine      Medicine  @relation(fields: [medicineId], references: [id])
-  medicineId    String
-  delta         Int
-  reason        StockMovementReason
-  note          String?
-  performedBy   User?     @relation(fields: [performedById], references: [id])
-  performedById String?
-  saleItem      SaleItem? @relation(fields: [saleItemId], references: [id])
-  saleItemId    String?
-  createdAt     DateTime  @default(now())
-
-  @@index([storeId, medicineId])
-  @@index([storeId, createdAt])
-}
-
-model ActivityLog {
-  id           String   @id @default(uuid())
-  store        Store    @relation(fields: [storeId], references: [id])
-  storeId      String
-  user         User?    @relation(fields: [userId], references: [id])
-  userId       String?
-  action       String
-  payload      Json?
-  createdAt    DateTime @default(now())
-
-  @@index([storeId, createdAt])
-}
-
-model AuditLog {
-  id           String   @id @default(uuid())
-  actorId      String?
-  actorType    String?
-  storeId      String?
-  action       String
-  resource     String?
-  resourceId   String?
-  payload      Json?
-  createdAt    DateTime @default(now())
-
-  @@index([storeId, actorId])
-}
-
-
-
-model Sale {
-  id            String   @id @default(uuid())
-  store         Store    @relation(fields: [storeId], references: [id])
-  storeId       String
-  createdBy     User?    @relation(fields: [createdById], references: [id])
-  createdById   String?
-  // No patient/prescription relation
-  subtotal      Decimal? @db.Decimal(12, 2)
-  tax           Decimal? @db.Decimal(12, 2)
-  discounts     Decimal? @db.Decimal(12, 2)
-  totalValue    Decimal? @db.Decimal(12, 2)
-  paymentMethod PaymentMethod?
-  paymentStatus PaymentStatus @default(PENDING)
-  externalRef   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  items         SaleItem[]
-  @@index([storeId, paymentStatus])
-}
-
-model SaleItem {
-  id               String   @id @default(uuid())
-  sale             Sale     @relation(fields: [saleId], references: [id])
-  saleId           String
-  medicine         Medicine @relation(fields: [medicineId], references: [id])
-  medicineId       String
-  inventoryBatch   InventoryBatch? @relation(fields: [inventoryBatchId], references: [id])
-  inventoryBatchId String?
-  qty              Int
-  unitPrice        Decimal? @db.Decimal(12, 2)
-  lineTotal        Decimal? @db.Decimal(12, 2)
-  createdAt        DateTime @default(now())
-
-  stockMovements   StockMovement[]
-  @@index([saleId])
-  @@index([medicineId])
-}
-
-
-
-
-model Otp {
-  id           String   @id @default(uuid())
-  user         User?    @relation(fields: [userId], references: [id])
-  userId       String?
-  store        Store?   @relation(fields: [storeId], references: [id])
-  storeId      String?
-  phone        String
-  otpHash      String
-  salt         String
-  attempts     Int      @default(0)
-  expiresAt    DateTime
-  used         Boolean  @default(false)
-  createdAt    DateTime @default(now())
-
-  @@index([phone])
-  @@index([storeId])
-}
-
 enum SupplierRequestStatus {
   PENDING
   ACCEPTED
   REJECTED
-}
-
-model SupplierStore {
-  id         String  @id @default(uuid())
-  supplier   Supplier @relation(fields: [supplierId], references: [id])
-  supplierId String
-  store      Store    @relation(fields: [storeId], references: [id])
-  storeId    String
-  linkedAt   DateTime?
-  createdAt  DateTime @default(now())
-
-  @@unique([supplierId, storeId], name: "supplierId_storeId")
-  @@index([storeId])
-  @@index([supplierId])
-}
-
-model SupplierRequest {
-  id          String                @id @default(uuid())
-  supplier    Supplier              @relation(fields: [supplierId], references: [id])
-  supplierId  String
-  store       Store                 @relation(fields: [storeId], references: [id])
-  storeId     String
-  message     String?               // optional note from supplier
-  status      SupplierRequestStatus @default(PENDING)
-  createdById String?               // user.id that created request (supplier user)
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
-
-  @@index([storeId, status])
-  @@index([supplierId, status])
 }

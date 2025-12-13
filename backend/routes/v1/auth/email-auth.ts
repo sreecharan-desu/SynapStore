@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { generateOtp, getOtpExpiryDate } from "../../../lib/otp";
 import { sendMail } from "../../../lib/mailer";
-import { getOtpEmailTemplate } from "../../../lib/emailTemplates";
+import { getOtpEmailTemplate, getNotificationEmailTemplate } from "../../../lib/emailTemplates";
 
 import { hashPassword, comparePassword, signJwt } from "../../../lib/auth";
 import { z } from "zod";
@@ -162,15 +162,14 @@ async function createOtpForUser(
   otpPlain: string,
   expiresAt: Date
 ) {
-  // deterministic encryption for phone (email) so we can query by it
-  const encPhone = crypto$.encryptCellDeterministic(email);
-  const encOtp = crypto$.encryptCell(otpPlain);
+  // Pass plaintext; middleware handles encryption
+  // phone uses deterministic (lookup), otpHash uses randomized (secure)
   const otpRow = await prisma.otp.create({
     data: {
       userId: userId ?? undefined,
       storeId: undefined,
-      phone: encPhone,
-      otpHash: encOtp,
+      phone: email,     // middleware -> encryptCellDeterministic
+      otpHash: otpPlain, // middleware -> encryptCell
       salt: "",
       expiresAt,
       used: false,
@@ -229,15 +228,15 @@ router.post(
       const hashed = await hashPassword(password);
       const encEmail = crypto$.encryptCellDeterministic(email);
 
-      // create user (password stored hashed, not encrypted)
+      // create user (password stored hashed, not encrypted; email/username auto-encrypted by middleware)
       let userRow;
       try {
         userRow = await prisma.user.create({
           data: {
-            username: encUsername,
-            email: encEmail,
+            username: username, // plaintext, middleware encrypts deterministically
+            email: email,       // plaintext, middleware encrypts deterministically
             passwordHash: hashed,
-            globalRole: "STORE_OWNER"
+            globalRole: null
             // isverified defaults to false per schema
           },
           select: { id: true, username: true, email: true },
@@ -251,6 +250,7 @@ router.post(
       const otpExpiry = getOtpExpiryDate();
 
       try {
+        // Pass plaintext args, createOtpForUser adjusted below
         await createOtpForUser(userRow.id, email, otp, otpExpiry);
       } catch (pErr: any) {
         return handlePrismaError(res, pErr, "OTP");
@@ -437,6 +437,19 @@ router.post(
       // if SUPERADMIN, bypass store checks and return global admin context
       if (user.globalRole === "SUPERADMIN") {
         responseData.user.globalRole = "SUPERADMIN";
+
+        // EMAIL NOTIFICATION: Superadmin Sign-in
+        sendMail({
+          to: email,
+          subject: "Security Alert: Superadmin Sign-In",
+          html: getNotificationEmailTemplate(
+            "New Superadmin Sign-In",
+            `A new sign-in to your superadmin account occurred at ${new Date().toLocaleString()}.<br/><br/>
+             IP Address: ${req.ip}<br/>
+             User Agent: ${req.headers["user-agent"] || "Unknown"}`
+          ),
+        }).catch(e => console.error("Failed to send superadmin signin alert", e));
+
         return sendSuccess(res, "Signed in as Superadmin", responseData);
       }
       else if (user.globalRole === "SUPPLIER") {
@@ -457,6 +470,18 @@ router.post(
         responseData.suppliers = supplier ? [supplier] : [];
         // decrypt username if needed, handled by variable 'user' coming from findUserByEmail which decrypts
         
+        // EMAIL NOTIFICATION: Supplier Sign-in
+        sendMail({
+          to: email,
+          subject: "Security Alert: Supplier Sign-In",
+          html: getNotificationEmailTemplate(
+            "New Supplier Sign-In",
+            `A new sign-in to your supplier account occurred at ${new Date().toLocaleString()}.<br/><br/>
+             IP Address: ${req.ip}<br/>
+             User Agent: ${req.headers["user-agent"] || "Unknown"}`
+          ),
+        }).catch(e => console.error("Failed to send supplier signin alert", e));
+
         return sendSuccess(res, "Signed in as Supplier", responseData);
       }
       else {
@@ -491,12 +516,37 @@ router.post(
             ...s.store,
             roles: [s.role],
           };
+          // EMAIL NOTIFICATION: Sign-in
+          sendMail({
+            to: email,
+            subject: "Security Alert: New Sign-In",
+            html: getNotificationEmailTemplate(
+              "New Sign-In Detected",
+              `A new sign-in to your account occurred at ${new Date().toLocaleString()}.<br/><br/>
+               IP Address: ${req.ip}<br/>
+               User Agent: ${req.headers["user-agent"] || "Unknown"}`
+            ),
+          }).catch(e => console.error("Failed to send signin alert email", e));
+
            return sendSuccess(res, "Signed in successfully", responseData);
         }
 
         // (future support) MULTIPLE STORES → frontend must show switcher
         responseData.stores = stores; // maps to store names
         responseData.needsStoreSelection = true;
+        
+        // EMAIL NOTIFICATION: New Sign-in
+        sendMail({
+          to: email,
+          subject: "Security Alert: New Sign-In",
+          html: getNotificationEmailTemplate(
+            "New Sign-In Detected",
+            `A new sign-in to your account occurred at ${new Date().toLocaleString()}.<br/><br/>
+             IP Address: ${req.ip}<br/>
+             User Agent: ${req.headers["user-agent"] || "Unknown"}`
+          ),
+        }).catch(e => console.error("Failed to send signin alert email", e));
+
         return sendSuccess(res, "Signed in. Please select a store.", responseData);
       }
 
@@ -594,6 +644,18 @@ router.post(
       // Fire notification asynchronously
       // Notification removed to prevent broadcast vulnerability (user not yet authenticated specifically)
       // notificationQueue.add("send-notification", { ... });
+
+      // EMAIL NOTIFICATION: OTP Verified
+      if (email) {
+          sendMail({
+            to: email,
+            subject: "Security Alert: Email Verified",
+            html: getNotificationEmailTemplate(
+              "Email Verified Successfully",
+              `Your email address was successfully verified at ${new Date().toLocaleString()}.`
+            ),
+          }).catch(e => console.error("Failed to send verification success email", e));
+      }
 
       return sendSuccess(res, "OTP verified successfully");
     } catch (err: any) {
