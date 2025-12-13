@@ -52,12 +52,13 @@ const SupplierDashboard: React.FC = () => {
     const setAuth = useSetRecoilState(authState);
     const navigate = useNavigate();
 
-    const [activeTab, setActiveTab] = useState<"dashboard" | "marketplace" | "requests" | "profile">("dashboard");
+    const [activeTab, setActiveTab] = useState<"dashboard" | "marketplace" | "requests" | "profile" | "my-stores">("dashboard");
     const [loading, setLoading] = useState(false);
 
     // Data
     const [stores, setStores] = useState<Store[]>([]);
     const [requests, setRequests] = useState<SupplierRequest[]>([]);
+    const [connectedStores, setConnectedStores] = useState<Store[]>([]);
 
     // Profile form state
     const [profileForm, setProfileForm] = useState({
@@ -98,6 +99,11 @@ const SupplierDashboard: React.FC = () => {
             } else if (activeTab === "requests") {
                 const res = await suppliersApi.getDetails(currentSupplier?.id);
                 if (res.data.success) setRequests(res.data.data.requests);
+            } else if (activeTab === "my-stores") {
+                const res = await suppliersApi.getDetails(currentSupplier?.id);
+                if (res.data.success) {
+                    setConnectedStores(res.data.data.supplier?.supplierStores?.map(s => s.store) || []);
+                }
             } else if (activeTab === "profile") {
                 // If we implemented an endpoint to get full profile details, we'd call it here
             }
@@ -105,6 +111,20 @@ const SupplierDashboard: React.FC = () => {
             console.error("Fetch error", err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDisconnectStore = async (storeId: string) => {
+        if (!confirm("Are you sure you want to disconnect from this store?")) return;
+        try {
+            const res = await suppliersApi.disconnectStore(storeId);
+            if (res.data.success) {
+                setConnectedStores(prev => prev.filter(s => s.id !== storeId));
+                alert("Store disconnected successfully.");
+            }
+        } catch(err) {
+            console.error("Failed to disconnect", err);
+            alert("Failed to disconnect store");
         }
     };
 
@@ -209,7 +229,7 @@ const SupplierDashboard: React.FC = () => {
 
                             <div className="flex items-center gap-4">
                                 <nav className="hidden md:flex gap-1">
-                                    {(["dashboard", "marketplace", "requests", "profile"] as const).map(tab => (
+                                    {(["dashboard", "marketplace", "my-stores", "requests", "profile"] as const).map(tab => (
                                         <button
                                             key={tab}
                                             onClick={() => setActiveTab(tab)}
@@ -218,7 +238,7 @@ const SupplierDashboard: React.FC = () => {
                                                 : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
                                                 }`}
                                         >
-                                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                            {tab.charAt(0).toUpperCase() + tab.slice(1).replace('-', ' ')}
                                         </button>
                                     ))}
                                 </nav>
@@ -405,6 +425,60 @@ const SupplierDashboard: React.FC = () => {
                                                 )}
                                             </tbody>
                                         </table>
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {/* MY STORES TAB */}
+                            {activeTab === "my-stores" && (
+                                <motion.div
+                                    key="my-stores"
+                                    initial={{ opacity: 0, x: 20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: -20 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+                                >
+                                    <div className="p-6 border-b border-slate-100">
+                                        <h2 className="text-lg font-bold text-slate-800">Connected Stores</h2>
+                                        <p className="text-sm text-slate-500">Manage your active store connections.</p>
+                                    </div>
+                                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {connectedStores.map(store => (
+                                            <div key={store.id} className="border border-slate-200 rounded-xl p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                                                <div>
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
+                                                            <StoreIcon className="w-5 h-5 text-slate-600" />
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="font-bold text-slate-800">{store.name}</h3>
+                                                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{store.slug}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2 mt-4 text-xs">
+                                                        <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded border border-emerald-100 flex items-center gap-1">
+                                                            <CheckCircle className="w-3 h-3" /> Active
+                                                        </span>
+                                                        <span className="bg-slate-50 text-slate-600 px-2 py-1 rounded border border-slate-100">
+                                                            {store.currency}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <Button 
+                                                    variant="outline" 
+                                                    className="mt-6 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 w-full"
+                                                    onClick={() => handleDisconnectStore(store.id)}
+                                                >
+                                                    Disconnect
+                                                </Button>
+                                            </div>
+                                        ))}
+                                        {!loading && connectedStores.length === 0 && (
+                                            <div className="col-span-full py-12 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                You are not connected to any stores yet.
+                                            </div>
+                                        )}
                                     </div>
                                 </motion.div>
                             )}

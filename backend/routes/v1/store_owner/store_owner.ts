@@ -904,24 +904,19 @@ dashboardRouter.post(
       if (existingConn) return sendError(res, "Already connected to this supplier", 409);
 
       // Check if pending request exists
-      const existingReq = await prisma.supplierRequest.findFirst({
-        where: {
-          supplierId,
-          storeId: store.id,
-          status: "PENDING"
-        }
+      const existing = await prisma.supplierRequest.findFirst({
+        where: { supplierId: parsed.data.supplierId, storeId: store.id, status: "PENDING" },
       });
-      if (existingReq) return sendError(res, "A pending request already exists", 409);
+      if (existing) return sendError(res, "Request already pending", 409);
 
-      // Create Request
       const newReq = await prisma.supplierRequest.create({
         data: {
-          supplierId,
+          supplierId: parsed.data.supplierId,
           storeId: store.id,
+          message: parsed.data.message ?? undefined,
           createdById: user.id,
-          message,
           status: "PENDING"
-        }
+        },
       });
 
       // Notify Supplier
@@ -996,6 +991,21 @@ dashboardRouter.delete(
           }
         }
       });
+
+      // Cancel the underlying accepted request to allow re-discovery
+      const acceptedReq = await prisma.supplierRequest.findFirst({
+        where: {
+            supplierId,
+            storeId: store.id,
+            status: "ACCEPTED"
+        }
+      });
+      if (acceptedReq) {
+        await prisma.supplierRequest.update({
+            where: { id: acceptedReq.id },
+            data: { status: "REJECTED" }
+        });
+      }
 
       // Also mark any ACCEPTED requests as... actually keep them as history.
       // But maybe we should cleanup pending ones?

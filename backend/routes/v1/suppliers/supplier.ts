@@ -345,6 +345,17 @@ router.post(
       });
       if (!supplier) return sendError(res, "Supplier not found", 404);
 
+      // Check if already connected
+      const alreadyConnected = await prisma.supplierStore.findUnique({
+        where: {
+          supplierId_storeId: {
+            supplierId,
+            storeId,
+          },
+        },
+      });
+      if (alreadyConnected) return sendError(res, "Already connected to this store", 409, { code: "already_connected" });
+
       // prevent duplicate pending requests
       const existing = await prisma.supplierRequest.findFirst({
         where: { supplierId, storeId, status: "PENDING" },
@@ -415,7 +426,7 @@ router.post(
  *  - supplierId: string (UUID)
  * Body: None
  * Responses:
- *  - 200: { success: true, data: { supplier: { ... }, requests: [...] } }
+ *  - 200: { success: true, data: { supplier: { ... }, requests: [...], connectedStores: [...] } }
  *  - 500: Internal server error
  */
 router.get(
@@ -431,6 +442,22 @@ router.get(
 
       const supplier = await prisma.supplier.findUnique({
         where: { id: supplierId },
+        include: {
+            supplierStores: {
+                include: {
+                    store: {
+                        select: {
+                            id: true,
+                            name: true,
+                            slug: true,
+                            currency: true,
+                            timezone: true,
+                            isActive: true
+                        }
+                    }
+                }
+            }
+        }
       });
 
       const requests = await prisma.supplierRequest.findMany({
@@ -457,9 +484,6 @@ router.get(
     }
   }
 );
-
-
-
 
 
 
@@ -523,6 +547,7 @@ router.delete(
           
           if (!conn) return sendError(res, "Connection not found", 404);
   
+          // Delete connection
           await prisma.supplierStore.delete({
               where: {
                   supplierId_storeId: {
@@ -531,7 +556,23 @@ router.delete(
                   } 
               }
           });
-  
+
+          // Also cancel the ACCEPTED request so it doesn't block re-discovery
+          const acceptedRequest = await prisma.supplierRequest.findFirst({
+            where: {
+                supplierId: supplier.id,
+                storeId,
+                status: "ACCEPTED"
+            }
+          });
+          
+          if (acceptedRequest) {
+            await prisma.supplierRequest.update({
+                where: { id: acceptedRequest.id },
+                data: { status: "REJECTED" }
+            });
+          }
+
           // Notify Store Owner(s)
           const store = await prisma.store.findUnique({ where: { id: storeId } });
           if (store) {
