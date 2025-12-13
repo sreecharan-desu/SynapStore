@@ -1,71 +1,75 @@
-
 /**
  * Email Templates for SynapStore
- * Using inline CSS for maximum compatibility.
+ * "Super Classy" Design: Minimalist, clean typography, professional darks.
  */
 
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
 const BASE_STYLES = `
-  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   max-width: 600px;
   margin: 0 auto;
-  padding: 20px;
-  background-color: #f6f9fc;
-  border-radius: 8px;
+  padding: 40px 20px;
+  background-color: #f3f4f6; /* Slate-100 */
 `;
 
 const CONTAINER_STYLES = `
   background-color: #ffffff;
-  padding: 30px;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  border: 1px solid #e5e7eb;
 `;
 
 const HEADING_STYLES = `
-  color: #1a1a1a;
+  color: #111827; /* Gray-900 */
   font-size: 24px;
-  margin-bottom: 20px;
-  font-weight: 600;
+  margin-bottom: 24px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-align: center;
 `;
 
 const PARAGRAPH_STYLES = `
-  color: #4a5568;
+  color: #4b5563; /* Gray-600 */
   font-size: 16px;
-  line-height: 1.6;
-  margin-bottom: 15px;
+  line-height: 1.625;
+  margin-bottom: 20px;
 `;
 
 const BUTTON_STYLES = `
   display: inline-block;
-  background-color: #3b82f6;
+  background-color: #111827; /* Gray-900 */
   color: #ffffff;
-  padding: 12px 24px;
-  border-radius: 6px;
+  padding: 14px 28px;
+  border-radius: 8px;
   text-decoration: none;
-  font-weight: 500;
-  margin-top: 20px;
+  font-weight: 600;
+  margin-top: 24px;
+  font-size: 14px;
 `;
 
 const FOOTER_STYLES = `
-  margin-top: 30px;
+  margin-top: 32px;
   text-align: center;
-  color: #a0aec0;
+  color: #9ca3af; /* Gray-400 */
   font-size: 12px;
 `;
 
-function wrapContent(content: string): string {
+function wrapContent(content: string, title: string = "SynapStore"): string {
   return `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${title}</title>
     </head>
-    <body style="margin: 0; padding: 0; background-color: #f6f9fc;">
+    <body style="margin: 0; padding: 0; background-color: #f3f4f6; -webkit-font-smoothing: antialiased;">
       <div style="${BASE_STYLES}">
         <div style="${CONTAINER_STYLES}">
-          <div style="text-align: center; margin-bottom: 30px;">
-             <!-- Placeholder for Logo if needed, for now just Text -->
-             <h1 style="color: #3b82f6; margin: 0; font-size: 28px; font-weight: bold;">SynapStore</h1>
+          <div style="text-align: center; margin-bottom: 32px;">
+             <span style="color: #111827; font-size: 20px; font-weight: 800; tracking-wide: 0.1em; text-transform: uppercase;">SynapStore</span>
           </div>
           ${content}
         </div>
@@ -80,86 +84,123 @@ function wrapContent(content: string): string {
 
 export function getOtpEmailTemplate(otp: string): string {
   return wrapContent(`
-    <h2 style="${HEADING_STYLES}">Verify Your Email</h2>
-    <p style="${PARAGRAPH_STYLES}">
-      Thank you for registering with SynapStore. To complete your sign up, please use the following verification code:
+    <h2 style="${HEADING_STYLES}">Verify Your Account</h2>
+    <p style="${PARAGRAPH_STYLES} text-align: center;">
+      Use the secure code below to complete your sign-in.
     </p>
-    <div style="text-align: center; margin: 30px 0;">
-      <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #2d3748; background: #edf2f7; padding: 10px 20px; border-radius: 8px;">
+    <div style="text-align: center; margin: 40px 0;">
+      <span style="font-family: monospace; font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #111827; background: #f3f4f6; padding: 16px 32px; border-radius: 12px; border: 1px solid #e5e7eb;">
         ${otp}
       </span>
     </div>
-    <p style="${PARAGRAPH_STYLES}">
-      This code will expire in 10 minutes. If you didn't request this code, you can safely ignore this email.
+    <p style="${PARAGRAPH_STYLES} font-size: 14px; text-align: center; color: #6b7280;">
+      This code is valid for 10 minutes.
     </p>
-  `);
+  `, "Verify Email");
 }
 
 export function getSupplierRequestEmailTemplate(supplierName: string, message?: string): string {
   const messageBlock = message 
-    ? `<div style="background-color: #f7fafc; padding: 15px; border-left: 4px solid #3b82f6; margin: 15px 0; color: #4a5568; font-style: italic;">"${message}"</div>` 
+    ? `<div style="background-color: #f9fafb; padding: 20px; border-left: 4px solid #111827; margin: 24px 0; color: #4b5563; font-style: italic;">"${message}"</div>` 
     : '';
 
   return wrapContent(`
-    <h2 style="${HEADING_STYLES}">New Supplier Connection Request</h2>
+    <h2 style="${HEADING_STYLES}">New Connection Request</h2>
     <p style="${PARAGRAPH_STYLES}">
-      <strong>${supplierName}</strong> has requested to connect with your store.
+      <strong>${supplierName}</strong> has requested to join your supplier network.
     </p>
     ${messageBlock}
     <p style="${PARAGRAPH_STYLES}">
-      Please log in to your dashboard to review this request.
+      Review their profile and deciding whether to accept instantly on your dashboard.
     </p>
     <div style="text-align: center;">
-      <a href="${process.env.APP_URL || '#'}" style="${BUTTON_STYLES}">Go to Dashboard</a>
+      <a href="${FRONTEND_URL}/dashboard" style="${BUTTON_STYLES}">Review Request</a>
     </div>
-  `);
+  `, "Connection Request");
 }
 
-export function getRequestAcceptedEmailTemplate(storeName: string): string {
+export function getStoreConnectionRequestEmailTemplate(storeName: string, message?: string): string {
+  const messageBlock = message 
+    ? `<div style="background-color: #f9fafb; padding: 20px; border-left: 4px solid #111827; margin: 24px 0; color: #4b5563; font-style: italic;">"${message}"</div>` 
+    : '';
+
   return wrapContent(`
-    <h2 style="${HEADING_STYLES}">Request Accepted!</h2>
+    <h2 style="${HEADING_STYLES}">Partnership Inquiry</h2>
     <p style="${PARAGRAPH_STYLES}">
-      Good news! Your request to supply <strong>${storeName}</strong> has been accepted.
+      <strong>${storeName}</strong> is interested in sourcing from you.
     </p>
+    ${messageBlock}
     <p style="${PARAGRAPH_STYLES}">
-      You can now start managing inventory and engaging with this store through your portal.
+      Log in to your portal to manage this connection.
     </p>
     <div style="text-align: center;">
-      <a href="${process.env.APP_URL || '#'}" style="${BUTTON_STYLES}">View Store</a>
+      <a href="${FRONTEND_URL}/supplier/dashboard" style="${BUTTON_STYLES}">Supplier Dashboard</a>
     </div>
-  `);
+  `, "New Partnership");
 }
 
-export function getRequestRejectedEmailTemplate(storeName: string): string {
+export function getRequestAcceptedEmailTemplate(partnerName: string): string {
   return wrapContent(`
-    <h2 style="${HEADING_STYLES}">Request Update</h2>
+    <h2 style="${HEADING_STYLES}">Connection Active</h2>
     <p style="${PARAGRAPH_STYLES}">
-      Your request to supply <strong>${storeName}</strong> was not accepted at this time.
+      Great news. Your connection with <strong>${partnerName}</strong> is now active.
     </p>
     <p style="${PARAGRAPH_STYLES}">
-      You can try contacting the store directly or waiting before sending another request.
+      You can now begin seamless inventory operations.
     </p>
-  `);
+    <div style="text-align: center;">
+      <a href="${FRONTEND_URL}/dashboard" style="${BUTTON_STYLES}">Go to Dashboard</a>
+    </div>
+  `, "Request Accepted");
+}
+
+export function getRequestRejectedEmailTemplate(partnerName: string): string {
+  return wrapContent(`
+    <h2 style="${HEADING_STYLES}">Status Update</h2>
+    <p style="${PARAGRAPH_STYLES}">
+      Your connection request to <strong>${partnerName}</strong> was declined at this time.
+    </p>
+    <p style="${PARAGRAPH_STYLES}">
+      This may be due to current vendor capacity. You are welcome to try again in the future.
+    </p>
+  `, "Request Status");
+}
+
+export function getDisconnectionEmailTemplate(partnerName: string): string {
+  return wrapContent(`
+    <h2 style="${HEADING_STYLES}">Connection Terminated</h2>
+    <p style="${PARAGRAPH_STYLES}">
+      The secure link with <strong>${partnerName}</strong> has been closed.
+    </p>
+    <p style="${PARAGRAPH_STYLES}">
+      All active data sharing has ceased efficiently.
+    </p>
+    <div style="text-align: center;">
+      <a href="${FRONTEND_URL}" style="${BUTTON_STYLES} background-color: #f3f4f6; color: #374151; border: 1px solid #d1d5db;">Return to Home</a>
+    </div>
+  `, "Connection Ended");
 }
 
 export function getReceiptEmailTemplate(storeName: string, receiptData: any): string {
-  // Assuming receiptData has some basic info like date, total items, etc.
-  // This is a placeholder since we don't have the full receipt structure yet.
-  
   return wrapContent(`
-    <h2 style="${HEADING_STYLES}">Inventory Upload Processed</h2>
+    <h2 style="${HEADING_STYLES}">Processing Complete</h2>
     <p style="${PARAGRAPH_STYLES}">
-      The inventory upload from <strong>${storeName}</strong> has been successfully processed.
+      Inventory data for <strong>${storeName}</strong> has been successfully processed.
     </p>
-    <div style="background-color: #f8fafc; padding: 20px; border-radius: 6px; margin: 20px 0;">
-        <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-        <p style="margin: 5px 0;"><strong>Status:</strong> Success</p>
-        <!-- Add more details here when available -->
+    <div style="background-color: #f9fafb; padding: 24px; border-radius: 8px; margin: 24px 0; border: 1px solid #e5e7eb;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <strong style="color: #111827;">Status</strong>
+          <span style="color: #059669; font-weight: 600;">Success</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+           <strong style="color: #111827;">Date</strong>
+           <span>${new Date().toLocaleDateString()}</span>
+        </div>
     </div>
-    <p style="${PARAGRAPH_STYLES}">
-      You can view the detailed report in your dashboard.
-    </p>
-  `);
+    <div style="text-align: center;">
+      <a href="${FRONTEND_URL}/dashboard" style="${BUTTON_STYLES}">View Report</a>
+    </div>
+  `, "Upload Receipt");
 }
 
 export function getNotificationEmailTemplate(title: string, message: string): string {
@@ -168,40 +209,5 @@ export function getNotificationEmailTemplate(title: string, message: string): st
     <p style="${PARAGRAPH_STYLES}">
       ${message}
     </p>
-    <p style="${PARAGRAPH_STYLES}; font-size: 14px; color: #718096; margin-top: 20px;">
-      If this wasn't you, please contact support immediately.
-    </p>
-  `);
-}
-
-export function getStoreConnectionRequestEmailTemplate(storeName: string, message?: string): string {
-  const messageBlock = message 
-    ? `<div style="background-color: #f7fafc; padding: 15px; border-left: 4px solid #3b82f6; margin: 15px 0; color: #4a5568; font-style: italic;">"${message}"</div>` 
-    : '';
-
-  return wrapContent(`
-    <h2 style="${HEADING_STYLES}">New Connection Request</h2>
-    <p style="${PARAGRAPH_STYLES}">
-      <strong>${storeName}</strong> has requested to connect with you.
-    </p>
-    ${messageBlock}
-    <p style="${PARAGRAPH_STYLES}">
-      Please log in to your supplier dashboard to review this request.
-    </p>
-    <div style="text-align: center;">
-      <a href="${process.env.APP_URL || '#'}" style="${BUTTON_STYLES}">Go to Dashboard</a>
-    </div>
-  `);
-}
-
-export function getDisconnectionEmailTemplate(partyName: string): string {
-  return wrapContent(`
-    <h2 style="${HEADING_STYLES}">Connection Ended</h2>
-    <p style="${PARAGRAPH_STYLES}">
-      The connection with <strong>${partyName}</strong> has been terminated.
-    </p>
-    <p style="${PARAGRAPH_STYLES}">
-      You will no longer receive requests or updates from this connection.
-    </p>
-  `);
+  `, title);
 }

@@ -1002,7 +1002,7 @@ dashboardRouter.delete(
             storeId: store.id
           }
         }
-      });
+      }); 
 
       await prisma.supplierRequest.deleteMany({
         where: {
@@ -1053,6 +1053,141 @@ dashboardRouter.delete(
       }
 
       return sendSuccess(res, "Disconnected from supplier");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /v1/dashboard/:requestId/accept
+ * Description: Store owner accepts a supplier's inbound request.
+ */
+dashboardRouter.post(
+  "/:requestId/accept",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const { requestId } = req.params;
+      const store = req.store!;
+      const user = req.user!;
+
+      const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+      if (!request) return sendError(res, "Request not found", 404);
+      if (request.storeId !== store.id) return sendError(res, "Unauthorized request", 403);
+      if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
+
+      // Verify connection doesn't already exist
+      const existingConn = await prisma.supplierStore.findUnique({
+          where: { supplierId_storeId: { supplierId: request.supplierId, storeId: store.id } }
+      });
+      if (existingConn) {
+          // just update status if needed
+          await prisma.supplierRequest.update({ where: { id: requestId }, data: { status: "ACCEPTED" } });
+          return sendSuccess(res, "Already connected");
+      }
+
+      await prisma.$transaction(async (tx) => {
+          // Update request
+          await tx.supplierRequest.update({
+              where: { id: requestId },
+              data: { status: "ACCEPTED" }
+          });
+
+          // Create connection
+          await tx.supplierStore.create({
+              data: {
+                  supplierId: request.supplierId,
+                  storeId: store.id,
+                  linkedAt: new Date()
+              }
+          });
+
+          // Log Activity
+          await tx.activityLog.create({
+              data: {
+                  storeId: store.id,
+                  userId: user.id,
+                  action: "store_owner_request_accepted",
+                  payload: { requestId, supplierId: request.supplierId }
+              }
+          });
+      });
+
+      // Notify Supplier
+      const supplier = await prisma.supplier.findUnique({ where: { id: request.supplierId } });
+      if (supplier && supplier.userId) {
+          const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+          if (supUser?.email) {
+              sendMail({
+                  to: supUser.email,
+                  subject: `Request Accepted: ${store.name}`,
+                  html: getRequestAcceptedEmailTemplate(store.name)
+              }).catch(e => console.error("Email failed", e));
+          }
+      }
+
+      return sendSuccess(res, "Request accepted");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /v1/dashboard/:requestId/reject
+ * Description: Store owner rejects a supplier's inbound request.
+ */
+dashboardRouter.post(
+  "/:requestId/reject",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const { requestId } = req.params;
+      const store = req.store!;
+      const user = req.user!;
+
+      const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+      if (!request) return sendError(res, "Request not found", 404);
+      if (request.storeId !== store.id) return sendError(res, "Unauthorized request", 403);
+      
+      // Allow rejecting pending
+      if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
+
+      await prisma.supplierRequest.update({
+          where: { id: requestId },
+          data: { status: "REJECTED" }
+      });
+
+      await prisma.activityLog.create({
+          data: {
+              storeId: store.id,
+              userId: user.id,
+              action: "store_owner_request_rejected",
+              payload: { requestId, supplierId: request.supplierId }
+          }
+      });
+
+      // Notify Supplier
+      const supplier = await prisma.supplier.findUnique({ where: { id: request.supplierId } });
+      if (supplier && supplier.userId) {
+          const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+          if (supUser?.email) {
+              sendMail({
+                  to: supUser.email,
+                  subject: `Request Declined: ${store.name}`,
+                  html: getRequestRejectedEmailTemplate(store.name)
+              }).catch(e => console.error("Email failed", e));
+          }
+      }
+
+      return sendSuccess(res, "Request rejected");
     } catch (err) {
       next(err);
     }
