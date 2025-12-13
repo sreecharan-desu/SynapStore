@@ -109,13 +109,20 @@ function Dock({
                     mouseX.set(Infinity);
                 }}
                 className={cn(
-                    'mx-auto flex w-fit gap-4 rounded-2xl bg-gray-50 px-4 dark:bg-neutral-900',
+                    'mx-auto flex w-fit gap-4 rounded-2xl px-4 relative group',
                     className
                 )}
                 style={{ height: panelHeight }}
                 role='toolbar'
                 aria-label='Application dock'
             >
+                {/* Animated Border Layer */}
+                <div className="absolute inset-0 z-[-1] rounded-2xl overflow-hidden">
+                    <div className="absolute inset-[-50%] bg-[conic-gradient(from_0deg,#000,#402fb5_10%,#000_40%,#000_60%,#cf30aa_70%,#000_90%)] animate-[spin_4s_linear_infinite]" />
+                </div>
+                {/* Inner White Background */}
+                <div className="absolute inset-[1.5px] z-[-1] rounded-2xl bg-white" />
+
                 <DockProvider value={{ mouseX, spring, distance, magnification }}>
                     {children}
                 </DockProvider>
