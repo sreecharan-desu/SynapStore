@@ -45,10 +45,10 @@ function permissionsForRoles(roles: RoleEnum[] = []) {
   const has = (r: RoleEnum) => roles.includes(r);
 
   const canManageUsers =
-    has("SUPERADMIN") || has("ADMIN") || has("STORE_OWNER");
+    has("SUPERADMIN") || has("STORE_OWNER");
   const canEditInventory = canManageUsers || has("MANAGER") || has("STAFF");
   const canCreateReorder =
-    canManageUsers || has("MANAGER") || has("STORE_OWNER") || has("SUPPLIER");
+    canManageUsers || has("MANAGER") || has("STORE_OWNER");
   const canAcknowledgeAlerts = canManageUsers || has("MANAGER") || has("STAFF");
   const canViewReports = canManageUsers || has("MANAGER") || has("READ_ONLY");
 
@@ -566,7 +566,7 @@ dashboardRouter.get(
   authenticate,
   storeContext,
   requireStore,
-  requireRole(["STORE_OWNER", "ADMIN"]),
+  requireRole(["STORE_OWNER"]),
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const store = req.store!;
@@ -617,7 +617,7 @@ dashboardRouter.post(
   authenticate,
   storeContext,
   requireStore,
-  requireRole(["STORE_OWNER", "ADMIN"]),
+  requireRole(["STORE_OWNER"]),
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const id = String(req.params.id);
@@ -716,7 +716,7 @@ dashboardRouter.post(
   authenticate,
   storeContext,
   requireStore,
-  requireRole(["STORE_OWNER", "ADMIN"]),
+  requireRole(["STORE_OWNER"]),
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const id = String(req.params.id);
@@ -793,7 +793,7 @@ dashboardRouter.post(
   authenticate,
   storeContext,
   requireStore,
-  requireRole(["STORE_OWNER", "ADMIN"]),
+  requireRole(["STORE_OWNER"] ),
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const parsed = createReqSchema.safeParse(req.body);
@@ -886,7 +886,7 @@ dashboardRouter.delete(
   authenticate,
   storeContext,
   requireStore,
-  requireRole(["STORE_OWNER", "ADMIN"]),
+  requireRole(["STORE_OWNER"]),
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const { supplierId } = req.params;
