@@ -55,7 +55,7 @@ export const HeroParallax = ({
     return (
         <div
             ref={ref}
-            className="h-[300vh] py-40 overflow-hidden antialiased relative flex flex-col self-auto [perspective:1000px] [transform-style:preserve-3d] bg-slate-50"
+            className="h-[300vh] pt-18 pb-45 overflow-hidden antialiased relative flex flex-col self-auto [perspective:1000px] [transform-style:preserve-3d] bg-slate-50"
         >
             {/* Background Elements */}
             <div className="absolute inset-0 h-full w-full bg-white bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
@@ -117,7 +117,7 @@ export const Header = () => {
                 Powering Next-Gen Pharmacies
             </div>
 
-            <h1 className="text-4xl md:text-7xl font-bold text-slate-900 leading-tight tracking-tight">
+            <h1 className="text-6xl md:text-9xl font-bold text-slate-900 leading-tight tracking-tight">
                 Smart Pharmacy <br />
                 <span className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-600 bg-clip-text text-transparent">
                     Inventory Intelligence
@@ -146,13 +146,10 @@ export const ProductCard = ({
             style={{
                 x: translate,
             }}
-            whileHover={{
-                y: -20,
-            }}
             key={product.title}
             className="group/product h-96 w-[30rem] relative shrink-0"
         >
-            <div className="relative block group-hover/product:shadow-2xl h-full w-full rounded-2xl overflow-hidden shadow-lg border border-slate-200">
+            <div className="relative block h-full w-full rounded-2xl overflow-hidden shadow-lg border border-slate-200">
                 <img
                     src={product.thumbnail}
                     height="600"
@@ -161,10 +158,6 @@ export const ProductCard = ({
                     alt={product.title}
                 />
             </div>
-            <div className="absolute inset-0 h-full w-full opacity-0 group-hover/product:opacity-80 bg-black pointer-events-none rounded-2xl"></div>
-            <h2 className="absolute bottom-4 left-4 opacity-0 group-hover/product:opacity-100 text-white">
-                {product.title}
-            </h2>
         </motion.div>
     );
 };

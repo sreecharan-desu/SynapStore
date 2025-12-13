@@ -1,8 +1,6 @@
-
 "use client";
-import React, { useEffect, useRef, useState } from "react";
-import { useMotionValueEvent, useScroll } from "motion/react";
-import { motion } from "motion/react";
+import React, { useRef } from "react";
+import { useMotionValueEvent, useScroll, motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
 export const StickyScroll = ({
@@ -19,9 +17,8 @@ export const StickyScroll = ({
     const [activeCard, setActiveCard] = React.useState(0);
     const ref = useRef<any>(null);
     const { scrollYProgress } = useScroll({
-        // Using internal scroll tracking as per snippet
-        container: ref,
-        offset: ["start start", "end start"],
+        target: ref,
+        offset: ["start start", "end end"],
     });
     const cardLength = content.length;
 
@@ -40,31 +37,9 @@ export const StickyScroll = ({
         setActiveCard(closestBreakpointIndex);
     });
 
-    const backgroundColors = [
-        "#f8fafc", // slate-50
-        "#ffffff", // white
-        "#f1f5f9", // slate-100
-    ];
-    const linearGradients = [
-        "linear-gradient(to bottom right, #06b6d4, #10b981)",
-        "linear-gradient(to bottom right, #ec4899, #6366f1)",
-        "linear-gradient(to bottom right, #f97316, #eab308)",
-    ];
-
-    const [backgroundGradient, setBackgroundGradient] = useState(
-        linearGradients[0],
-    );
-
-    useEffect(() => {
-        setBackgroundGradient(linearGradients[activeCard % linearGradients.length]);
-    }, [activeCard]);
-
     return (
         <motion.div
-            animate={{
-                backgroundColor: backgroundColors[activeCard % backgroundColors.length],
-            }}
-            className="h-[90vh] flex justify-center space-x-10 overflow-y-auto w-full scrollbar-hide p-10 relative rounded-[2rem]"
+            className="flex justify-center space-x-10 w-full p-10 relative"
             ref={ref}
         >
             <div className="div relative flex items-start px-4 w-1/2">
@@ -82,26 +57,14 @@ export const StickyScroll = ({
                             >
                                 {item.title}
                             </motion.h2>
-                            <motion.p
-                                initial={{
-                                    opacity: 0,
-                                }}
-                                animate={{
-                                    opacity: activeCard === index ? 1 : 0.3,
-                                }}
-                                className="text-xl md:text-2xl mt-10 max-w-xl text-slate-600 leading-relaxed"
-                            >
-                                {item.description}
-                            </motion.p>
                         </div>
                     ))}
                     <div className="h-40" />
                 </div>
             </div>
             <motion.div
-                animate={{ background: backgroundGradient }}
                 className={cn(
-                    "hidden lg:block h-[80vh] w-1/2 sticky top-10 overflow-hidden rounded-[2rem] bg-white shadow-xl",
+                    "hidden lg:block h-[80vh] w-1/2 sticky top-20 overflow-hidden rounded-[2rem] bg-transparent shadow-none",
                     contentClassName,
                 )}
             >
@@ -110,4 +73,3 @@ export const StickyScroll = ({
         </motion.div>
     );
 };
-
