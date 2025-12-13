@@ -461,160 +461,109 @@ router.get("/users", requireRole("SUPERADMIN"), async (req: any, res) => {
 
 
 
-/* -----------------------
-   Admin - POST /v1/admin/users/:userId/convert-to-supplier
-*/
+import { EntityManager } from "../../../lib/entity-manager";
 
-/**
- * POST /v1/admin/users/:userId/convert-to-supplier
- * Description: Converts a user to a supplier role and ensures a supplier profile exists.
- * Headers: 
- *  - Authorization: Bearer <token> (Role: SUPERADMIN)
- * Body: None
- * Responses:
- *  - 200: { success: true }
- *  - 404: User not found
- *  - 500: Internal server error
- */
 router.post(
   "/users/:userId/convert-to-supplier",
   requireRole("SUPERADMIN"),
   async (req: any, res) => {
     try {
       const { userId } = req.params;
-      
-      const user = await prisma.user.findFirst({ where: { id: userId }, select: { username: true, stores: { select: { store: { select: { slug: true } } } } } });
-      console.log(user)
-      if (!user) return sendError(res, "User not found", 404);
 
-      await prisma.user.update({
-        where: { id: userId },
-        data: { globalRole: "SUPPLIER" },
-      });
+      await prisma.$transaction(async (tx) => {
+        const user = await tx.user.findUnique({ where: { id: userId } });
+        if (!user) throw new Error("User not found");
 
-      // await prisma.store.delete({
-      //   where: {
-      //     slug : user.stores[0].slug
-      //   }
-      // })
-
-      // Ensure supplier profile exists
-      const existingProfile = await prisma.supplier.findUnique({
-        where: { userId },
-      });
-
-      if (!existingProfile) {
-        // Create default profile
-        await prisma.supplier.create({
-          data: {
-            name: `Supplier ${user.username || "User"}`, // rudimentary name
-            userId,
-          },
+        // 1. Update Global Role
+        await tx.user.update({
+          where: { id: userId },
+          data: { globalRole: "SUPPLIER" },
         });
 
-      }
-      
-      // 3. Remove user from any existing store roles (STORE_OWNER, MANAGER, USER)
-      // We do NOT delete the store itself immediately, we only remove the user's access.
-      // If the user was the ONLY owner, the store becomes ownerless (or we could choose to delete it).
-      // For safety, we will just remove the role.
-      const userRoles = await prisma.userStoreRole.findMany({
-        where: { userId },
-        select: { id: true, storeId: true, role: true }
-      });
-
-      if (userRoles.length > 0) {
-        // Delete all roles for this user
-        await prisma.userStoreRole.deleteMany({
-          where: { userId }
-        });
-
-        // Optional: Check for orphaned stores (stores with no users)
-        // This is a "nice to have" cleanup but risky if valuable data exists.
-        // We will log them for manual review instead of auto-deleting data.
-        for (const role of userRoles) {
-          const remainingUsers = await prisma.userStoreRole.count({
-            where: { storeId: role.storeId }
+        // 2. Ensure Supplier Profile
+        const existingProfile = await tx.supplier.findUnique({ where: { userId } });
+        if (!existingProfile) {
+          await tx.supplier.create({
+            data: {
+              name: `Supplier ${user.username || "Inc."}`,
+              userId,
+            },
           });
-          
-          if (remainingUsers === 0) {
-            console.warn(`[ConvertSupplier] Store ${role.storeId} is now orphaned (no users). Consider deactivating.`);
-            // Optionally auto-suspend orphaned stores
-            await prisma.store.update({
-              where: { id: role.storeId },
-              data: { isActive: false }
-            }).catch((e:any) => console.error("Failed to suspend orphaned store", e));
+        }
+
+        // 3. Handle existing Store Roles
+        const userRoles = await tx.userStoreRole.findMany({ where: { userId } });
+        
+        // Remove direct roles
+        await tx.userStoreRole.deleteMany({ where: { userId } });
+
+        // Check for orphaned stores
+        for (const role of userRoles) {
+          // If the converted user was an owner, check if other owners exist
+          if (role.role === "STORE_OWNER") {
+            const ownerCount = await tx.userStoreRole.count({
+              where: { storeId: role.storeId, role: "STORE_OWNER" }
+            });
+
+            if (ownerCount === 0) {
+              console.log(`[ConvertSupplier] Store ${role.storeId} orphaned. Deleting...`);
+              // @ts-ignore
+              await EntityManager.deleteStore(role.storeId, tx);
+            }
           }
         }
-      }
 
-      await prisma.auditLog.create({
-        data: {
-          actorId: req.user?.id,
-          actorType: "ADMIN",
-          action: "CONVERT_TO_SUPPLIER",
-          resource: "User",
-          resourceId: userId,
-        },
-      });
+        // Audit Log
+        await tx.auditLog.create({
+          data: {
+            actorId: req.user?.id,
+            actorType: "ADMIN",
+            action: "CONVERT_TO_SUPPLIER",
+            resource: "User",
+            resourceId: userId,
+          },
+        });
+      }, { timeout: 10000 });
 
       return sendSuccess(res, "User converted to supplier role");
-    } catch (err) {
-      return handlePrismaError(res, err, "User");
+    } catch (err: any) {
+       if (err.message === "User not found") return sendError(res, "User not found", 404);
+       return handlePrismaError(res, err, "User");
     }
   }
 );
 
-export default router;
-
 /* -----------------------
    Admin - DELETE /v1/admin/users/:id
 */
-
-/**
- * DELETE /v1/admin/users/:id
- * Description: Deletes a user.
- * Headers: 
- *  - Authorization: Bearer <token> (Role: SUPERADMIN)
- * Body: None
- * Responses:
- *  - 200: { success: true }
- *  - 400: Cannot delete self
- *  - 404: User not found
- *  - 409: Data integrity violation (user has associated records)
- *  - 500: Internal server error
- */
 router.delete("/users/:id", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const { id } = req.params;
     
-    // Prevent deleting self
     if (req.user.id === id) {
       return sendError(res, "Cannot delete your own account", 400);
     }
 
-    const user = await prisma.user.findUnique({ where: { id } });
-    if (!user) return sendError(res, "User not found", 404);
+    const { username, email } = await prisma.user.findUnique({ where: { id }, select: { username: true, email: true } }) || {};
+    if (!username) return sendError(res, "User not found", 404);
 
-    // Attempt delete
-    await prisma.user.delete({ where: { id } });
-
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user?.id,
-        actorType: "ADMIN",
-        action: "DELETE_USER",
-        resource: "User",
-        resourceId: id,
-        payload: { username: user.username, email: user.email },
-      },
-    });
+    await prisma.$transaction(async (tx:any) => {
+      await EntityManager.deleteUser(id, tx);
+      
+      await tx.auditLog.create({
+        data: {
+          actorId: req.user?.id,
+          actorType: "ADMIN",
+          action: "DELETE_USER",
+          resource: "User",
+          resourceId: id,
+          payload: { username, email },
+        },
+      });
+    }, { timeout: 10000 });
 
     return sendSuccess(res, "User deleted successfully");
   } catch (err: any) {
-    if (err.code === "P2003") {
-      return sendError(res, "User has associated records (e.g. stores, sales) that prevent deletion.", 409, { code: "cannot_delete_user_data_integrity" });
-    }
     return sendInternalError(res, err);
   }
 });
@@ -622,45 +571,30 @@ router.delete("/users/:id", requireRole("SUPERADMIN"), async (req: any, res) => 
 /* -----------------------
    Admin - DELETE /v1/admin/stores/:id
 */
-
-/**
- * DELETE /v1/admin/stores/:id
- * Description: Deletes a store.
- * Headers: 
- *  - Authorization: Bearer <token> (Role: SUPERADMIN)
- * Body: None
- * Responses:
- *  - 200: { success: true }
- *  - 404: Store not found
- *  - 409: Data integrity violation (store has associated records)
- *  - 500: Internal server error
- */
 router.delete("/stores/:id", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const { id } = req.params;
 
-    const store = await prisma.store.findUnique({ where: { id } });
+    const store = await prisma.store.findUnique({ where: { id }, select: { name: true } });
     if (!store) return sendError(res, "Store not found", 404);
 
-    // Attempt delete
-    await prisma.store.delete({ where: { id } });
+    await prisma.$transaction(async (tx:any) => {
+      await EntityManager.deleteStore(id, tx);
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user?.id,
-        actorType: "ADMIN",
-        action: "DELETE_STORE",
-        resource: "Store",
-        resourceId: id,
-        payload: { name: store.name },
-      },
-    });
+      await tx.auditLog.create({
+        data: {
+          actorId: req.user?.id,
+          actorType: "ADMIN",
+          action: "DELETE_STORE",
+          resource: "Store",
+          resourceId: id,
+          payload: { name: store.name },
+        },
+      });
+    }, { timeout: 10000 });
 
     return sendSuccess(res, "Store deleted successfully");
   } catch (err: any) {
-    if (err.code === "P2003") {
-      return sendError(res, "Store has associated records (e.g. inventories, sales) that prevent deletion.", 409, { code: "cannot_delete_store_data_integrity" });
-    }
     return sendInternalError(res, err);
   }
 });
@@ -668,45 +602,30 @@ router.delete("/stores/:id", requireRole("SUPERADMIN"), async (req: any, res) =>
 /* -----------------------
    Admin - DELETE /v1/admin/suppliers/:id
 */
-
-/**
- * DELETE /v1/admin/suppliers/:id
- * Description: Deletes a supplier.
- * Headers: 
- *  - Authorization: Bearer <token> (Role: SUPERADMIN)
- * Body: None
- * Responses:
- *  - 200: { success: true }
- *  - 404: Supplier not found
- *  - 409: Data integrity violation (supplier has associated records)
- *  - 500: Internal server error
- */
 router.delete("/suppliers/:id", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const { id } = req.params;
 
-    const supplier = await prisma.supplier.findUnique({ where: { id } });
+    const supplier = await prisma.supplier.findUnique({ where: { id }, select: { name: true } });
     if (!supplier) return sendError(res, "Supplier not found", 404);
 
-    // Attempt delete
-    await prisma.supplier.delete({ where: { id } });
+    await prisma.$transaction(async (tx:any) => {
+      await EntityManager.deleteSupplier(id, tx);
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: req.user?.id,
-        actorType: "ADMIN",
-        action: "DELETE_SUPPLIER",
-        resource: "Supplier",
-        resourceId: id,
-        payload: { name: supplier.name },
-      },
-    });
+      await tx.auditLog.create({
+        data: {
+          actorId: req.user?.id,
+          actorType: "ADMIN",
+          action: "DELETE_SUPPLIER",
+          resource: "Supplier",
+          resourceId: id,
+          payload: { name: supplier.name },
+        },
+      });
+    }, { timeout: 10000 });
 
     return sendSuccess(res, "Supplier deleted successfully");
   } catch (err: any) {
-    if (err.code === "P2003") {
-        return sendError(res, "Supplier has associated records (e.g. requests, items) that prevent deletion.", 409, { code: "cannot_delete_supplier_data_integrity" });
-      }
     return sendInternalError(res, err);
   }
 });
@@ -947,8 +866,8 @@ router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, r
 
              notificationQueue.add("send-notification", {
                 websiteUrl: frontendUrl,
-                title: `Hello ${u.username}`,
-                message: message,
+                title: subject,
+                message: `Hello ${u.username ? u.username : "Synaps!"} ${message}`,
                 buttons: [{ label: `Go to Dashboard`, link: `${frontendUrl}` }]
              });
         }
@@ -972,3 +891,4 @@ function decryptEmail(email: string | null): string | null {
   return val !== null ? val : email;
 }
 
+export default router;

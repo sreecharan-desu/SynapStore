@@ -83,7 +83,7 @@ async function main() {
   // Supplier User
   const supplierEmail = "bhanuprakashalahari.04@gmail.com";
   const supplierEmailEnc = crypto$.encryptCellDeterministic(supplierEmail);
-  const supplierPasswordHash = await bcrypt.hash("123454678", 10);
+  const supplierPasswordHash = await bcrypt.hash("12345678", 10);
   const supplierUser = await prisma.user.upsert({
     where: { email: supplierEmailEnc },
     update: { username: "global_supplier", passwordHash: supplierPasswordHash, globalRole: "SUPPLIER", isActive: true, isverified: true },

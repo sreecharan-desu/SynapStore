@@ -624,17 +624,17 @@ router.post(
 
       // mark OTP as used and set user's isverified = true
       try {
-        await prisma.$transaction([
-          prisma.otp.update({
+        await prisma.$transaction(async (tx) => {
+          await tx.otp.update({
             where: { id: otpRow.id },
             data: { used: true },
-          }),
+          });
           // update user verification - prefer userId from otp row if present
-          prisma.user.update({
+          await tx.user.update({
             where: { id: otpRow.userId ?? user.id },
             data: { isverified: true },
-          }),
-        ]);
+          });
+        }, { timeout: 10000 });
       } catch (pErr: any) {
         console.error("Prisma mark OTP used / verify user error:", pErr);
         // if transaction failed, still respond success but warn

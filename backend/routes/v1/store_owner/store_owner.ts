@@ -7,10 +7,11 @@ import prisma from "../../../lib/prisma";
 import { requireRole } from "../../../middleware/requireRole";
 import { crypto$ } from "../../../lib/crypto";
 import { sendMail } from "../../../lib/mailer";
-import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate } from "../../../lib/emailTemplates";
+import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getStoreConnectionRequestEmailTemplate, getSupplierRequestEmailTemplate, getDisconnectionEmailTemplate } from "../../../lib/emailTemplates";
 // import router from "../auth/email-auth"; 
-import { sendSuccess, sendError, handlePrismaError, sendInternalError } from "../../../lib/api";
+import { sendSuccess, sendError, handlePrismaError, sendInternalError, handleZodError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
+import { z } from "zod";
 
 type RoleEnum = Role;
 
@@ -172,11 +173,11 @@ dashboardRouter.get(
         Date.now() + expiriesDays * 24 * 60 * 60 * 1000
       );
 
-      // parallel DB fetches (broad)
+      // 2. Parallel Optimized Fetches
       const [
         totalMedicines,
         totalBatches,
-        recentSalesCount,
+        recentSalesCount, // We can get this from aggregate
         recentRevenueAgg,
         inventorySums,
         lowStockBatches,
@@ -185,13 +186,15 @@ dashboardRouter.get(
         recentSales,
         activity,
         suppliers,
-        // unreadNotifications removed
         webhookFailures,
-        saleRows,
-        saleItemsAll,
-        saleItemsSoldAgg,
-        medicinesAll,
-        stockMovementsAgg,
+        // Aggregations replacing huge fetches
+        salesStats, // avg order value, count
+        salesByDayRaw,
+        salesByHourRaw,
+        paymentMethodsAgg,
+        categoryBreakdownRaw,
+        stockTurnoverAgg, 
+        agingBucketsRaw // Optimization for aging buckets? 
       ] = await Promise.all([
         prisma.medicine.count({ where: { storeId } }),
         prisma.inventoryBatch.count({ where: { storeId } }),
@@ -206,23 +209,19 @@ dashboardRouter.get(
           },
           _sum: { totalValue: true },
         }),
+        // Inventory Totals
         prisma.inventoryBatch.aggregate({
           where: { storeId },
           _sum: { qtyAvailable: true, qtyReserved: true, qtyReceived: true },
         }),
+        // Low Stock (enriched)
         prisma.inventoryBatch.findMany({
           where: { storeId, qtyAvailable: { lte: lowStockThreshold } },
           orderBy: { qtyAvailable: "asc" },
           take: 200,
-          select: {
-            id: true,
-            medicineId: true,
-            batchNumber: true,
-            qtyAvailable: true,
-            expiryDate: true,
-            receivedAt: true,
-          },
+          include: { medicine: true }
         }),
+        // Expiries (enriched)
         prisma.inventoryBatch.findMany({
           where: {
             storeId,
@@ -231,14 +230,9 @@ dashboardRouter.get(
           },
           orderBy: { expiryDate: "asc" },
           take: 500,
-          select: {
-            id: true,
-            medicineId: true,
-            batchNumber: true,
-            expiryDate: true,
-            qtyAvailable: true,
-          },
+          include: { medicine: true }
         }),
+        // Top Movers (qty)
         prisma.saleItem.groupBy({
           by: ["medicineId"],
           where: {
@@ -252,22 +246,18 @@ dashboardRouter.get(
           orderBy: [{ _sum: { qty: "desc" } }],
           take: topLimit,
         }),
+        // Recent Sales (enriched)
         prisma.sale.findMany({
           where: { storeId },
           orderBy: { createdAt: "desc" },
           take: recentSalesLimit,
           include: {
             items: {
-              select: {
-                id: true,
-                medicineId: true,
-                qty: true,
-                unitPrice: true,
-                lineTotal: true,
-              },
+              include: { medicine: true } // Include medicine details directly
             },
           },
         }),
+        // Activity
         prisma.activityLog.findMany({
           where: { storeId },
           orderBy: { createdAt: "desc" },
@@ -280,6 +270,7 @@ dashboardRouter.get(
             createdAt: true,
           },
         }),
+        // Suppliers
         prisma.supplier.findMany({
           where: { storeId },
           select: {
@@ -290,61 +281,90 @@ dashboardRouter.get(
             isActive: true,
           },
         }),
-        // prisma.notification.count removed
-        // prisma.webhookDelivery.count({ where: { storeId, success: false, retryCount: { gt: 0 } } }),
-        Promise.resolve(0),
-        // extra data for richer permutations
-        prisma.sale.findMany({
-          where: { storeId, createdAt: { gte: salesWindowStart } },
-          select: {
-            id: true,
-            createdAt: true,
-            totalValue: true,
-            paymentMethod: true,
-            paymentStatus: true,
-            createdById: true,
-          },
-          take: 10000, // reasonable cap for client-side aggregations; tune as needed
+        Promise.resolve(0), // Webhooks placeholder
+        
+        // --- NEW AGGREGATIONS ---
+        
+        // AVG Order Value & Total Items (approx)
+        prisma.sale.aggregate({
+            where: { storeId, createdAt: { gte: salesWindowStart } },
+            _avg: { totalValue: true },
+            _count: true
         }),
-        prisma.saleItem.findMany({
-          where: { sale: { storeId, createdAt: { gte: salesWindowStart } } },
-          select: {
-            id: true,
-            saleId: true,
-            medicineId: true,
-            qty: true,
-            lineTotal: true,
-            createdAt: true,
-          },
-          take: 20000,
+
+        // Sales by Day
+        prisma.$queryRaw`
+            SELECT TO_CHAR("createdAt", 'YYYY-MM-DD') as date, 
+                   COUNT(*)::int as count, 
+                   SUM("totalValue") as revenue
+            FROM "Sale"
+            WHERE "storeId" = ${storeId} AND "createdAt" >= ${salesWindowStart}
+            GROUP BY TO_CHAR("createdAt", 'YYYY-MM-DD')
+            ORDER BY date ASC
+        `,
+
+        // Sales by Hour
+        prisma.$queryRaw`
+            SELECT EXTRACT(HOUR FROM "createdAt")::int as hour, 
+                   COUNT(*)::int as count, 
+                   SUM("totalValue") as revenue
+            FROM "Sale"
+            WHERE "storeId" = ${storeId} AND "createdAt" >= ${salesWindowStart}
+            GROUP BY EXTRACT(HOUR FROM "createdAt")
+            ORDER BY hour ASC
+        `,
+
+        // Payment Methods
+        prisma.sale.groupBy({
+            by: ['paymentMethod'],
+            where: { storeId, createdAt: { gte: salesWindowStart } },
+            _count: true,
+            _sum: { totalValue: true }
         }),
-        prisma.saleItem.groupBy({
-          by: ["medicineId"],
-          where: { sale: { storeId, paymentStatus: "PAID" } },
-          _sum: { qty: true },
-        }),
-        // medicines (meta)
-        prisma.medicine.findMany({
-          where: { storeId },
-          select: {
-            id: true,
-            brandName: true,
-            genericName: true,
-            category: true,
-            sku: true,
-            dosageForm: true,
-            strength: true,
-          },
-        }),
-        // stock movements sums by reason (for stock turnover / inflows)
+
+        // Category Breakdown
+        prisma.$queryRaw`
+            SELECT m.category, 
+                   SUM(si.qty)::int as qty, 
+                   SUM(si."lineTotal") as revenue
+            FROM "SaleItem" si
+            JOIN "Sale" s ON s.id = si."saleId"
+            JOIN "Medicine" m ON m.id = si."medicineId"
+            WHERE s."storeId" = ${storeId} 
+              AND s."createdAt" >= ${salesWindowStart} 
+              AND s."paymentStatus" = 'PAID'
+            GROUP BY m.category
+            ORDER BY revenue DESC
+        `,
+
+        // Stock Movements (for turnover)
         prisma.stockMovement.groupBy({
-          by: ["reason"],
-          where: { storeId },
-          _sum: { delta: true },
+            by: ["reason"],
+            where: { storeId },
+            _sum: { delta: true },
         }),
+
+        // Inventory Aging (Optimized to fetching just dates, not full objects if possible, or just standard fetch)
+        // Check if we can do this with raw query? 
+        // "receivedAt" buckets: <30, 30-90, 90-180, 180-365, >365
+        prisma.$queryRaw`
+            SELECT 
+                CASE 
+                    WHEN NOW() - "receivedAt" <= interval '30 days' THEN '30_days'
+                    WHEN NOW() - "receivedAt" <= interval '90 days' THEN '90_days'
+                    WHEN NOW() - "receivedAt" <= interval '180 days' THEN '180_days'
+                    WHEN NOW() - "receivedAt" <= interval '365 days' THEN '365_days'
+                    ELSE '>365_days'
+                END as bucket,
+                SUM("qtyAvailable")::int as qty
+            FROM "InventoryBatch"
+            WHERE "storeId" = ${storeId} AND "receivedAt" IS NOT NULL
+            GROUP BY bucket
+        `
       ]);
 
-      // basic conversions
+      // --- Processing ---
+
       const recentRevenue = Number(recentRevenueAgg._sum?.totalValue ?? 0);
       const inventoryTotals = {
         qtyAvailable: Number(inventorySums._sum.qtyAvailable ?? 0),
@@ -352,102 +372,74 @@ dashboardRouter.get(
         qtyReceived: Number(inventorySums._sum.qtyReceived ?? 0),
       };
 
-      // medicine map
-      const medicinesById = Object.fromEntries(
-        medicinesAll.map((m: any) => [m.id, m])
-      );
+      // Helper to fetch medicine details for Top Movers (since groupBy doesn't include relation)
+      const topMoverMedIds = topMoversRaw.map(t => t.medicineId);
+      const topMoverMeds = await prisma.medicine.findMany({
+        where: { id: { in: topMoverMedIds } },
+        select: { id: true, brandName: true, genericName: true, category: true, sku: true, strength: true, dosageForm: true }
+      });
+      const topMoverMedsMap = Object.fromEntries(topMoverMeds.map(m => [m.id, m]));
 
-      // top movers enriched
+      // Enrich Top Movers
       const topMovers = topMoversRaw.map((t: any) => ({
         medicineId: t.medicineId,
         qtySold: Number(t._sum.qty ?? 0),
         revenue: Number(t._sum.lineTotal ?? 0),
-        medicine: medicinesById[t.medicineId] ?? null,
+        medicine: topMoverMedsMap[t.medicineId] ?? null,
       }));
 
-      // category breakdown: combine saleItemsAll with medicine categories
-      const categoryAgg: Record<string, { qty: number; revenue: number }> = {};
-      for (const it of saleItemsAll) {
-        const med = medicinesById[it.medicineId];
-        const cat = med?.category ?? "unknown";
-        categoryAgg[cat] = categoryAgg[cat] || { qty: 0, revenue: 0 };
-        categoryAgg[cat].qty += it.qty ?? 0;
-        categoryAgg[cat].revenue += Number(it.lineTotal ?? 0);
-      }
-      const categoryBreakdown = Object.entries(categoryAgg)
-        .map(([category, v]) => ({ category, qty: v.qty, revenue: v.revenue }))
-        .sort((a, b) => b.revenue - a.revenue);
-
-      // payment method breakdown (from saleRows)
-      const paymentMethodAgg: Record<
-        string,
-        { count: number; revenue: number }
-      > = {};
-      for (const s of saleRows) {
-        const pm = String(s.paymentMethod ?? "UNKNOWN");
-        paymentMethodAgg[pm] = paymentMethodAgg[pm] || { count: 0, revenue: 0 };
-        paymentMethodAgg[pm].count += 1;
-        paymentMethodAgg[pm].revenue += Number(s.totalValue ?? 0);
-      }
-      const paymentMethods = Object.entries(paymentMethodAgg).map(
-        ([method, v]) => ({ method, ...v })
-      );
-
-      // hourly sales distribution
-      const hourAgg: Record<number, { count: number; revenue: number }> = {};
-      for (let h = 0; h < 24; h++) hourAgg[h] = { count: 0, revenue: 0 };
-      for (const s of saleRows) {
-        const h = new Date(s.createdAt).getHours();
-        hourAgg[h].count += 1;
-        hourAgg[h].revenue += Number(s.totalValue ?? 0);
-      }
-      const salesByHour = Object.entries(hourAgg).map(([h, v]) => ({
-        hour: Number(h),
-        ...v,
+      // Parse Raw Aggregations
+      const salesByDay = (salesByDayRaw as any[]).map(r => ({
+          date: r.date,
+          count: Number(r.count),
+          revenue: Number(r.revenue)
       }));
 
-      // average order value & avg items per sale
-      const totalSalesCount = saleRows.length;
-      const totalSoldQty = saleItemsAll.reduce((a: number, b: any) => a + (b.qty ?? 0), 0);
-      const totalSoldRevenue = saleRows.reduce(
-        (a: number, b: any) => a + Number(b.totalValue ?? 0),
-        0
-      );
-      const avgOrderValue = totalSalesCount
-        ? totalSoldRevenue / totalSalesCount
-        : 0;
-      const avgItemsPerSale = totalSalesCount
-        ? totalSoldQty / totalSalesCount
-        : 0;
+      // Sales By Hour (fill gaps)
+      const salesByHourMap: Record<number, any> = {};
+      for(let h=0; h<24; h++) salesByHourMap[h] = { hour: h, count: 0, revenue: 0 };
+      (salesByHourRaw as any[]).forEach(r => {
+          salesByHourMap[r.hour] = { hour: r.hour, count: Number(r.count), revenue: Number(r.revenue) };
+      });
+      const salesByHour = Object.values(salesByHourMap);
 
-      // repeat customer rate (removed patient support)
-      const repeatCustomerRate = 0;
+      const paymentMethods = paymentMethodsAgg.map(p => ({
+          method: p.paymentMethod || "UNKNOWN",
+          count: p._count,
+          revenue: Number(p._sum.totalValue ?? 0)
+      }));
 
-      // inventory aging buckets
-      const now = Date.now();
+      const categoryBreakdown = (categoryBreakdownRaw as any[]).map(r => ({
+          category: r.category || "Uncategorized",
+          qty: Number(r.qty),
+          revenue: Number(r.revenue)
+      }));
+
+      const avgOrderValue = Number(salesStats._avg.totalValue ?? 0);
+      // Avg Items Per Sale - We need total sold items / total sales count
+      // We can query sum of qty from sales in window
+      const totalSoldQtyAgg = await prisma.saleItem.aggregate({
+          where: { sale: { storeId, createdAt: { gte: salesWindowStart } } },
+          _sum: { qty: true }
+      });
+      const totalSoldQtyInWindow = Number(totalSoldQtyAgg._sum.qty ?? 0);
+      const avgItemsPerSale = (salesStats._count ?? 0) > 0 ? totalSoldQtyInWindow / salesStats._count : 0;
+
+
+      // Inventory Aging
       const agingBucketsResult: Record<string, number> = {};
+      // Initialize buckets
       for (const b of agingBuckets) agingBucketsResult[`${b}_days`] = 0;
       agingBucketsResult[">365_days"] = 0;
-      for (const batch of await prisma.inventoryBatch.findMany({
-        where: { storeId, receivedAt: { not: null } },
-        select: { id: true, receivedAt: true, qtyAvailable: true },
-      })) {
-        const received = batch.receivedAt
-          ? new Date(batch.receivedAt).getTime()
-          : now;
-        const ageDays = Math.floor((now - received) / (24 * 3600 * 1000));
-        let placed = false;
-        for (const b of agingBuckets) {
-          if (ageDays <= b) {
-            agingBucketsResult[`${b}_days`] += batch.qtyAvailable ?? 0;
-            placed = true;
-            break;
+      
+      (agingBucketsRaw as any[]).forEach(r => {
+          if (agingBucketsResult[r.bucket] !== undefined) {
+              agingBucketsResult[r.bucket] = Number(r.qty);
           }
-        }
-        if (!placed) agingBucketsResult[">365_days"] += batch.qtyAvailable ?? 0;
-      }
+      });
 
-      // expiry heatmap: month-year -> count/qty
+
+      // Expiry Heatmap
       const expiryHeatmap: Record<string, { count: number; qty: number }> = {};
       for (const b of expiriesSoon) {
         const m = new Date(b.expiryDate!).toISOString().slice(0, 7); // YYYY-MM
@@ -460,18 +452,22 @@ dashboardRouter.get(
         .sort((a, b) => a.month.localeCompare(b.month));
 
 
-      // alerts by type (removed alerts)
-      const alertsByType: any[] = [];
-
-      // stock turnover approximation: soldQty / qtyReceived
-      const soldQtyTotal = saleItemsSoldAgg.reduce(
-        (a: number, b: any) => a + Number(b._sum?.qty ?? 0),
-        0
-      );
+      // Stock Turnover
+      // soldQtyTotal / qtyReceivedTotal
+      // soldQtyTotal is total sold EVER? Or in window? 
+      // Original code used `saleItemsSoldAgg` which was grouped by medicine for PAID sales (ever).
+      // We need total sold qty all time? Or just fetch aggregations.
+      // Let's do a quick aggregate for "all time paid sales qty"
+      const totalSoldAllTimeAgg = await prisma.saleItem.aggregate({
+          where: { sale: { storeId, paymentStatus: "PAID" } },
+          _sum: { qty: true }
+      });
+      const soldQtyTotal = Number(totalSoldAllTimeAgg._sum.qty ?? 0);
       const qtyReceivedTotal = Number(inventorySums._sum.qtyReceived ?? 0) || 1;
       const stockTurnover = soldQtyTotal / qtyReceivedTotal;
 
-      // final recentSales summary enrichment (medicine meta)
+      
+      // recentSalesSummary - map items to use included medicine
       const recentSalesSummary = recentSales.map((s: any) => ({
         id: s.id,
         createdAt: s.createdAt,
@@ -479,11 +475,12 @@ dashboardRouter.get(
         paymentStatus: s.paymentStatus,
         items: s.items.map((it: any) => ({
           ...it,
-          medicine: medicinesById[it.medicineId] ?? null,
+          medicine: it.medicine // Already included
         })),
       }));
 
-      // Final payload (very rich)
+
+      // Final payload
       return sendSuccess(res, "Dashboard bootstrap data", {
         user: {
           id: user.id,
@@ -513,27 +510,7 @@ dashboardRouter.get(
           reservedQty: 0,
         },
         charts: {
-          salesByDay: (() => {
-            // build time-series daily from saleRows
-            const map: Record<
-              string,
-              { date: string; revenue: number; count: number }
-            > = {};
-            for (let i = 0; i < days; i++) {
-              const d = new Date(
-                Date.now() - (days - 1 - i) * 24 * 3600 * 1000
-              );
-              const k = d.toISOString().slice(0, 10);
-              map[k] = { date: k, revenue: 0, count: 0 };
-            }
-            for (const s of saleRows) {
-              const k = new Date(s.createdAt).toISOString().slice(0, 10);
-              map[k] = map[k] ?? { date: k, revenue: 0, count: 0 };
-              map[k].revenue += Number(s.totalValue ?? 0);
-              map[k].count += 1;
-            }
-            return Object.values(map);
-          })(),
+          salesByDay: salesByDay,
           salesByHour,
           paymentMethods,
           categoryBreakdown,
@@ -542,21 +519,15 @@ dashboardRouter.get(
           expiryHeatmap: expiryHeatmapArr,
           inventoryAging: agingBucketsResult,
           reorderLeadTimeSummary: [],
-          alertsByType,
+          alertsByType: [],
           stockTurnover,
           avgOrderValue,
           avgItemsPerSale,
-          repeatCustomerRate,
+          repeatCustomerRate: 0,
         },
         lists: {
-          lowStock: lowStockBatches.map((b: any) => ({
-            ...b,
-            medicine: medicinesById[b.medicineId] ?? null,
-          })),
-          expiries: expiriesSoon.map((b: any) => ({
-            ...b,
-            medicine: medicinesById[b.medicineId] ?? null,
-          })),
+          lowStock: lowStockBatches, // Already includes medicine
+          expiries: expiriesSoon,    // Already includes medicine
           recentSales: recentSalesSummary,
           activity,
           suppliers,
@@ -581,6 +552,7 @@ dashboardRouter.get(
  *  - 200: { success: true, data: [...] }
  *  - 500: Internal server error
  */
+// Existing GET
 dashboardRouter.get(
   "/supplier-requests",
   authenticate,
@@ -610,6 +582,98 @@ dashboardRouter.get(
     }
   }
 );
+
+/**
+ * POST /v1/dashboard/supplier-requests
+ * Description: Store Owner initiates a connection request to a supplier.
+ */
+const createReqSchema = z.object({
+  supplierId: z.string().uuid(),
+  message: z.string().optional(),
+});
+
+dashboardRouter.post(
+  "/supplier-requests",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "ADMIN"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const parsed = createReqSchema.safeParse(req.body);
+      if (!parsed.success) {
+        // @ts-ignore
+        return handleZodError(res, parsed.error);
+      }
+
+      const store = req.store!;
+      const user = req.user!;
+      const { supplierId, message } = parsed.data;
+
+      // Check if supplier exists
+      const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+      if (!supplier) return sendError(res, "Supplier not found", 404);
+
+      // Check if already connected
+      const existingConn = await prisma.supplierStore.findUnique({
+        where: {
+          supplierId_storeId: {
+            supplierId,
+            storeId: store.id
+          }
+        }
+      });
+      if (existingConn) return sendError(res, "Already connected to this supplier", 409);
+
+      // Check if pending request exists
+      const existingReq = await prisma.supplierRequest.findFirst({
+        where: {
+          supplierId,
+          storeId: store.id,
+          status: "PENDING"
+        }
+      });
+      if (existingReq) return sendError(res, "A pending request already exists", 409);
+
+      // Create Request
+      const newReq = await prisma.supplierRequest.create({
+        data: {
+          supplierId,
+          storeId: store.id,
+          createdById: user.id,
+          message,
+          status: "PENDING"
+        }
+      });
+
+      // Notify Supplier
+      if (supplier.userId) {
+         const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+         if (supUser?.email) {
+             sendMail({
+                 to: supUser.email,
+                 subject: `New Connection Request from ${store.name}`,
+                 html: getStoreConnectionRequestEmailTemplate(store.name, message)
+             }).catch(e => console.error("Email failed", e));
+         }
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          storeId: store.id,
+          userId: user.id,
+          action: "supplier_request_created",
+          payload: { requestId: newReq.id, supplierId }
+        }
+      });
+
+      return sendSuccess(res, "Connection request sent", newReq);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 
 
 
@@ -648,12 +712,12 @@ dashboardRouter.post(
       if (reqRow.status !== "PENDING")
         return sendError(res, "Invalid request state (must be PENDING)", 400);
 
-      await prisma.$transaction([
-        prisma.supplierRequest.update({
+      await prisma.$transaction(async (tx) => {
+        await tx.supplierRequest.update({
           where: { id },
           data: { status: "ACCEPTED" },
-        }),
-        prisma.supplierStore.upsert({
+        });
+        await tx.supplierStore.upsert({
           where: {
             supplierId_storeId: {
               supplierId: reqRow.supplierId,
@@ -666,16 +730,16 @@ dashboardRouter.post(
             linkedAt: new Date(),
           },
           update: { linkedAt: new Date() },
-        }),
-        prisma.activityLog.create({
+        });
+        await tx.activityLog.create({
           data: {
             storeId: store.id,
             userId: user.id,
             action: "supplier_request_accepted",
             payload: { requestId: id, supplierId: reqRow.supplierId },
           },
-        }),
-      ]);
+        });
+      }, { timeout: 10000 });
 
       // notify supplier (if supplier.userId exists)
       // notify supplier (if supplier.userId exists)
@@ -788,6 +852,93 @@ dashboardRouter.post(
       }
 
       return sendSuccess(res, "Supplier request rejected");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ... (existing reject)
+
+/**
+ * DELETE /v1/dashboard/suppliers/:supplierId
+ * Description: Disconnects the store from a supplier.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: STORE_OWNER or ADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true }
+ *  - 404: Connection not found
+ *  - 500: Internal server error
+ */
+dashboardRouter.delete(
+  "/suppliers/:supplierId",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "ADMIN"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const { supplierId } = req.params;
+      const store = req.store!;
+      const user = req.user!;
+
+      // Check if connection exists
+      const conn = await prisma.supplierStore.findUnique({
+        where: {
+          supplierId_storeId: {
+            supplierId,
+            storeId: store.id
+          }
+        }
+      });
+
+      if (!conn) return sendError(res, "Connection not found", 404);
+
+      // Delete connection
+      await prisma.supplierStore.delete({
+        where: {
+          supplierId_storeId: {
+            supplierId,
+            storeId: store.id
+          }
+        }
+      });
+
+      // Also mark any ACCEPTED requests as... actually keep them as history.
+      // But maybe we should cleanup pending ones?
+      // If there is a PENDING request, cancelling connection (if initiated) should cancel request?
+      // Usually "Disconnect" button is for Active connections.
+      // "Cancel Request" button is for Pending.
+      // We'll stick to Disconnect = Delete SupplierStore.
+      
+      // If the user wants to cancel a pending request, they can use a different endpoint or we can overload this one?
+      // Let's assume this is for active connections.
+      // For pending requests, we can add DELETE /supplier-requests/:id
+
+      await prisma.activityLog.create({
+        data: {
+          storeId: store.id,
+          userId: user.id,
+          action: "supplier_disconnected",
+          payload: { supplierId }
+        }
+      });
+
+      // Notify Supplier
+      const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+      if (supplier && supplier.userId) {
+         const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+         if (supUser?.email) {
+             sendMail({
+                 to: supUser.email,
+                 subject: `Connection Ended: ${store.name}`,
+                 html: getDisconnectionEmailTemplate(store.name)
+             }).catch(e => console.error("Email failed", e));
+         }
+      }
+
+      return sendSuccess(res, "Disconnected from supplier");
     } catch (err) {
       next(err);
     }

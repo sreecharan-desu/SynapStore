@@ -7,6 +7,7 @@ import storeRouter from "./store/store";
 import dashboardRouter from "./store_owner/store_owner";
 import supplierRequestsRouter from "./suppliers/supplier";
 import adminRouter from "./admin/admin";
+import userRouter from "./user/user";
 
 
 const v1Router = Router();
@@ -28,6 +29,7 @@ v1Router.get("/", (_req, res) => {
 
 v1Router.use("/auth", authRouter);
 v1Router.use("/oauth/google", googleRouter);
+v1Router.use("/user", userRouter);
 
 v1Router.use("/admin", adminRouter);
 

@@ -173,3 +173,35 @@ export function getNotificationEmailTemplate(title: string, message: string): st
     </p>
   `);
 }
+
+export function getStoreConnectionRequestEmailTemplate(storeName: string, message?: string): string {
+  const messageBlock = message 
+    ? `<div style="background-color: #f7fafc; padding: 15px; border-left: 4px solid #3b82f6; margin: 15px 0; color: #4a5568; font-style: italic;">"${message}"</div>` 
+    : '';
+
+  return wrapContent(`
+    <h2 style="${HEADING_STYLES}">New Connection Request</h2>
+    <p style="${PARAGRAPH_STYLES}">
+      <strong>${storeName}</strong> has requested to connect with you.
+    </p>
+    ${messageBlock}
+    <p style="${PARAGRAPH_STYLES}">
+      Please log in to your supplier dashboard to review this request.
+    </p>
+    <div style="text-align: center;">
+      <a href="${process.env.APP_URL || '#'}" style="${BUTTON_STYLES}">Go to Dashboard</a>
+    </div>
+  `);
+}
+
+export function getDisconnectionEmailTemplate(partyName: string): string {
+  return wrapContent(`
+    <h2 style="${HEADING_STYLES}">Connection Ended</h2>
+    <p style="${PARAGRAPH_STYLES}">
+      The connection with <strong>${partyName}</strong> has been terminated.
+    </p>
+    <p style="${PARAGRAPH_STYLES}">
+      You will no longer receive requests or updates from this connection.
+    </p>
+  `);
+}

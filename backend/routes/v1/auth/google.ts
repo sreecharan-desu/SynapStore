@@ -177,8 +177,8 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
     // persist activity / audit
     // persist activity / audit
     try {
-      const transactionOps: any[] = [
-        prisma.auditLog.create({
+      await prisma.$transaction(async (tx) => {
+        await tx.auditLog.create({
           data: {
             actorId: user.id,
             actorType: "user",
@@ -189,24 +189,20 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
               userAgent: req.headers["user-agent"] ?? null,
             },
           },
-        }),
-      ];
+        });
 
-      // Only create ActivityLog if we have a valid store, as storeId is required by schema
-      if (effectiveStore?.id) {
-        transactionOps.push(
-          prisma.activityLog.create({
+        // Only create ActivityLog if we have a valid store, as storeId is required by schema
+        if (effectiveStore?.id) {
+          await tx.activityLog.create({
             data: {
               storeId: effectiveStore.id,
               userId: user.id,
               action: "auth.google_signin",
               payload: { ip: req.ip, provider: "google" },
             },
-          })
-        );
-      }
-
-      await prisma.$transaction(transactionOps);
+          });
+        }
+      }, { timeout: 10000 });
     } catch (e) {
       console.error("google signin: failed to persist logs", e);
     }

@@ -5,7 +5,7 @@ import { authenticate } from "../../../middleware/authenticate";
 import { RequestWithUser } from "../../../middleware/store";
 import { z } from "zod";
 import { sendMail } from "../../../lib/mailer";
-import { getSupplierRequestEmailTemplate, getNotificationEmailTemplate } from "../../../lib/emailTemplates";
+import { getSupplierRequestEmailTemplate, getNotificationEmailTemplate, getDisconnectionEmailTemplate } from "../../../lib/emailTemplates";
 import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
 
@@ -462,5 +462,99 @@ router.get(
 
 
 
+
+/**
+ * DELETE /v1/suppliers/requests/:requestId
+ * Description: Supplier cancels a pending request.
+ */
+router.delete(
+  "/requests/:requestId",
+  authenticate,
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+        const { requestId } = req.params;
+        const user = req.user!;
+        const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
+        
+        if (!supplier) return sendError(res, "Supplier profile not found", 404);
+
+        const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+        if (!request) return sendError(res, "Request not found", 404);
+
+        if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
+        
+        // Only allow cancelling PENDING requests? Or any?
+        // If ACCEPTED, cancelling probably doesn't break connection (separate call).
+        if (request.status !== "PENDING") return sendError(res, "Can only cancel pending requests", 400);
+
+        await prisma.supplierRequest.delete({ where: { id: requestId } });
+        
+        return sendSuccess(res, "Request cancelled");
+    } catch (err) {
+        next(err);
+    }
+  }
+);
+
+/**
+ * DELETE /v1/suppliers/stores/:storeId
+ * Description: Supplier disconnects from a store.
+ */
+router.delete(
+    "/stores/:storeId",
+    authenticate,
+    async (req: RequestWithUser, res: Response, next: NextFunction) => {
+      try {
+          const { storeId } = req.params;
+          const user = req.user!;
+          const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
+          
+          if (!supplier) return sendError(res, "Supplier profile not found", 404);
+  
+          // Check connection
+          const conn = await prisma.supplierStore.findUnique({
+              where: {
+                  supplierId_storeId: {
+                      supplierId: supplier.id,
+                      storeId
+                  }
+              }
+          });
+          
+          if (!conn) return sendError(res, "Connection not found", 404);
+  
+          await prisma.supplierStore.delete({
+              where: {
+                  supplierId_storeId: {
+                      supplierId: supplier.id,
+                      storeId
+                  } 
+              }
+          });
+  
+          // Notify Store Owner(s)
+          const store = await prisma.store.findUnique({ where: { id: storeId } });
+          if (store) {
+            const owners = await prisma.userStoreRole.findMany({
+                where: { storeId, role: { in: ["STORE_OWNER", "ADMIN"] } },
+                include: { user: true }
+            });
+            for (const owner of owners) {
+                if (owner.user.email) {
+                    sendMail({
+                        to: owner.user.email,
+                        subject: `Connection Ended: ${supplier.name}`,
+                        html: getDisconnectionEmailTemplate(supplier.name)
+                    }).catch(e => console.error("Email failed", e));
+                }
+            }
+          }
+
+          return sendSuccess(res, "Disconnected from store");
+      } catch (err) {
+          next(err);
+      }
+    }
+  );
 
 export default router;
