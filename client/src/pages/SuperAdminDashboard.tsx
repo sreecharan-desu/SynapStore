@@ -8,7 +8,7 @@ import {
     Package, Truck, LogOut, Trash2,
     PieChart, AlertTriangle, Wallet,
     BarChart3, Bell, Lock, UserPlus, Settings, X, ArrowRightLeft,
-    Send, Mail, MessageSquare, CheckCircle2
+    Send, Mail, MessageSquare, CheckCircle2, RefreshCw
 } from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { adminApi } from "../lib/api/endpoints";
@@ -134,7 +134,7 @@ const ActivityItem = ({ activity, index }: { activity: any; index: number }) => 
                 <Icon className={`w-5 h-5 ${color}`} />
             </div>
             <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
+                <p className="text-sm font-bold text-slate-800 truncate group-hover:text-black transition-colors">
                     {activity.action}
                 </p>
                 <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
@@ -178,6 +178,23 @@ const SimpleBarChart = ({ data, color, height = 40 }: { data: number[], color: s
     );
 };
 
+const TableSkeleton = () => (
+    <>
+        {[1, 2, 3, 4, 5].map((i) => (
+            <tr key={i} className="animate-pulse">
+                <td className="px-6 py-4">
+                    <div className="h-4 bg-slate-200 rounded w-32 mb-2"></div>
+                    <div className="h-3 bg-slate-100 rounded w-20"></div>
+                </td>
+                <td className="px-6 py-4"><div className="h-4 bg-slate-200 rounded w-24"></div></td>
+                <td className="px-6 py-4"><div className="h-4 bg-slate-200 rounded w-40"></div></td>
+                <td className="px-6 py-4"><div className="h-6 bg-slate-200 rounded-full w-20"></div></td>
+                <td className="px-6 py-4 text-right"><div className="h-8 bg-slate-200 rounded w-24 ml-auto"></div></td>
+            </tr>
+        ))}
+    </>
+);
+
 // --- Main Page ---
 
 const SuperAdminDashboard: React.FC = () => {
@@ -204,6 +221,7 @@ const SuperAdminDashboard: React.FC = () => {
         message: "",
     });
     const [sending, setSending] = useState(false);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
     // Data State
@@ -224,8 +242,17 @@ const SuperAdminDashboard: React.FC = () => {
     const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
     const [userToConvert, setUserToConvert] = useState<{ id: string; name: string } | null>(null);
     const [userToToggle, setUserToToggle] = useState<{ id: string; name: string; isActive: boolean } | null>(null);
+    const [isScrolled, setIsScrolled] = useState(false);
 
     // Effects
+    useEffect(() => {
+        const handleScroll = () => {
+            setIsScrolled(window.scrollY > 20);
+        };
+        window.addEventListener("scroll", handleScroll);
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
+
     useEffect(() => {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -400,7 +427,7 @@ const SuperAdminDashboard: React.FC = () => {
         try {
             const res: any = await adminApi.sendNotification(notifyForm);
             if (res.data?.success) {
-                alert("Notification dispatched successfully!");
+                setShowSuccessModal(true);
                 setNotifyForm({ ...notifyForm, subject: "", message: "" });
             } else {
                 throw new Error(res.data?.error || "Failed to send notification.");
@@ -416,7 +443,7 @@ const SuperAdminDashboard: React.FC = () => {
     return (
         <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900">
             {/* Header */}
-            <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-20">
+            <header className={`sticky top-0 z-20 transition-all duration-500 ease-in-out ${isScrolled ? "bg-white/10 backdrop-blur-3xl backdrop-saturate-150 border-none shadow-none support-[backdrop-filter]:bg-white/20" : "bg-transparent border-none shadow-none"}`}>
                 <div className="max-w-7xl mx-auto px-6 py-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
@@ -741,7 +768,15 @@ const SuperAdminDashboard: React.FC = () => {
                                     <StoreIcon className="w-5 h-5 text-indigo-500" />
                                     Registered Stores
                                 </h2>
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 items-center">
+                                    <Button
+                                        size="icon"
+                                        className="w-12 h-12 !bg-transparent !text-black hover:!bg-slate-100 rounded-lg transition-all"
+                                        onClick={fetchData}
+                                        title="Refresh Stores"
+                                    >
+                                        <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+                                    </Button>
                                     <div className="relative">
                                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                         <input
@@ -775,63 +810,85 @@ const SuperAdminDashboard: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {stores.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((store, index) => (
-                                            <motion.tr
-                                                key={store.id}
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: index * 0.05 }}
-                                                className="hover:bg-indigo-50/50 transition-colors group cursor-default"
-                                            >
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{store.name}</span>
-                                                        <span className="text-xs text-slate-400">ID: {store.id.slice(0, 8)}...</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="font-mono text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded border border-slate-200 group-hover:bg-white group-hover:border-indigo-200 transition-colors">
-                                                        {store.slug}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 text-white text-[10px] flex items-center justify-center font-bold">
-                                                            {store.users?.[0]?.user?.email?.[0].toUpperCase() || "?"}
-                                                        </div>
-                                                        <span className="text-slate-600 text-sm">{store.users?.[0]?.user?.email || "No Owner"}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <StatusBadge isActive={store.isActive || false} />
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
-                                                        <Button
-                                                            size="sm"
-                                                            className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200"
-                                                            onClick={() => initiateToggleStore(store)}
+                                        <AnimatePresence mode="wait">
+                                            {loading ? (
+                                                <motion.tr
+                                                    key="skeleton"
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
+                                                >
+                                                    <td colSpan={5} className="p-0 border-none">
+                                                        <table className="w-full">
+                                                            <tbody>
+                                                                <TableSkeleton />
+                                                            </tbody>
+                                                        </table>
+                                                    </td>
+                                                </motion.tr>
+                                            ) : (
+                                                <>
+                                                    {stores.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((store, index) => (
+                                                        <motion.tr
+                                                            key={store.id}
+                                                            initial={{ opacity: 0, y: 20 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: -20 }}
+                                                            transition={{ duration: 0.3, delay: index * 0.05 }}
+                                                            className="hover:bg-indigo-50/50 transition-colors group cursor-default"
                                                         >
-                                                            {store.isActive ? "Suspend" : "Activate"}
-                                                        </Button>
-                                                        <p
-                                                            className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110"
-                                                            onClick={() => initiateDeleteStore(store.id, store.name)}
-                                                            title="Delete Store"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </p>
-                                                    </div>
-                                                </td>
-                                            </motion.tr>
-                                        ))}
-                                        {!loading && stores.length === 0 && (
-                                            <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                                                    No stores found.
-                                                </td>
-                                            </tr>
-                                        )}
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{store.name}</span>
+                                                                    <span className="text-xs text-slate-400">ID: {store.id.slice(0, 8)}...</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="font-mono text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded border border-slate-200 group-hover:bg-white group-hover:border-indigo-200 transition-colors">
+                                                                    {store.slug}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 text-white text-[10px] flex items-center justify-center font-bold">
+                                                                        {store.users?.[0]?.user?.email?.[0].toUpperCase() || "?"}
+                                                                    </div>
+                                                                    <span className="text-slate-600 text-sm">{store.users?.[0]?.user?.email || "No Owner"}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <StatusBadge isActive={store.isActive || false} />
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                                    <Button
+                                                                        size="sm"
+                                                                        className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200"
+                                                                        onClick={() => initiateToggleStore(store)}
+                                                                    >
+                                                                        {store.isActive ? "Suspend" : "Activate"}
+                                                                    </Button>
+                                                                    <p
+                                                                        className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110"
+                                                                        onClick={() => initiateDeleteStore(store.id, store.name)}
+                                                                        title="Delete Store"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </p>
+                                                                </div>
+                                                            </td>
+                                                        </motion.tr>
+                                                    ))}
+                                                    {stores.length === 0 && (
+                                                        <tr>
+                                                            <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                                                No stores found.
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </>
+                                            )}
+                                        </AnimatePresence>
                                     </tbody>
                                 </table>
                             </div>
@@ -852,7 +909,15 @@ const SuperAdminDashboard: React.FC = () => {
                                     <Truck className="w-5 h-5 text-indigo-500" />
                                     Global Suppliers
                                 </h2>
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 items-center">
+                                    <Button
+                                        size="icon"
+                                        className="w-12 h-12 !bg-transparent !text-black hover:!bg-slate-100 rounded-lg transition-all"
+                                        onClick={fetchData}
+                                        title="Refresh Suppliers"
+                                    >
+                                        <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+                                    </Button>
                                     <div className="relative">
                                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                         <input
@@ -886,47 +951,74 @@ const SuperAdminDashboard: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {suppliers.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((supplier) => (
-                                            <tr key={supplier.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-6 py-4 font-medium text-slate-900">{supplier.name}</td>
-                                                <td className="px-6 py-4 text-slate-500">{supplier.contactName || "-"}</td>
-                                                <td className="px-6 py-4 text-slate-500">
-                                                    <div className="flex flex-col">
-                                                        <span>{supplier.user?.email || "No Account"}</span>
-                                                        <span className="text-xs text-slate-400">{supplier.user?.username}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-
-                                                    <StatusBadge isActive={supplier.isActive || false} />
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
-                                                        <Button
-                                                            size="sm"
-                                                            className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200"
-                                                            onClick={() => initiateToggleSupplier(supplier)}
+                                        <AnimatePresence mode="wait">
+                                            {loading ? (
+                                                <motion.tr
+                                                    key="skeleton"
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
+                                                >
+                                                    <td colSpan={5} className="p-0 border-none">
+                                                        <table className="w-full">
+                                                            <tbody>
+                                                                <TableSkeleton />
+                                                            </tbody>
+                                                        </table>
+                                                    </td>
+                                                </motion.tr>
+                                            ) : (
+                                                <>
+                                                    {suppliers.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((supplier, index) => (
+                                                        <motion.tr
+                                                            key={supplier.id}
+                                                            initial={{ opacity: 0, y: 20 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: -20 }}
+                                                            transition={{ duration: 0.3, delay: index * 0.05 }}
+                                                            className="hover:bg-slate-50 transition-colors"
                                                         >
-                                                            {supplier.isActive ? "Suspend" : "Activate"}
-                                                        </Button>
-                                                        <p
-                                                            className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110"
-                                                            onClick={() => initiateDeleteSupplier(supplier.id, supplier.name)}
-                                                            title="Delete Supplier"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </p>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {!loading && suppliers.length === 0 && (
-                                            <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                                                    No suppliers found.
-                                                </td>
-                                            </tr>
-                                        )}
+                                                            <td className="px-6 py-4 font-medium text-slate-900">{supplier.name}</td>
+                                                            <td className="px-6 py-4 text-slate-500">{supplier.contactName || "-"}</td>
+                                                            <td className="px-6 py-4 text-slate-500">
+                                                                <div className="flex flex-col">
+                                                                    <span>{supplier.user?.email || "No Account"}</span>
+                                                                    <span className="text-xs text-slate-400">{supplier.user?.username}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <StatusBadge isActive={supplier.isActive || false} />
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                                    <Button
+                                                                        size="sm"
+                                                                        className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200"
+                                                                        onClick={() => initiateToggleSupplier(supplier)}
+                                                                    >
+                                                                        {supplier.isActive ? "Suspend" : "Activate"}
+                                                                    </Button>
+                                                                    <p
+                                                                        className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110"
+                                                                        onClick={() => initiateDeleteSupplier(supplier.id, supplier.name)}
+                                                                        title="Delete Supplier"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </p>
+                                                                </div>
+                                                            </td>
+                                                        </motion.tr>
+                                                    ))}
+                                                    {suppliers.length === 0 && (
+                                                        <tr>
+                                                            <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                                                No suppliers found.
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </>
+                                            )}
+                                        </AnimatePresence>
                                     </tbody>
                                 </table>
                             </div>
@@ -948,7 +1040,15 @@ const SuperAdminDashboard: React.FC = () => {
                                     <Users className="w-5 h-5 text-indigo-500" />
                                     User Management
                                 </h2>
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 items-center">
+                                    <Button
+                                        size="icon"
+                                        className="w-12 h-12 !bg-transparent !text-black hover:!bg-slate-100 rounded-lg transition-all"
+                                        onClick={fetchData}
+                                        title="Refresh Users"
+                                    >
+                                        <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+                                    </Button>
                                     <div className="relative">
                                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                         <input
@@ -982,81 +1082,101 @@ const SuperAdminDashboard: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {users.filter(u =>
-                                            u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                            u.email.toLowerCase().includes(searchQuery.toLowerCase())
-                                        ).map((user, index) => (
-                                            <motion.tr
-                                                key={user.id}
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: index * 0.05 }}
-                                                className="hover:bg-indigo-50/50 transition-colors group cursor-default"
-                                            >
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{user.username}</span>
-                                                        <span className="text-xs text-slate-400">ID: {user.id.slice(0, 8)}...</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-slate-600 to-slate-400 text-white text-[10px] flex items-center justify-center font-bold uppercase">
-                                                            {user.username.charAt(0)}
-                                                        </div>
-                                                        <span className="text-slate-600 text-sm">{user.email}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${user.globalRole === 'SUPERADMIN'
-                                                        ? "bg-purple-100 text-purple-800 border-purple-200"
-                                                        : user.globalRole === 'SUPPLIER'
-                                                            ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                                                            : "bg-slate-100 text-slate-800 border-slate-200"
-                                                        }`}>
-                                                        {user.globalRole || "USER"}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <StatusBadge isActive={user.isActive || false} />
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
-                                                        {user.globalRole !== 'SUPPLIER' && user.globalRole !== 'SUPERADMIN' && (
-                                                            <Button
-                                                                size="sm"
-                                                                className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200 h-8 gap-2 font-medium"
-                                                                onClick={() => initiateConvertUser(user.id, user.username)}
-                                                            >
-                                                                <ArrowRightLeft className="w-3.5 h-3.5" />
-                                                                Convert
-                                                            </Button>
-                                                        )}
-                                                        <Button
-                                                            size="sm"
-                                                            className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200 h-8 gap-2 font-medium"
-                                                            onClick={() => initiateToggleUser(user)}
+                                        <AnimatePresence mode="wait">
+                                            {loading ? (
+                                                <motion.tr
+                                                    key="skeleton"
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
+                                                >
+                                                    <td colSpan={5} className="p-0 border-none">
+                                                        <table className="w-full">
+                                                            <tbody>
+                                                                <TableSkeleton />
+                                                            </tbody>
+                                                        </table>
+                                                    </td>
+                                                </motion.tr>
+                                            ) : (
+                                                <>
+                                                    {users.filter(u =>
+                                                        u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                                        u.email.toLowerCase().includes(searchQuery.toLowerCase())
+                                                    ).map((user, index) => (
+                                                        <motion.tr
+                                                            key={user.id}
+                                                            initial={{ opacity: 0, y: 20 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: -20 }}
+                                                            transition={{ duration: 0.3, delay: index * 0.05 }}
+                                                            className="hover:bg-slate-50 transition-colors group cursor-default"
                                                         >
-                                                            {user.isActive ? "Suspend" : "Activate"}
-                                                        </Button>
-                                                        <p
-                                                            className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110 cursor-pointer"
-                                                            onClick={() => initiateDeleteUser(user.id, user.username)}
-                                                            title="Delete User"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </p>
-                                                    </div>
-                                                </td>
-                                            </motion.tr>
-                                        ))}
-                                        {!loading && users.length === 0 && (
-                                            <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                                                    No users found.
-                                                </td>
-                                            </tr>
-                                        )}
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs ring-2 ring-white shadow-sm">
+                                                                        {user.username.charAt(0).toUpperCase()}
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="font-bold text-slate-800">{user.username}</p>
+                                                                        <p className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md inline-block mt-0.5 font-mono">ID: {user.id.slice(0, 8)}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-slate-600">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Mail className="w-3 h-3 text-slate-400" />
+                                                                    {user.email}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="px-2.5 py-1 rounded-lg text-xs font-bold border bg-white border-slate-200 text-slate-700 shadow-sm">
+                                                                    {user.globalRole || "N/A"}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <StatusBadge isActive={user.isActive || false} />
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                                    {user.globalRole === "USER" && (
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            className="!bg-black !text-white hover:!bg-slate-800 border-none h-8 mr-2"
+                                                                            onClick={() => initiateConvertUser(user.id, user.username)}
+                                                                        >
+                                                                            Convert
+                                                                        </Button>
+                                                                    )}
+                                                                    <Button
+                                                                        size="sm"
+                                                                        className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200 h-8 gap-2 font-medium"
+                                                                        onClick={() => initiateToggleUser(user)}
+                                                                    >
+                                                                        {user.isActive ? "Suspend" : "Activate"}
+                                                                    </Button>
+                                                                    <p
+                                                                        className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110 cursor-pointer"
+                                                                        onClick={() => initiateDeleteUser(user.id, user.username)}
+                                                                        title="Delete User"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </p>
+                                                                </div>
+                                                            </td>
+                                                        </motion.tr>
+                                                    ))}
+                                                    {!loading && users.length === 0 && (
+                                                        <tr>
+                                                            <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                                                No users found.
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </>
+                                            )}
+                                        </AnimatePresence>
                                     </tbody>
                                 </table>
                             </div>
@@ -1074,8 +1194,8 @@ const SuperAdminDashboard: React.FC = () => {
                         >
                             <div className="bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/60 overflow-hidden relative">
                                 {/* Decorative background elements */}
-                                <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-                                <div className="absolute bottom-0 left-0 w-64 h-64 bg-fuchsia-500/10 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none" />
+                                <div className="absolute top-0 right-0 w-96 h-96 bg-slate-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                                <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-500/10 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none" />
 
                                 <div className="p-8 md:p-10 relative z-10">
                                     <div className="flex items-center gap-4 mb-8">
@@ -1083,9 +1203,9 @@ const SuperAdminDashboard: React.FC = () => {
                                             initial={{ scale: 0.8, opacity: 0 }}
                                             animate={{ scale: 1, opacity: 1 }}
                                             transition={{ delay: 0.1 }}
-                                            className="w-12 h-12 bg-transparent rounded-xl flex items-center justify-center border-2 border-indigo-100"
+                                            className="w-12 h-12 bg-transparent rounded-xl flex items-center justify-center border-2 border-slate-200"
                                         >
-                                            <MdNotificationsActive className="w-6 h-6 text-indigo-600" />
+                                            <MdNotificationsActive className="w-6 h-6 text-black" />
                                         </motion.div>
                                         <div>
                                             <motion.h2
@@ -1191,13 +1311,13 @@ const SuperAdminDashboard: React.FC = () => {
                                             <div className="space-y-2">
                                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Subject Line</label>
                                                 <div className="relative group">
-                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors">
+                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-black transition-colors">
                                                         <MessageSquare className="w-5 h-5" />
                                                     </span>
                                                     <input
                                                         required
                                                         type="text"
-                                                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300"
+                                                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-xl focus:bg-white focus:border-black focus:ring-4 focus:ring-black/5 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300"
                                                         placeholder="e.g., Scheduled Maintenance"
                                                         value={notifyForm.subject}
                                                         onChange={e => setNotifyForm({ ...notifyForm, subject: e.target.value })}
@@ -1210,7 +1330,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                 <textarea
                                                     required
                                                     rows={6}
-                                                    className="w-full px-6 py-4 bg-white border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300 resize-none leading-relaxed"
+                                                    className="w-full px-6 py-4 bg-white border border-slate-200 rounded-xl focus:bg-white focus:border-black focus:ring-4 focus:ring-black/5 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300 resize-none leading-relaxed"
                                                     placeholder="Type your important announcement here..."
                                                     value={notifyForm.message}
                                                     onChange={e => setNotifyForm({ ...notifyForm, message: e.target.value })}
@@ -1223,17 +1343,17 @@ const SuperAdminDashboard: React.FC = () => {
                                         </motion.div>
 
                                         <div className="flex justify-end pt-4">
-                                            <Button
+                                            <button
                                                 type="submit"
                                                 disabled={sending}
-                                                className={`relative overflow-hidden h-14 px-10 rounded-xl text-white text-lg font-bold shadow-xl transition-all duration-300 ${sending ? 'bg-slate-400 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800 hover:scale-[1.02] hover:shadow-slate-900/20'
+                                                className={`relative overflow-hidden h-10 px-8 rounded-lg !text-white font-bold shadow-lg transition-all duration-300 flex items-center justify-center ${sending ? '!bg-black opacity-80 cursor-wait' : '!bg-black hover:!bg-slate-800 hover:scale-[1.02] hover:shadow-slate-900/20'
                                                     }`}
                                             >
                                                 <span className="relative z-10 flex items-center gap-3">
                                                     {sending ? "Dispatching..." : "Send Broadcast"}
                                                     {!sending && <Send className="w-5 h-5" />}
                                                 </span>
-                                            </Button>
+                                            </button>
                                         </div>
                                     </form>
                                 </div>
@@ -1242,6 +1362,47 @@ const SuperAdminDashboard: React.FC = () => {
                     )}
                 </AnimatePresence>
             </main>
+
+            {/* Notification Success Modal */}
+            <AnimatePresence>
+                {showSuccessModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setShowSuccessModal(false)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-2">
+                                    <CheckCircle2 className="w-8 h-8 text-emerald-500 translate-x-0.5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Success!</h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Your broadcast message has been queued for delivery to all selected recipients.
+                                    </p>
+                                </div>
+                                <div className="w-full mt-4">
+                                    <Button
+                                        className="w-full h-12 rounded-xl !bg-black hover:!bg-slate-800 text-white border-none shadow-lg shadow-slate-900/20 font-semibold"
+                                        onClick={() => setShowSuccessModal(false)}
+                                    >
+                                        Done
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Logout Confirmation Modal */}
             <AnimatePresence>
@@ -1671,7 +1832,7 @@ const SuperAdminDashboard: React.FC = () => {
                             <DockItem key={item.tab} onClick={() => setActiveTab(item.tab as any)}>
                                 <DockLabel>{item.label}</DockLabel>
                                 <DockIcon>
-                                    <item.icon className={`w-6 h-6 ${activeTab === item.tab ? 'text-indigo-600' : 'text-slate-500'}`} />
+                                    <item.icon className={`w-6 h-6 ${activeTab === item.tab ? 'text-black' : 'text-slate-500'}`} />
                                 </DockIcon>
                             </DockItem>
                         ))}
