@@ -17,6 +17,93 @@ interface Message {
     text: string;
 }
 
+const OrbWithEyes = () => {
+    const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+    const orbRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (orbRef.current) {
+                const rect = orbRef.current.getBoundingClientRect();
+                // Calculate position relative to the center of the orb
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+
+                // Calculate normalized vector pointing to mouse
+                const dx = e.clientX - centerX;
+                const dy = e.clientY - centerY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // Limit the eye movement radius
+                const maxRadius = 3;
+                const moveX = (dx / distance) * Math.min(distance / 20, maxRadius);
+                const moveY = (dy / distance) * Math.min(distance / 20, maxRadius);
+
+                setMousePos({ x: moveX || 0, y: moveY || 0 });
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        return () => window.removeEventListener('mousemove', handleMouseMove);
+    }, []);
+
+    return (
+        <div ref={orbRef} className="relative w-24 h-24 flex items-center justify-center">
+            {/* Bouncing Wrapper for Laugh Animation */}
+            <motion.div
+                className="w-full h-full relative flex items-center justify-center"
+                animate={{ y: [0, -6, 0, -3, 0] }}
+                transition={{ duration: 2, repeat: Infinity, repeatDelay: 1, ease: "easeInOut" }}
+            >
+                {/* Rotating Orb Image */}
+                <motion.img
+                    src="/chatbot-orb.png"
+                    alt="Chatbot Orb"
+                    className="w-full h-full object-contain filter drop-shadow-xl"
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                />
+
+                {/* Eyes Container - Positioned absolutely on top, moves with bounce */}
+                <div className="absolute top-[38%] left-[25%] flex gap-2 w-1/2 justify-center items-center z-10">
+                    {/* Left Eye - Smaller and Squints to Laugh */}
+                    <motion.div
+                        className="w-3 h-3.5 bg-white rounded-full flex items-center justify-center shadow-inner overflow-hidden relative"
+                        animate={{ scaleY: [1, 0.5, 1, 0.5, 1] }}
+                        transition={{ duration: 2, repeat: Infinity, repeatDelay: 1, times: [0, 0.2, 0.5, 0.7, 1] }}
+                    >
+                        <motion.div
+                            className="w-1.5 h-1.5 bg-black rounded-full"
+                            animate={{ x: mousePos.x, y: mousePos.y }}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        />
+                    </motion.div>
+
+                    {/* Right Eye - Smaller and Squints to Laugh */}
+                    <motion.div
+                        className="w-3 h-3.5 bg-white rounded-full flex items-center justify-center shadow-inner overflow-hidden relative"
+                        animate={{ scaleY: [1, 0.5, 1, 0.5, 1] }}
+                        transition={{ duration: 2, repeat: Infinity, repeatDelay: 1, times: [0, 0.2, 0.5, 0.7, 1] }}
+                    >
+                        <motion.div
+                            className="w-1.5 h-1.5 bg-black rounded-full"
+                            animate={{ x: mousePos.x, y: mousePos.y }}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        />
+                    </motion.div>
+                </div>
+
+                {/* Mouth - Gentle Laugh */}
+                <motion.div
+                    className="absolute top-[60%] left-1/2 -translate-x-1/2 w-4 h-2 bg-white rounded-b-full z-10"
+                    animate={{ scale: [1, 1.2, 1, 1.2, 1] }}
+                    transition={{ duration: 2, repeat: Infinity, repeatDelay: 1, times: [0, 0.2, 0.5, 0.7, 1] }}
+                />
+            </motion.div>
+        </div>
+    );
+};
+
 export const ChatbotWidget = () => {
     const { isAuthenticated, user } = useAuthContext();
     const [isOpen, setIsOpen] = useState(false);
@@ -308,10 +395,10 @@ export const ChatbotWidget = () => {
 
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="relative w-20 h-20 flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-300 z-50 group cursor-pointer drop-shadow-2xl"
+                className="relative w-24 h-24 flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-300 z-50 group cursor-pointer !bg-transparent"
                 aria-label="Toggle Chatbot"
             >
-                <FaRobot className={`w-20 h-20 ${theme.text} filter drop-shadow-lg`} />
+                <OrbWithEyes />
                 {!isOpen && (
                     <motion.span
                         initial={{ scale: 0 }}

@@ -15,7 +15,7 @@ import { adminApi } from "../lib/api/endpoints";
 import type { User, Store, Supplier, AdminStats } from "../lib/types";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { FaUserNurse } from "react-icons/fa";
+import { } from "react-icons/fa";
 import { MdNotificationsActive } from "react-icons/md";
 
 // --- Types ---
@@ -196,6 +196,49 @@ const TableSkeleton = () => (
 );
 
 // --- Main Page ---
+
+const AnalyticsSkeleton = () => (
+    <div className="space-y-8 animate-pulse">
+        {/* KPI Cards Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm h-32 flex flex-col justify-between">
+                    <div className="flex justify-between items-start">
+                        <div className="w-10 h-10 rounded-xl bg-slate-200"></div>
+                        <div className="w-16 h-6 rounded-full bg-slate-100"></div>
+                    </div>
+                    <div>
+                        <div className="w-24 h-8 bg-slate-200 rounded mb-2"></div>
+                        <div className="w-32 h-4 bg-slate-100 rounded"></div>
+                    </div>
+                </div>
+            ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Main Chart Skeleton */}
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm h-[400px]">
+                <div className="w-48 h-6 bg-slate-200 rounded mb-6"></div>
+                <div className="w-full h-[300px] bg-slate-100 rounded-xl"></div>
+            </div>
+
+            {/* Side Stats Skeleton */}
+            <div className="space-y-6">
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm h-[200px]">
+                    <div className="w-40 h-6 bg-slate-200 rounded mb-4"></div>
+                    <div className="space-y-3">
+                        <div className="w-full h-12 bg-slate-100 rounded-lg"></div>
+                        <div className="w-full h-12 bg-slate-100 rounded-lg"></div>
+                    </div>
+                </div>
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm h-[180px]">
+                    <div className="w-40 h-6 bg-slate-200 rounded mb-4"></div>
+                    <div className="w-full h-24 bg-slate-100 rounded-lg"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+);
 
 const SuperAdminDashboard: React.FC = () => {
     const auth = useRecoilValue(authState);
@@ -452,9 +495,9 @@ const SuperAdminDashboard: React.FC = () => {
                                 animate={{ scale: 1, opacity: 1, rotate: 0 }}
                                 transition={{ type: "spring", stiffness: 260, damping: 20 }}
                                 whileHover={{ scale: 1.1, rotate: 10, boxShadow: "0px 10px 25px rgba(79, 70, 229, 0.4)" }}
-                                className="w-12 h-12 bg-gradient-to-tr from-violet-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 cursor-pointer"
+                                className="w-14 h-14 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/10 cursor-pointer overflow-hidden border border-slate-100"
                             >
-                                <FaUserNurse className="w-6 h-6 text-white" />
+                                <img src="/admin-logo.jpg" alt="Admin Logo" className="w-full h-full object-cover" />
                             </motion.div>
                             <div>
                                 <motion.h1
@@ -631,127 +674,129 @@ const SuperAdminDashboard: React.FC = () => {
                         </motion.div>
                     )}
 
-                    {activeTab === "analytics" && analytics && (
-                        <motion.div
-                            key="analytics"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2 }}
-                            className="space-y-6"
-                        >
-                            {/* Top Level Financials */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-indigo-200 text-sm font-medium mb-1">Total Revenue</p>
-                                            <h3 className="text-3xl font-bold">${analytics.overview.financials.totalRevenue.toLocaleString()}</h3>
+                    {activeTab === "analytics" && (
+                        (loading && !analytics) ? <AnalyticsSkeleton /> : analytics && (
+                            <motion.div
+                                key="analytics"
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ duration: 0.2 }}
+                                className="space-y-6"
+                            >
+                                {/* Top Level Financials */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <p className="text-indigo-200 text-sm font-medium mb-1">Total Revenue</p>
+                                                <h3 className="text-3xl font-bold">${analytics.overview.financials.totalRevenue.toLocaleString()}</h3>
+                                            </div>
+                                            <div className="p-2 bg-white/20 rounded-lg">
+                                                <Wallet className="w-6 h-6 text-white" />
+                                            </div>
                                         </div>
-                                        <div className="p-2 bg-white/20 rounded-lg">
-                                            <Wallet className="w-6 h-6 text-white" />
-                                        </div>
+                                        <p className="text-xs text-indigo-200">Across {analytics.overview.financials.totalSalesCount} sales</p>
                                     </div>
-                                    <p className="text-xs text-indigo-200">Across {analytics.overview.financials.totalSalesCount} sales</p>
-                                </div>
-                                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-slate-500 text-sm font-medium mb-1">Inventory Value</p>
-                                            <h3 className="text-3xl font-bold text-slate-800">${analytics.overview.financials.inventoryValue.toLocaleString()}</h3>
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <p className="text-slate-500 text-sm font-medium mb-1">Inventory Value</p>
+                                                <h3 className="text-3xl font-bold text-slate-800">${analytics.overview.financials.inventoryValue.toLocaleString()}</h3>
+                                            </div>
+                                            <div className="p-2 bg-emerald-100 rounded-lg">
+                                                <Package className="w-6 h-6 text-emerald-600" />
+                                            </div>
                                         </div>
-                                        <div className="p-2 bg-emerald-100 rounded-lg">
-                                            <Package className="w-6 h-6 text-emerald-600" />
-                                        </div>
+                                        <p className="text-xs text-slate-400">Estimated value</p>
                                     </div>
-                                    <p className="text-xs text-slate-400">Estimated value</p>
-                                </div>
-                                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-slate-500 text-sm font-medium mb-1">Expiring Batches (30d)</p>
-                                            <h3 className="text-3xl font-bold text-slate-800">{analytics.overview.operations.expiringBatchesNext30Days}</h3>
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <p className="text-slate-500 text-sm font-medium mb-1">Expiring Batches (30d)</p>
+                                                <h3 className="text-3xl font-bold text-slate-800">{analytics.overview.operations.expiringBatchesNext30Days}</h3>
+                                            </div>
+                                            <div className="p-2 bg-orange-100 rounded-lg">
+                                                <AlertTriangle className="w-6 h-6 text-orange-600" />
+                                            </div>
                                         </div>
-                                        <div className="p-2 bg-orange-100 rounded-lg">
-                                            <AlertTriangle className="w-6 h-6 text-orange-600" />
-                                        </div>
+                                        <p className="text-xs text-slate-400">Requiring attention</p>
                                     </div>
-                                    <p className="text-xs text-slate-400">Requiring attention</p>
                                 </div>
-                            </div>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                {/* Distributions */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {/* Distributions */}
+                                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                                        <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                            <PieChart className="w-5 h-5 text-indigo-500" />
+                                            User Distribution
+                                        </h3>
+                                        <div className="space-y-4">
+                                            {analytics.distributions.userRoles.map((role) => (
+                                                <div key={role.role}>
+                                                    <div className="flex justify-between text-sm mb-1">
+                                                        <span className="font-medium text-slate-700">{role.role}</span>
+                                                        <span className="text-slate-500">{role.count} users</span>
+                                                    </div>
+                                                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-indigo-500 rounded-full"
+                                                            style={{ width: `${(role.count / analytics.overview.users.total) * 100}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Operational Health */}
+                                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                                        <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                            <Activity className="w-5 h-5 text-indigo-500" />
+                                            Operational Health
+                                        </h3>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-4 rounded-xl bg-orange-50 border border-orange-100">
+                                                <p className="text-orange-600 text-sm font-medium">Pending Requests</p>
+                                                <p className="text-2xl font-bold text-orange-800">{analytics.overview.operations.pendingSupplierRequests}</p>
+                                            </div>
+                                            <div className="p-4 rounded-xl bg-red-50 border border-red-100">
+                                                <p className="text-red-600 text-sm font-medium">Failed Uploads</p>
+                                                <p className="text-2xl font-bold text-red-800">{analytics.overview.operations.failedUploads}</p>
+                                            </div>
+                                            <div className="col-span-2 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                                                <div className="flex justify-between items-end mb-2">
+                                                    <p className="text-slate-600 text-sm font-medium">Sales Trend (Last 30 Days)</p>
+                                                    <p className="text-xs text-slate-400">Daily Revenue</p>
+                                                </div>
+                                                <SimpleBarChart
+                                                    data={analytics.trends.sales.map(s => s.revenue)}
+                                                    color="bg-emerald-500"
+                                                    height={60}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Critical Activity */}
                                 <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                                     <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                        <PieChart className="w-5 h-5 text-indigo-500" />
-                                        User Distribution
+                                        <AlertTriangle className="w-5 h-5 text-red-500" />
+                                        Recent Critical Actions
                                     </h3>
-                                    <div className="space-y-4">
-                                        {analytics.distributions.userRoles.map((role) => (
-                                            <div key={role.role}>
-                                                <div className="flex justify-between text-sm mb-1">
-                                                    <span className="font-medium text-slate-700">{role.role}</span>
-                                                    <span className="text-slate-500">{role.count} users</span>
-                                                </div>
-                                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-indigo-500 rounded-full"
-                                                        style={{ width: `${(role.count / analytics.overview.users.total) * 100}%` }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        ))}
+                                    <div className="space-y-1">
+                                        {analytics.recentCriticalActivity.length === 0 ? (
+                                            <p className="text-slate-400 text-center py-4">No critical actions recorded recently.</p>
+                                        ) : (
+                                            analytics.recentCriticalActivity.map((act, idx) => (
+                                                <ActivityItem key={act.id} activity={act} index={idx} />
+                                            ))
+                                        )}
                                     </div>
                                 </div>
-
-                                {/* Operational Health */}
-                                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                                    <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                        <Activity className="w-5 h-5 text-indigo-500" />
-                                        Operational Health
-                                    </h3>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-4 rounded-xl bg-orange-50 border border-orange-100">
-                                            <p className="text-orange-600 text-sm font-medium">Pending Requests</p>
-                                            <p className="text-2xl font-bold text-orange-800">{analytics.overview.operations.pendingSupplierRequests}</p>
-                                        </div>
-                                        <div className="p-4 rounded-xl bg-red-50 border border-red-100">
-                                            <p className="text-red-600 text-sm font-medium">Failed Uploads</p>
-                                            <p className="text-2xl font-bold text-red-800">{analytics.overview.operations.failedUploads}</p>
-                                        </div>
-                                        <div className="col-span-2 p-4 rounded-xl bg-slate-50 border border-slate-100">
-                                            <div className="flex justify-between items-end mb-2">
-                                                <p className="text-slate-600 text-sm font-medium">Sales Trend (Last 30 Days)</p>
-                                                <p className="text-xs text-slate-400">Daily Revenue</p>
-                                            </div>
-                                            <SimpleBarChart
-                                                data={analytics.trends.sales.map(s => s.revenue)}
-                                                color="bg-emerald-500"
-                                                height={60}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Critical Activity */}
-                            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                                <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                    <AlertTriangle className="w-5 h-5 text-red-500" />
-                                    Recent Critical Actions
-                                </h3>
-                                <div className="space-y-1">
-                                    {analytics.recentCriticalActivity.length === 0 ? (
-                                        <p className="text-slate-400 text-center py-4">No critical actions recorded recently.</p>
-                                    ) : (
-                                        analytics.recentCriticalActivity.map((act, idx) => (
-                                            <ActivityItem key={act.id} activity={act} index={idx} />
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        </motion.div>
+                            </motion.div>
+                        )
                     )}
 
                     {activeTab === "stores" && (
