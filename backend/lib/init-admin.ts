@@ -63,7 +63,7 @@ export async function ensureAdmin() {
   } else {
     // If target admin user does not exist, create them
     console.log("Creating default admin user...");
-    const username = "admin"; // You might want to make this configurable or unique
+    const username = "SUPERADMIN"; // You might want to make this configurable or unique
     const encUsername = crypto$.encryptCellDeterministic(username);
     const hashed = await hashPassword(password);
 

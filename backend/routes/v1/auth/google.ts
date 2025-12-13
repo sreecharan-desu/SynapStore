@@ -19,7 +19,7 @@ const googleSchema = z.object({
 // Helper respond removed, using standard helpers from lib/api
 
 // Block google signin for these global roles
-const RESTRICTED_GOOGLE_ROLES = ["ADMIN", "SUPERADMIN"];
+const RESTRICTED_GOOGLE_ROLES = ["SUPERADMIN", "SUPERADMIN"];
 
 /**
  * POST /v1/oauth/google

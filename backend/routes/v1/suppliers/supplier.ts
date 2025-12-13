@@ -364,7 +364,7 @@ router.post(
       const storeAdmins = await prisma.userStoreRole.findMany({
         where: {
           storeId,
-          role: { in: ["STORE_OWNER", "ADMIN"] },
+          role: { in: ["STORE_OWNER", "SUPERADMIN"] },
         },
         include: { user: { select: { id: true, email: true } } },
       });
@@ -536,7 +536,7 @@ router.delete(
           const store = await prisma.store.findUnique({ where: { id: storeId } });
           if (store) {
             const owners = await prisma.userStoreRole.findMany({
-                where: { storeId, role: { in: ["STORE_OWNER", "ADMIN"] } },
+                where: { storeId, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
                 include: { user: true }
             });
             for (const owner of owners) {

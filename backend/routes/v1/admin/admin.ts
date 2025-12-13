@@ -71,7 +71,7 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
       inventoryBatches,
       uploadsCount,
     ] = await Promise.all([
-      prisma.user.count({ where: { globalRole: { notIn: ["SUPERADMIN", "ADMIN"] } } }),
+      prisma.user.count({ where: { globalRole: { notIn: ["SUPERADMIN", "SUPERADMIN"] } } }),
       prisma.store.count(),
       prisma.medicine.count(),
       prisma.inventoryBatch.count(),
@@ -159,7 +159,7 @@ router.post(
       await prisma.auditLog.create({
         data: {
           actorId: req.user?.id ?? null,
-          actorType: "ADMIN",
+          actorType: "SUPERADMIN",
           action: "IMPERSONATE_USER",
           resource: "User",
           resourceId: user.id,
@@ -304,7 +304,7 @@ router.patch("/stores/:id/suspend", requireRole("SUPERADMIN"), async (req: any, 
     await prisma.auditLog.create({
       data: {
         actorId: req.user?.id,
-        actorType: "ADMIN",
+        actorType: "SUPERADMIN",
         action: isActive ? "ACTIVATE_STORE" : "SUSPEND_STORE",
         resource: "Store",
         resourceId: id,
@@ -407,7 +407,7 @@ router.patch("/suppliers/:id/suspend", requireRole("SUPERADMIN"), async (req: an
     await prisma.auditLog.create({
       data: {
         actorId: req.user?.id,
-        actorType: "ADMIN",
+        actorType: "SUPERADMIN",
         action: isActive ? "ACTIVATE_SUPPLIER" : "SUSPEND_SUPPLIER",
         resource: "Supplier",
         resourceId: id,
@@ -508,7 +508,7 @@ router.patch("/users/:userId/suspend", requireRole("SUPERADMIN"), async (req: an
     await prisma.auditLog.create({
       data: {
         actorId: req.user?.id,
-        actorType: "ADMIN",
+        actorType: "SUPERADMIN",
         action: isActive ? "ACTIVATE_USER" : "SUSPEND_USER",
         resource: "User",
         resourceId: userId,
@@ -580,7 +580,7 @@ router.post(
         await tx.auditLog.create({
           data: {
             actorId: req.user?.id,
-            actorType: "ADMIN",
+            actorType: "SUPERADMIN",
             action: "CONVERT_TO_SUPPLIER",
             resource: "User",
             resourceId: userId,
@@ -616,7 +616,7 @@ router.delete("/users/:id", requireRole("SUPERADMIN"), async (req: any, res) => 
       await tx.auditLog.create({
         data: {
           actorId: req.user?.id,
-          actorType: "ADMIN",
+          actorType: "SUPERADMIN",
           action: "DELETE_USER",
           resource: "User",
           resourceId: id,
@@ -647,7 +647,7 @@ router.delete("/stores/:id", requireRole("SUPERADMIN"), async (req: any, res) =>
       await tx.auditLog.create({
         data: {
           actorId: req.user?.id,
-          actorType: "ADMIN",
+          actorType: "SUPERADMIN",
           action: "DELETE_STORE",
           resource: "Store",
           resourceId: id,
@@ -678,7 +678,7 @@ router.delete("/suppliers/:id", requireRole("SUPERADMIN"), async (req: any, res)
       await tx.auditLog.create({
         data: {
           actorId: req.user?.id,
-          actorType: "ADMIN",
+          actorType: "SUPERADMIN",
           action: "DELETE_SUPPLIER",
           resource: "Supplier",
           resourceId: id,

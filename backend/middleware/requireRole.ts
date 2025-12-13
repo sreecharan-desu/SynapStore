@@ -16,7 +16,7 @@ type Req = Request & {
  * - SUPERADMIN bypass: if req.user.globalRole === "SUPERADMIN" the check passes
  *
  * Example usage:
- *   router.post("/", authenticate, storeContext, requireRole(["ADMIN","STORE_OWNER"]), handler)
+ *   router.post("/", authenticate, storeContext, requireRole(["SUPERADMIN","STORE_OWNER"]), handler)
  */
 export function requireRole(allowed: Role | Role[]) {
   const allowedArr = Array.isArray(allowed) ? allowed : [allowed];
