@@ -508,6 +508,15 @@ router.delete(
         if (request.status !== "PENDING") return sendError(res, "Can only cancel pending requests", 400);
 
         await prisma.supplierRequest.delete({ where: { id: requestId } });
+
+        await prisma.activityLog.create({
+            data: {
+                storeId: request.storeId, // storeId is required in activityLog? Yes usually.
+                userId: user.id,
+                action: "supplier_request_cancelled",
+                payload: { requestId }
+            }
+        });
         
         return sendSuccess(res, "Request cancelled");
     } catch (err) {
@@ -585,6 +594,15 @@ router.delete(
                 }
             }
           }
+
+          await prisma.activityLog.create({
+            data: {
+                storeId,
+                userId: user.id,
+                action: "supplier_disconnected_from_store",
+                payload: { storeId }
+            }
+          });
 
           return sendSuccess(res, "Disconnected from store");
       } catch (err) {
@@ -700,6 +718,15 @@ router.post(
         await prisma.supplierRequest.update({
             where: { id: requestId },
             data: { status: "REJECTED" }
+        });
+
+        await prisma.activityLog.create({
+            data: {
+                storeId: request.storeId,
+                userId: user.id,
+                action: "supplier_request_rejected",
+                payload: { requestId }
+            }
         });
 
         // Notify Store? Usually optional for rejection but good practice.

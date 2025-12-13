@@ -45,6 +45,13 @@ const PublicSupplierPage = () => {
                     <p><strong>Address:</strong> {supplier.address || "N/A"}</p>
                 </div>
 
+                <div className="mb-8">
+                     {/* Placeholder for connection action if we have store context */}
+                     {/* For now, just a visual indicator or button can be added if needed, 
+                         but usually this page is public/anonymous. 
+                         If accessed via dashboard, we might want a "Connect" button. */}
+                </div>
+
                 <h2 className="text-xl font-semibold mb-2">Catalog Preview</h2>
                  <ul className="space-y-2 mb-8">
                     {supplier.medicines?.map((m: any) => (

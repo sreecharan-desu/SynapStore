@@ -203,6 +203,35 @@ const SupplierDashboard: React.FC = () => {
         }
     };
 
+    const handleAcceptRequest = async (requestId: string) => {
+        try {
+            const res = await suppliersApi.acceptRequest(requestId);
+            if (res.data.success) {
+                alert("Request accepted!");
+                // Optimistic update
+                setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: "ACCEPTED" } : r));
+                fetchData(); // Refresh to get connection
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to accept request: " + err.message);
+        }
+    };
+
+    const handleRejectRequest = async (requestId: string) => {
+        if (!confirm("Are you sure you want to reject this request?")) return;
+        try {
+            const res = await suppliersApi.rejectRequest(requestId);
+            if (res.data.success) {
+                alert("Request rejected.");
+                setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: "REJECTED" } : r));
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to reject request: " + err.message);
+        }
+    };
+
     const pendingCount = requests.filter(r => r.status === "PENDING").length;
     const connectedCount = requests.filter(r => r.status === "ACCEPTED").length;
 
@@ -398,28 +427,60 @@ const SupplierDashboard: React.FC = () => {
                                             <thead className="bg-slate-50 border-b border-slate-200">
                                                 <tr>
                                                     <th className="px-6 py-4 font-semibold text-slate-700">Store</th>
+                                                    <th className="px-6 py-4 font-semibold text-slate-700">Direction</th>
                                                     <th className="px-6 py-4 font-semibold text-slate-700">Date Sent</th>
                                                     <th className="px-6 py-4 font-semibold text-slate-700">Message</th>
                                                     <th className="px-6 py-4 font-semibold text-slate-700">Status</th>
+                                                    <th className="px-6 py-4 font-semibold text-slate-700">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {requests.map(req => (
+                                                {requests.map(req => {
+                                                    const isInbound = req.createdById !== auth.user?.id;
+                                                    return (
                                                     <tr key={req.id} className="hover:bg-slate-50 transition-colors">
                                                         <td className="px-6 py-4 font-medium text-slate-900">
                                                             {req.store?.name || (stores.find(s => s.id === req.storeId)?.name) || "Store (" + (req.storeId?.slice(0, 8) || "Unknown") + ")"}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-xs">
+                                                            {isInbound ? 
+                                                                <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100 flex items-center w-fit gap-1"><TruckIcon className="w-3 h-3" /> Received</span> : 
+                                                                <span className="bg-slate-50 text-slate-500 px-2 py-1 rounded border border-slate-100 flex items-center w-fit gap-1"><Send className="w-3 h-3" /> Sent</span>
+                                                            }
                                                         </td>
                                                         <td className="px-6 py-4 text-slate-500">{req.createdAt ? new Date(req.createdAt).toLocaleDateString() : "-"}</td>
                                                         <td className="px-6 py-4 text-slate-500 max-w-xs truncate" title={req.message || ""}>{req.message || "-"}</td>
                                                         <td className="px-6 py-4">
                                                             <RequestBadge status={req.status} />
                                                         </td>
+                                                        <td className="px-6 py-4">
+                                                            {isInbound && req.status === "PENDING" && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <Button 
+                                                                        size="sm" 
+                                                                        className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                                        onClick={() => handleAcceptRequest(req.id)}
+                                                                    >
+                                                                        Accept
+                                                                    </Button>
+                                                                    <Button 
+                                                                        size="sm" 
+                                                                        variant="outline"
+                                                                        className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50"
+                                                                        onClick={() => handleRejectRequest(req.id)}
+                                                                    >
+                                                                        Reject
+                                                                    </Button>
+                                                                </div>
+                                                            )}
+                                                             {/* Self-connection fix: If it's outbound (Sent) but actually me (Self), I should accept it on Store Dashboard. */}
+                                                        </td>
                                                     </tr>
-                                                ))}
+                                                )})}
                                                 {!loading && requests.length === 0 && (
                                                     <tr>
-                                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
-                                                            No requests sent yet.
+                                                        <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                                                            No requests found.
                                                         </td>
                                                     </tr>
                                                 )}

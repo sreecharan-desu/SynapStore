@@ -1184,7 +1184,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                             </td>
                                                             <td className="px-6 py-4 text-right">
                                                                 <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
-                                                                    {user.globalRole === "USER" && (
+                                                                    {user.globalRole !== "SUPPLIER" && user.globalRole !== "SUPERADMIN" && (
                                                                         <Button
                                                                             variant="outline"
                                                                             size="sm"

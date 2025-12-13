@@ -220,33 +220,66 @@ const StoreOwnerDashboard: React.FC = () => {
         };
     }, []);
 
-    React.useEffect(() => {
-        const fetchDashboardData = async () => {
-            try {
-                const [, bootstrapRes, requestsRes] = await Promise.all([
-                    dashboardApi.getStore(),
-                    dashboardApi.getBootstrap(),
-                    dashboardApi.getSupplierRequests(),
-                ]);
+    const fetchData = React.useCallback(async () => {
+        try {
+            const [, bootstrapRes, requestsRes] = await Promise.all([
+                dashboardApi.getStore(),
+                dashboardApi.getBootstrap(),
+                dashboardApi.getSupplierRequests(),
+            ]);
 
-                if (bootstrapRes.data.success) {
-                    setData(bootstrapRes.data.data);
-                }
-
-                if (requestsRes.data.success && Array.isArray(requestsRes.data.data)) {
-                    setSupplierRequests(requestsRes.data.data);
-                }
-            } catch (err) {
-                console.error("Failed to fetch dashboard data", err);
-            } finally {
-                setLoading(false);
+            if (bootstrapRes.data.success) {
+                setData(bootstrapRes.data.data);
             }
-        };
 
-        if (auth.token) {
-            fetchDashboardData();
+            if (requestsRes.data.success && Array.isArray(requestsRes.data.data)) {
+                // Filter notifications: Only show INBOUND requests (Requests created by the Supplier, i.e., NOT by me)
+                // Actually, more accurately: Requests where createdById is NOT the current user
+                // Or better: Requests where the direction is Incoming.
+                // Since we don't have strict direction field in SupplierRequest type here, rely on createdById vs auth.user.id
+                // But wait, if Self-Connect, createdById matches user (who is both Store Owner and Supplier).
+                // If I am Store Owner, and I see a request I created, it's Outbound (except for Self-Connect where backend says Inbound?).
+                // Backend logic: If CreatedBy == Supplier.userId -> Inbound.
+                // Here we just want to avoid showing "You sent a request" as a notification to yourself.
+                // So filter: remove requests created by ME.
+                // UNLESS it's a self-request that is treated as Inbound?
+                // Let's stick to: If createdById != auth.user?.id, show notification.
+                // If I sent it, I don't need a notification.
+                const allRequests = requestsRes.data.data;
+                const inbound = allRequests.filter((r: SupplierRequest) => r.createdById !== auth.user?.id);
+                setSupplierRequests(inbound);
+            }
+        } catch (err) {
+            console.error("Failed to fetch dashboard data", err);
+        } finally {
+            setLoading(false);
         }
-    }, [auth.token]);
+    }, []);
+
+    React.useEffect(() => {
+        if (auth.token) {
+            fetchData();
+        }
+    }, [auth.token, fetchData]);
+
+    // Directory State
+    const [showDirectory, setShowDirectory] = React.useState(false);
+    const [directorySuppliers, setDirectorySuppliers] = React.useState<any[]>([]);
+
+    const fetchSuppliersDirectory = React.useCallback(async (q?: string) => {
+        try {
+            const res = await dashboardApi.suppliersDirectory(q);
+            if (res.data.success) {
+                setDirectorySuppliers(res.data.data.suppliers);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        if (showDirectory) fetchSuppliersDirectory();
+    }, [showDirectory, fetchSuppliersDirectory]);
 
     const handleLogout = () => {
         setShowLogoutConfirm(true);
@@ -298,17 +331,34 @@ const StoreOwnerDashboard: React.FC = () => {
         }
     };
 
-    const [directorySuppliers, setDirectorySuppliers] = React.useState<any[]>([]);
-    const [showDirectory, setShowDirectory] = React.useState(false);
 
-    const handleFetchDirectory = async () => {
+
+    const handleDirectoryAccept = async (requestId: string) => {
         try {
-            const res = await dashboardApi.suppliersDirectory();
-            if (res.data.success) {
-                setDirectorySuppliers(res.data.data.suppliers);
-            }
+            // Optimistic update
+            setDirectorySuppliers(prev => prev.map(s => s.requestId === requestId ? { ...s, connectionStatus: "CONNECTED" } : s));
+            await dashboardApi.acceptSupplierRequest(requestId);
+            setShowFeedback(true);
+            fetchData();
         } catch (err) {
             console.error(err);
+            alert("Failed to accept request");
+            // Revert on error? Or just reload
+            fetchSuppliersDirectory();
+        }
+    };
+
+    const handleDirectoryReject = async (requestId: string) => {
+        if (!confirm("Reject this request?")) return;
+        try {
+            setDirectorySuppliers(prev => prev.map(s => s.requestId === requestId ? { ...s, connectionStatus: "NONE", requestId: null } : s));
+            await dashboardApi.rejectSupplierRequest(requestId);
+            setShowFeedback(true);
+            fetchData();
+        } catch (err) {
+            console.error(err);
+            alert("Failed to reject request");
+            fetchSuppliersDirectory();
         }
     };
 
@@ -324,11 +374,7 @@ const StoreOwnerDashboard: React.FC = () => {
         }
     };
 
-    React.useEffect(() => {
-        if (showDirectory) {
-            handleFetchDirectory();
-        }
-    }, [showDirectory]);
+
 
 
 
@@ -879,18 +925,47 @@ const StoreOwnerDashboard: React.FC = () => {
                                                 </div>
                                                 <div>
                                                     {supplier.connectionStatus === "CONNECTED" ? (
-                                                        <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold flex items-center gap-1">
+                                                        <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold flex items-center gap-1 border border-emerald-200">
                                                             <Check className="w-3 h-3" /> Connected
                                                         </span>
-                                                    ) : supplier.connectionStatus === "PENDING" ? (
-                                                        <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold flex items-center gap-1">
-                                                            <Activity className="w-3 h-3" /> Pending
-                                                        </span>
+                                                    ) : supplier.connectionStatus === "PENDING_OUTBOUND" ? (
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold flex items-center gap-1 border border-slate-200">
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
+                                                                Request Sent
+                                                            </span>
+                                                            {supplier.requestDate && <span className="text-[10px] text-slate-400 font-medium">
+                                                                {new Date(supplier.requestDate).toLocaleDateString()}
+                                                            </span>}
+                                                        </div>
+                                                    ) : supplier.connectionStatus === "PENDING_INBOUND" ? (
+                                                        <div className="flex flex-col items-end gap-2">
+                                                            <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 flex items-center gap-1">
+                                                                <Activity className="w-3 h-3" /> Action Required
+                                                            </span>
+                                                            <div className="flex gap-1">
+                                                                <Button 
+                                                                    size="sm"
+                                                                    className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                                                                    onClick={() => handleDirectoryAccept(supplier.requestId)}
+                                                                >
+                                                                    Accept
+                                                                </Button>
+                                                                <Button 
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="h-7 text-xs border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                                                                    onClick={() => handleDirectoryReject(supplier.requestId)}
+                                                                >
+                                                                    Reject
+                                                                </Button>
+                                                            </div>
+                                                        </div>
                                                     ) : (
                                                         <Button 
                                                             size="sm"
                                                             onClick={() => handleConnectRequest(supplier.id)}
-                                                            className={`bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200`}
+                                                            className={`bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 rounded-full px-5`}
                                                         >
                                                             Connect
                                                         </Button>

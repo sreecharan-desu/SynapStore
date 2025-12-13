@@ -45,6 +45,8 @@ export const suppliersApi = {
     getDiscoveryStores: () => client.get<{ success: boolean; data: { stores: Store[] } }>("api/v1/supplier-requests/discovery"),
     createRequest: (data: { storeId: string; supplierId: string; message?: string }) => client.post<{ success: boolean; data: { request: SupplierRequest } }>("api/v1/supplier-requests", data),
     getDetails: (supplierId?: string) => client.get<{ success: boolean; data: { supplier: Supplier & { supplierStores?: { store: Store }[] }; requests: SupplierRequest[] } }>("api/v1/supplier-requests", { params: { supplierId } }),
+    acceptRequest: (requestId: string) => client.post<{ success: boolean; message: string }>(`api/v1/supplier-requests/requests/${requestId}/accept`),
+    rejectRequest: (requestId: string) => client.post<{ success: boolean; message: string }>(`api/v1/supplier-requests/requests/${requestId}/reject`),
     disconnectStore: (storeId: string) => client.delete<{ success: boolean; message: string }>(`api/v1/supplier-requests/stores/${storeId}`),
 };
 
