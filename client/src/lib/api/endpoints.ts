@@ -34,6 +34,7 @@ export const dashboardApi = {
     rejectSupplierRequest: (id: string) => client.post<{ success: boolean; message: string }>(`api/v1/dashboard/${id}/reject`),
     createSupplierRequest: (data: { supplierId: string; message?: string }) => client.post<{ success: boolean; data: SupplierRequest }>("api/v1/dashboard/supplier-requests", data),
     disconnectSupplier: (supplierId: string) => client.delete<{ success: boolean; message: string }>(`api/v1/dashboard/suppliers/${supplierId}`),
+    suppliersDirectory: (q?: string) => client.get<{ success: boolean; data: { suppliers: any[] } }>("api/v1/dashboard/suppliers-directory", { params: { q } }),
 };
 
 // --- Suppliers ---

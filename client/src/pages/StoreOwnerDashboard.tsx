@@ -298,6 +298,38 @@ const StoreOwnerDashboard: React.FC = () => {
         }
     };
 
+    const [directorySuppliers, setDirectorySuppliers] = React.useState<any[]>([]);
+    const [showDirectory, setShowDirectory] = React.useState(false);
+
+    const handleFetchDirectory = async () => {
+        try {
+            const res = await dashboardApi.suppliersDirectory();
+            if (res.data.success) {
+                setDirectorySuppliers(res.data.data.suppliers);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleConnectRequest = async (supplierId: string) => {
+        try {
+            await dashboardApi.createSupplierRequest({ supplierId });
+            // Optimistic update
+            setDirectorySuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, connectionStatus: "PENDING" } : s));
+            setShowFeedback(true);
+        } catch (err) {
+            console.error(err);
+            alert("Failed to send request");
+        }
+    };
+
+    React.useEffect(() => {
+        if (showDirectory) {
+            handleFetchDirectory();
+        }
+    }, [showDirectory]);
+
 
 
     if (loading) {
@@ -762,10 +794,21 @@ const StoreOwnerDashboard: React.FC = () => {
 
                     {/* Connected Suppliers */}
                     <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm flex flex-col h-full">
-                         <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                            <Users className={`w-5 h-5 ${theme.text}`} />
-                            Connected Suppliers
-                        </h3>
+                         <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <Users className={`w-5 h-5 ${theme.text}`} />
+                                Connected Suppliers
+                            </h3>
+                            <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => setShowDirectory(true)}
+                                className={`text-xs ${theme.text} ${theme.border} hover:${theme.light} bg-white`}
+                            >
+                                <Search className="w-3 h-3 mr-1" />
+                                Find Suppliers
+                            </Button>
+                        </div>
                         <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                              {data?.lists.suppliers && data.lists.suppliers.length > 0 ? (
                                 data.lists.suppliers.map(supplier => (
@@ -790,6 +833,77 @@ const StoreOwnerDashboard: React.FC = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Suppliers Directory Modal */}
+                <AnimatePresence>
+                    {showDirectory && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div 
+                                initial={{ opacity: 0 }} 
+                                animate={{ opacity: 1 }} 
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                                onClick={() => setShowDirectory(false)}
+                            />
+                            <motion.div 
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="bg-white rounded-3xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl relative z-10 overflow-hidden"
+                            >
+                                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                    <h3 className="text-xl font-bold text-slate-800">Supplier Directory</h3>
+                                    <button onClick={() => setShowDirectory(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                
+                                <div className="p-6 overflow-y-auto custom-scrollbar space-y-4">
+                                    {directorySuppliers.length === 0 ? (
+                                        <div className="text-center py-12">
+                                            <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                <Search className="w-5 h-5 text-slate-300" />
+                                            </div>
+                                            <p className="text-slate-500">No suppliers found in directory.</p>
+                                        </div>
+                                    ) : (
+                                        directorySuppliers.map(supplier => (
+                                            <div key={supplier.id} className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all flex items-center justify-between group">
+                                                <div>
+                                                     <h4 className="font-bold text-slate-800 text-base">{supplier.name}</h4>
+                                                     <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
+                                                         <span>{supplier.contactName || "No Contact"}</span>
+                                                         {supplier.phone && <span>• {supplier.phone}</span>}
+                                                         {supplier.email && <span>• {supplier.email}</span>}
+                                                     </div>
+                                                </div>
+                                                <div>
+                                                    {supplier.connectionStatus === "CONNECTED" ? (
+                                                        <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold flex items-center gap-1">
+                                                            <Check className="w-3 h-3" /> Connected
+                                                        </span>
+                                                    ) : supplier.connectionStatus === "PENDING" ? (
+                                                        <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold flex items-center gap-1">
+                                                            <Activity className="w-3 h-3" /> Pending
+                                                        </span>
+                                                    ) : (
+                                                        <Button 
+                                                            size="sm"
+                                                            onClick={() => handleConnectRequest(supplier.id)}
+                                                            className={`bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200`}
+                                                        >
+                                                            Connect
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
 
 
             </main>

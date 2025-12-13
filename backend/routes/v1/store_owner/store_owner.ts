@@ -779,6 +779,88 @@ dashboardRouter.post(
 
 
 
+
+/**
+ * GET /v1/dashboard/suppliers-directory
+ * Description: List all active suppliers for the directory, including connection status.
+ */
+dashboardRouter.get(
+  "/suppliers-directory",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "MANAGER"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const store = req.store!;
+      const q = req.query.q ? String(req.query.q).trim() : "";
+
+      const where: any = { isActive: true };
+      if (q) {
+        where.name = { contains: q, mode: "insensitive" };
+      }
+
+      // Fetch all basic suppliers first
+      // Assuming Prisma Crypto Middleware handles field decryption automatically
+      const suppliers = await prisma.supplier.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          contactName: true,
+          phone: true,
+          address: true,
+          // include user email for display
+          user: {
+            select: { email: true }
+          }
+        },
+        take: 50, // limit for directory
+      });
+
+      // Fetch connections to determine status
+      const existingConnections = await prisma.supplierStore.findMany({
+        where: { storeId: store.id },
+        select: { supplierId: true }
+      });
+      const connectedSet = new Set(existingConnections.map(c => c.supplierId));
+
+      // Fetch pending requests
+      const pendingReqs = await prisma.supplierRequest.findMany({
+        where: { storeId: store.id, status: "PENDING" },
+        select: { supplierId: true }
+      });
+      const pendingSet = new Set(pendingReqs.map(r => r.supplierId));
+
+      // Map results with status
+      const directory = suppliers.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        contactName: s.contactName,
+        phone: s.phone,
+        address: s.address,
+        email: s.user?.email || null, // fallback
+        connectionStatus: connectedSet.has(s.id) 
+            ? "CONNECTED" 
+            : (pendingSet.has(s.id) ? "PENDING" : "NONE")
+      }));
+
+      // If middleware didn't decrypt (e.g. because of custom select structure or specific config),
+      // we might need manual decrypt. But based on earlier turns, findMany+select works seamlessly if config is right.
+      // "Supplier" fields are encrypted: name, phone.
+      // "User" fields are encrypted: email.
+      // The middleware handles nested selects usually? 
+      // Checking prisma_crypto_middleware.ts: "deepDecrypt" handles specific recursions but mostly "allModels.findMany" calls "deepDecrypt".
+      // deepDecrypt checks keys. "user" -> "User" model? If key is "user", infer "User".
+      // Yes, logical inference in deepDecrypt handles "user" -> "User".
+
+      return sendSuccess(res, "Suppliers directory retrieved", { suppliers: directory });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 /**
  * POST /v1/dashboard/supplier-requests
  * Description: Store Owner initiates a connection request to a supplier.
