@@ -289,7 +289,6 @@ model SupplierRequest {
 
 enum Role {
   SUPERADMIN
-  ADMIN
   STORE_OWNER
   MANAGER
   STAFF

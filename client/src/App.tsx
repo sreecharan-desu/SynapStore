@@ -74,6 +74,7 @@ const App = () => {
     if (isAuthenticated && user) {
       if (user.globalRole === "SUPERADMIN") return <Navigate to="/admin/dashboard" replace />;
       if (user.globalRole === "SUPPLIER") return <Navigate to="/supplier/dashboard" replace />;
+      if (user.globalRole === "READ_ONLY") return <Navigate to="/store/dashboard" replace />;
       return <Navigate to="/store/dashboard" replace />;
     }
     return <LandingPage />;

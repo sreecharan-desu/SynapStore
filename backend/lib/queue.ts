@@ -3,44 +3,55 @@
 import { Queue, Worker, Job } from "bullmq";
 import IORedis from "ioredis";
 
-const url = process.env.REDIS_URL || "redis://127.0.0.1:6379";
-console.log(`[Queue] Connecting to Redis at ${url.replace(/:[^:@]+@/, ":***@")}`);
+// Lazy connection manager
+let _connection: IORedis | null = null;
+let _queue: Queue | null = null;
 
-const connection = new IORedis(url, {
-  maxRetriesPerRequest: null,
-  connectTimeout: 20000, // 20s - increased to fail less aggressively
-  keepAlive: 10000, 
-  family: 4, // Force IPv4 to avoid IPv6 timeouts
-  retryStrategy(times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
-  reconnectOnError(err) {
-    const targetError = "READONLY";
-    if (err.message.includes(targetError)) {
-      // Only reconnect when the error starts with "READONLY"
-      return true;
-    }
-    return false;
-  },
-});
-
-connection.on("error", (err) => {
-  console.error("[Redis] Connection Error:", err.message);
-});
-
-connection.on("connect", () => {
-  console.log("[Redis] Connected successfully");
-});
-
-export function getConnection() {
-  return connection;
+function getRedisConnection() {
+  if (!_connection) {
+    const url = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+    console.log(`[Queue] Connecting to Redis at ${url.replace(/:[^:@]+@/, ":***@")}`);
+    _connection = new IORedis(url, {
+      maxRetriesPerRequest: null,
+      connectTimeout: 20000,
+      keepAlive: 10000,
+      family: 4,
+      retryStrategy(times) {
+        return Math.min(times * 50, 2000);
+      },
+      lazyConnect: true, // Only connect on first command
+    });
+    
+    _connection.on("error", (err) => {
+        console.error("[Redis] Connection Error:", err.message);
+    });
+    _connection.on("connect", () => {
+        console.log("[Redis] Connected successfully");
+    });
+  }
+  return _connection;
 }
 
-// create queue
-export const notificationQueue = new Queue("notifications", {
-  connection,
-});
+export function getConnection() {
+  return getRedisConnection();
+}
+
+// Lazy Queue wrapper
+export const notificationQueue = {
+  add: async (name: string, data: any, opts?: any) => {
+    if (!_queue) {
+      _queue = new Queue("notifications", { connection: getRedisConnection() });
+    }
+    return _queue.add(name, data, opts);
+  },
+  // Proxy other methods if used? Currently mostly 'add' is used.
+  // Helper to close if needed
+  close: async () => {
+    if (_queue) await _queue.close();
+    if (_connection) await _connection.quit();
+  }
+};
+
 
 // create worker factory
 export function createWorker(
@@ -48,7 +59,8 @@ export function createWorker(
   concurrency = 5
 ) {
   return new Worker("notifications", async (job) => processor(job), {
-    connection,
+    connection: getRedisConnection(),
     concurrency,
   });
 }
+

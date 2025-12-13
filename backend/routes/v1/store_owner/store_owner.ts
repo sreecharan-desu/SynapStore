@@ -270,15 +270,23 @@ dashboardRouter.get(
             createdAt: true,
           },
         }),
-        // Suppliers
+        // Suppliers (Owned OR Connected)
         prisma.supplier.findMany({
-          where: { storeId },
+          where: {
+            OR: [
+                { storeId },
+                { supplierStores: { some: { storeId } } }
+            ]
+          },
           select: {
             id: true,
             name: true,
             phone: true,
             contactName: true,
             isActive: true,
+            user: {
+                select: { email: true }
+            }
           },
         }),
         Promise.resolve(0), // Webhooks placeholder
@@ -583,96 +591,7 @@ dashboardRouter.get(
   }
 );
 
-/**
- * POST /v1/dashboard/supplier-requests
- * Description: Store Owner initiates a connection request to a supplier.
- */
-const createReqSchema = z.object({
-  supplierId: z.string().uuid(),
-  message: z.string().optional(),
-});
 
-dashboardRouter.post(
-  "/supplier-requests",
-  authenticate,
-  storeContext,
-  requireStore,
-  requireRole(["STORE_OWNER", "ADMIN"]),
-  async (req: RequestWithUser, res: Response, next: NextFunction) => {
-    try {
-      const parsed = createReqSchema.safeParse(req.body);
-      if (!parsed.success) {
-        // @ts-ignore
-        return handleZodError(res, parsed.error);
-      }
-
-      const store = req.store!;
-      const user = req.user!;
-      const { supplierId, message } = parsed.data;
-
-      // Check if supplier exists
-      const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
-      if (!supplier) return sendError(res, "Supplier not found", 404);
-
-      // Check if already connected
-      const existingConn = await prisma.supplierStore.findUnique({
-        where: {
-          supplierId_storeId: {
-            supplierId,
-            storeId: store.id
-          }
-        }
-      });
-      if (existingConn) return sendError(res, "Already connected to this supplier", 409);
-
-      // Check if pending request exists
-      const existingReq = await prisma.supplierRequest.findFirst({
-        where: {
-          supplierId,
-          storeId: store.id,
-          status: "PENDING"
-        }
-      });
-      if (existingReq) return sendError(res, "A pending request already exists", 409);
-
-      // Create Request
-      const newReq = await prisma.supplierRequest.create({
-        data: {
-          supplierId,
-          storeId: store.id,
-          createdById: user.id,
-          message,
-          status: "PENDING"
-        }
-      });
-
-      // Notify Supplier
-      if (supplier.userId) {
-         const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
-         if (supUser?.email) {
-             sendMail({
-                 to: supUser.email,
-                 subject: `New Connection Request from ${store.name}`,
-                 html: getStoreConnectionRequestEmailTemplate(store.name, message)
-             }).catch(e => console.error("Email failed", e));
-         }
-      }
-
-      await prisma.activityLog.create({
-        data: {
-          storeId: store.id,
-          userId: user.id,
-          action: "supplier_request_created",
-          payload: { requestId: newReq.id, supplierId }
-        }
-      });
-
-      return sendSuccess(res, "Connection request sent", newReq);
-    } catch (err) {
-      next(err);
-    }
-  }
-);
 
 
 
@@ -858,7 +777,98 @@ dashboardRouter.post(
   }
 );
 
-// ... (existing reject)
+
+
+/**
+ * POST /v1/dashboard/supplier-requests
+ * Description: Store Owner initiates a connection request to a supplier.
+ */
+const createReqSchema = z.object({
+  supplierId: z.string().uuid(),
+  message: z.string().optional(),
+});
+
+dashboardRouter.post(
+  "/supplier-requests",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "ADMIN"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const parsed = createReqSchema.safeParse(req.body);
+      if (!parsed.success) {
+        // @ts-ignore
+        return handleZodError(res, parsed.error);
+      }
+
+      const store = req.store!;
+      const user = req.user!;
+      const { supplierId, message } = parsed.data;
+
+      // Check if supplier exists
+      const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+      if (!supplier) return sendError(res, "Supplier not found", 404);
+
+      // Check if already connected
+      const existingConn = await prisma.supplierStore.findUnique({
+        where: {
+          supplierId_storeId: {
+            supplierId,
+            storeId: store.id
+          }
+        }
+      });
+      if (existingConn) return sendError(res, "Already connected to this supplier", 409);
+
+      // Check if pending request exists
+      const existingReq = await prisma.supplierRequest.findFirst({
+        where: {
+          supplierId,
+          storeId: store.id,
+          status: "PENDING"
+        }
+      });
+      if (existingReq) return sendError(res, "A pending request already exists", 409);
+
+      // Create Request
+      const newReq = await prisma.supplierRequest.create({
+        data: {
+          supplierId,
+          storeId: store.id,
+          createdById: user.id,
+          message,
+          status: "PENDING"
+        }
+      });
+
+      // Notify Supplier
+      if (supplier.userId) {
+         const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+         if (supUser?.email) {
+             sendMail({
+                 to: supUser.email,
+                 subject: `New Connection Request from ${store.name}`,
+                 html: getStoreConnectionRequestEmailTemplate(store.name, message)
+             }).catch(e => console.error("Email failed", e));
+         }
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          storeId: store.id,
+          userId: user.id,
+          action: "supplier_request_created",
+          payload: { requestId: newReq.id, supplierId }
+        }
+      });
+
+      return sendSuccess(res, "Connection request sent", newReq);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 /**
  * DELETE /v1/dashboard/suppliers/:supplierId

@@ -22,6 +22,21 @@ const getDek = () => {
   return _dek;
 };
 
+const decryptUser = (user: any) => {
+  if (!user) return null;
+  const dek = getDek();
+  try {
+    return {
+      ...user,
+      email: user.email ? decryptCell(user.email, dek) : user.email,
+      username: user.username ? decryptCell(user.username, dek) : user.username,
+      phone: user.phone ? decryptCell(user.phone, dek) : user.phone,
+    };
+  } catch (e) {
+    return user;
+  }
+};
+
 
 
 /**
@@ -154,12 +169,12 @@ router.post(
 
       return sendSuccess(res, "Impersonation successful", {
         token,
-        user: {
+        user: decryptUser({
           id: user.id,
           username: user.username,
           email: user.email,
           globalRole: user.globalRole,
-        },
+        }),
       });
     } catch (err) {
       return sendInternalError(res, err, "Failed to impersonate user");
@@ -233,7 +248,7 @@ router.get("/stores", requireRole("SUPERADMIN"), async (req: any, res) => {
       ...store,
       users: store.users.map((storeUser:any) => ({
         ...storeUser,
-        user: storeUser.user ? { ...storeUser.user, email: decryptEmail(storeUser.user.email) } : null,
+        user: decryptUser(storeUser.user),
       })),
     }));
 
@@ -339,7 +354,12 @@ router.get("/suppliers", requireRole("SUPERADMIN"), async (req: any, res) => {
       }
     });
 
-    return sendSuccess(res, "Suppliers retrieved", { suppliers });
+    const decryptedSuppliers = suppliers.map((s: any) => ({
+        ...s,
+        user: s.user ? decryptUser(s.user) : null
+    }));
+
+    return sendSuccess(res, "Suppliers retrieved", { suppliers: decryptedSuppliers });
   } catch (err) {
     return sendInternalError(res, err);
   }
@@ -435,9 +455,7 @@ router.get("/users", requireRole("SUPERADMIN"), async (req: any, res) => {
         { email: { contains: q, mode: "insensitive" } },
       ];
     }
-    if (!showInactive) {
-      where.isActive = true;
-    }
+
 
     const users = await prisma.user.findMany({
       where,
@@ -453,7 +471,9 @@ router.get("/users", requireRole("SUPERADMIN"), async (req: any, res) => {
       },
     });
 
-    return sendSuccess(res, "Users retrieved", { users });
+    const decryptedUsers = users.map((u: any) => decryptUser(u));
+
+    return sendSuccess(res, "Users retrieved", { users: decryptedUsers });
   } catch (err) {
     return sendInternalError(res, err);
   }
@@ -496,7 +516,7 @@ router.patch("/users/:userId/suspend", requireRole("SUPERADMIN"), async (req: an
       }
     });
 
-    return sendSuccess(res, isActive ? "User activated" : "User suspended", { user });
+    return sendSuccess(res, isActive ? "User activated" : "User suspended", { user: decryptUser(user) });
   } catch (err: any) {
     return handlePrismaError(res, err, "User");
   }

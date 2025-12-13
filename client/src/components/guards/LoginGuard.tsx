@@ -26,11 +26,11 @@ export default function LoginGuard({ children }: LoginGuardProps) {
     if (auth.needsStoreSetup) {
       return <Navigate to="/store/create" replace />;
     }
-    if (role === "STORE_OWNER" || auth.effectiveStore) {
+    if (role === "STORE_OWNER" || role === "READ_ONLY" || auth.effectiveStore) {
       return <Navigate to="/store/dashboard" replace />;
     }
 
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/store/dashboard" replace />;
   }
 
   // Not authenticated -> render login UI (children)

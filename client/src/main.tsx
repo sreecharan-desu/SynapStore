@@ -62,7 +62,7 @@ createRoot(document.getElementById("root")!).render(
             path="/store/dashboard"
             element={
               <RequireAuth>
-                <RoleGuard allowedRoles={["STORE_OWNER", "USER", "MANAGER"]}>
+                <RoleGuard allowedRoles={["STORE_OWNER", "USER", "MANAGER", "READ_ONLY"]}>
                   <StoreOwnerDashboard />
                 </RoleGuard>
               </RequireAuth>
@@ -74,7 +74,7 @@ createRoot(document.getElementById("root")!).render(
             path="/dashboard"
             element={
               <RequireAuth>
-                <RoleGuard allowedRoles={["STORE_OWNER", "USER", "MANAGER"]}>
+                <RoleGuard allowedRoles={["STORE_OWNER", "USER", "MANAGER", "READ_ONLY"]}>
                   <DashboardLayout />
                 </RoleGuard>
               </RequireAuth>

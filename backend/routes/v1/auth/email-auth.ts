@@ -206,7 +206,8 @@ router.post(
       if (!parsed.success) {
         return handleZodError(res, parsed.error);
       }
-      const { username, email, password } = parsed.data;
+      const { username, password } = parsed.data;
+      const email = parsed.data.email.toLowerCase();
 
       // check duplicates via deterministic encryption lookups
       const existingEmail = await findUserByEmail(email);
@@ -236,7 +237,7 @@ router.post(
             username: username, // plaintext, middleware encrypts deterministically
             email: email,       // plaintext, middleware encrypts deterministically
             passwordHash: hashed,
-            globalRole: null
+            globalRole: "READ_ONLY"
             // isverified defaults to false per schema
           },
           select: { id: true, username: true, email: true },
@@ -309,7 +310,7 @@ router.post(
       if (!parsed.success) {
         return handleZodError(res, parsed.error);
       }
-      const { email } = parsed.data;
+      const email = parsed.data.email.toLowerCase();
 
       const user = await findUserByEmail(email);
       if (!user) return sendError(res, "User not found", 404);
@@ -394,10 +395,11 @@ router.post(
         return handleZodError(res, parsed.error);
       }
 
-      const { email, password } = parsed.data;
+      const { password } = parsed.data;
+      const email = parsed.data.email.toLowerCase();
 
       const user = await findUserByEmail(email);
-      if (!user) return sendError(res, "Invalid credentials", 401);
+      if (!user) return sendError(res, "Account does not exist", 404, { code: "user_not_found" });
 
       if (!user.isverified) {
         return sendError(res, "Email not verified", 403, { code: "email_not_verified" });
@@ -409,11 +411,11 @@ router.post(
 
       if (!user.passwordHash) {
           // User exists but has no password (e.g. Google Auth only)
-          return sendError(res, "Invalid credentials", 401);
+          return sendError(res, "This account uses social login. Please sign in with Google.", 400, { code: "social_login_required" });
       }
 
       const ok = await comparePassword(password, user.passwordHash);
-      if (!ok) return sendError(res, "Invalid credentials", 401);
+      if (!ok) return sendError(res, "Incorrect password", 401, { code: "invalid_password" });
 
       const token = signJwt({
         sub: user.id,
@@ -579,7 +581,8 @@ router.post(
       if (!parsed.success) {
         return handleZodError(res, parsed.error);
       }
-      const { email, otp } = parsed.data;
+      const { otp } = parsed.data;
+      const email = parsed.data.email.toLowerCase();
 
       const user = await findUserByEmail(email);
       if (!user) return sendError(res, "User not found", 404);

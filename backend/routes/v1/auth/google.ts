@@ -48,11 +48,11 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
-    const payload = ticket.getPayload();
+    const payload:any = ticket.getPayload();
     if (!payload)
       return sendError(res, "Invalid ID token payload", 400);
 
-    const email = payload.email;
+    const email = payload.email.trim().toLowerCase();
     const name = payload.name ?? "";
     const picture = payload.picture ?? "";
 
@@ -61,52 +61,81 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
 
     const encEmail = crypto$.encryptCellDeterministic(email);
     const usernamePlain = name || email.split("@")[0];
-    const encUsername = crypto$.encryptCellDeterministic(usernamePlain);
-    const encImage = picture ? crypto$.encryptCell(picture) : undefined;
-
-    // check existing user for restricted roles
-    const existingUser = await prisma.user.findUnique({
-      where: { email: encEmail },
-      select: { globalRole: true },
+    
+    // 1. Try Find Existing User (Encrypted OR Raw)
+    let userRow = await prisma.user.findUnique({ 
+        where: { email: encEmail },
+        select: { id: true, globalRole: true, isActive: true, username: true, email: true, imageUrl: true, isverified: true } 
     });
 
+    if (!userRow) {
+        // Fallback: search by raw email
+        userRow = await prisma.user.findUnique({ 
+            where: { email: email },
+            select: { id: true, globalRole: true, isActive: true, username: true, email: true, imageUrl: true, isverified: true } 
+        });
+    }
+
+    // Check Restricted Roles
     if (
-      existingUser?.globalRole &&
-      RESTRICTED_GOOGLE_ROLES.includes(existingUser.globalRole)
+      userRow?.globalRole &&
+      RESTRICTED_GOOGLE_ROLES.includes(userRow.globalRole)
     ) {
       return sendError(res, "Google login not allowed for this account", 403);
     }
 
-    // upsert user (google-verified => isverified true)
-    let userRow;
-    try {
-      userRow = await prisma.user.upsert({
-        where: { email: encEmail },
-        update: {
-          username: encUsername,
-          imageUrl: encImage ?? undefined,
-          isverified: true,
-        },
-        create: {
-          username: encUsername,
-          email: encEmail,
-          passwordHash: null, // No password for Google users initially
-          imageUrl: encImage ?? undefined,
-          isverified: true,
-          globalRole: "STORE_OWNER",
-        },
-        select: {
-          id: true,
-          email: true,
-          username: true,
-          imageUrl: true,
-          isverified: true,
-          globalRole: true,
-          isActive: true, // Added isActive to select clause
-        },
-      });
-    } catch (e: any) {
-      return handlePrismaError(res, e, "User");
+    if (userRow) {
+        // UPDATE Existing
+        userRow = await prisma.user.update({
+            where: { id: userRow.id },
+            data: {
+                imageUrl: picture || null, // Update profile pic
+                isverified: true,          // verify email
+            },
+            select: { 
+                id: true, email: true, username: true, imageUrl: true, isverified: true, globalRole: true, isActive: true 
+            }
+        });
+    } else {
+        // CREATE New
+        try {
+            userRow = await prisma.user.create({
+                data: {
+                    username: usernamePlain, // raw, middleware encrypts
+                    email: email,            // raw, middleware encrypts
+                    passwordHash: null,
+                    imageUrl: picture || null,
+                    isverified: true,
+                    globalRole: "READ_ONLY", // Only for new users
+                },
+                select: { 
+                    id: true, email: true, username: true, imageUrl: true, isverified: true, globalRole: true, isActive: true 
+                }
+            });
+        } catch (e: any) {
+            // Handle Username Collision
+            if (e.code === 'P2002') {
+                 console.log("[GoogleAuth] Username collision. Attempting to create with suffix.");
+                 const randomSuffix = Math.floor(Math.random() * 10000);
+                 const uniqueUsername = `${usernamePlain}${randomSuffix}`; 
+                 
+                 userRow = await prisma.user.create({
+                    data: {
+                      username: uniqueUsername,
+                      email: email,
+                      passwordHash: null,
+                      imageUrl: picture || null,
+                      isverified: true,
+                      globalRole: "STORE_OWNER",
+                    },
+                    select: { 
+                        id: true, email: true, username: true, imageUrl: true, isverified: true, globalRole: true, isActive: true 
+                    }
+                 });
+            } else {
+              return handlePrismaError(res, e, "User");
+            }
+        }
     }
 
     if (!userRow.isActive) {
@@ -202,7 +231,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
             },
           });
         }
-      }, { timeout: 45000 });
+      }, { timeout: 10000 });
     } catch (e) {
       console.error("google signin: failed to persist logs", e);
     }

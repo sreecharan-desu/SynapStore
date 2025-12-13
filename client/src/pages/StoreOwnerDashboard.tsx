@@ -279,6 +279,25 @@ const StoreOwnerDashboard: React.FC = () => {
         }
     };
 
+    const handleDisconnectSupplier = async (supplierId: string) => {
+        if (!confirm("Are you sure you want to disconnect this supplier?")) return;
+        try {
+            await dashboardApi.disconnectSupplier(supplierId);
+            // Optimistically update lists.suppliers
+            setData(prev => prev ? {
+                ...prev,
+                lists: {
+                    ...prev.lists,
+                    suppliers: prev.lists.suppliers.filter(s => s.id !== supplierId)
+                }
+            } : null);
+            setShowFeedback(true);
+        } catch (err) {
+            console.error("Failed to disconnect", err);
+            alert("Failed to disconnect supplier");
+        }
+    };
+
 
 
     if (loading) {
@@ -740,6 +759,36 @@ const StoreOwnerDashboard: React.FC = () => {
                             </>
                         )}
                     </motion.div>
+
+                    {/* Connected Suppliers */}
+                    <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm flex flex-col h-full">
+                         <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                            <Users className={`w-5 h-5 ${theme.text}`} />
+                            Connected Suppliers
+                        </h3>
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                             {data?.lists.suppliers && data.lists.suppliers.length > 0 ? (
+                                data.lists.suppliers.map(supplier => (
+                                    <div key={supplier.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                        <div>
+                                            <p className="font-bold text-slate-800">{supplier.name}</p>
+                                            <p className="text-xs text-slate-500">{supplier.email || supplier.user?.email || "No email"}</p>
+                                        </div>
+                                        <Button 
+                                            size="sm" 
+                                            variant="outline" 
+                                            className="h-8 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                                            onClick={() => handleDisconnectSupplier(supplier.id)}
+                                        >
+                                            Disconnect
+                                        </Button>
+                                    </div>
+                                ))
+                             ) : (
+                                <p className="text-sm text-slate-400 text-center py-8">No suppliers connected yet.</p>
+                             )}
+                        </div>
+                    </div>
                 </div>
 
 

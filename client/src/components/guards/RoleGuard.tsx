@@ -26,6 +26,9 @@ export default function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     if (userRole === "STORE_OWNER") {
         return <Navigate to="/store/dashboard" replace />;
     }
+    if (userRole === "READ_ONLY") {
+        return <Navigate to="/store/dashboard" replace />;
+    }
 
     // Fallback for unknown roles or strictly unauthorized
     return <Navigate to="/login" replace />;
