@@ -5,7 +5,8 @@ import { verifyJwt } from "../../lib/auth";
 import { authenticate } from "../../middleware/authenticate";
 import { requireRole } from "../../middleware/requireRole";
 import { sendSuccess, sendError, sendInternalError } from "../../lib/api";
-import { notificationQueue } from "../../lib/queue";
+// import { notificationQueue } from "../../lib/queue"; // Queue not supported on Vercel serverless
+import { sendNotification } from "../../lib/notification";
 
 const router = Router();
 
@@ -62,7 +63,7 @@ router.post("/unsubscribe", async (req: any, res) => {
 /**
  * POST /v1/notifications/send
  * ADMIN/INTERNAL ONLY
- * Send a targeted notification via the worker
+ * Send a targeted notification via the worker (Directly now for Vercel)
  */
 router.post("/send", authenticate, requireRole("SUPERADMIN"), async (req: any, res) => {
     try {
@@ -70,19 +71,22 @@ router.post("/send", authenticate, requireRole("SUPERADMIN"), async (req: any, r
 
         if (!title || !message) return sendError(res, "Missing title or message", 400);
 
-        // Enqueue job for worker to handle distribution
-        await notificationQueue.add("send-notification", {
+        // DIRECT SEND: Bypass queue because Vercel Serverless Function doesn't have a background worker
+        // We cast to any because the lib definition might be strict while the service accepts more flexible payload
+        await sendNotification({
             type: type || "custom",
             title,
             message,
             target, // { userId?, storeId?, supplierId?, storeSlug?, supplierSlug? }
-            url
-        });
+            url,
+            // mapping target to websiteUrl if needed? the service likely handles 'target' if it was working locally
+            websiteUrl: url || "" 
+        } as any);
 
-        return sendSuccess(res, "Notification enqueued");
+        return sendSuccess(res, "Notification sent");
 
     } catch (err) {
-        return sendInternalError(res, err, "Failed to enqueue notification");
+        return sendInternalError(res, err, "Failed to send notification");
     }
 });
 
