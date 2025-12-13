@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuthContext } from "../context/AuthContext";
 import { X, Send, Loader2, Sparkles } from "lucide-react";
-import { FaRobot } from "react-icons/fa";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
