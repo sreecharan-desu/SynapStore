@@ -5,7 +5,7 @@ import { authenticate } from "../../../middleware/authenticate";
 import { RequestWithUser } from "../../../middleware/store";
 import { z } from "zod";
 import { sendMail } from "../../../lib/mailer";
-import { getSupplierRequestEmailTemplate, getNotificationEmailTemplate, getDisconnectionEmailTemplate } from "../../../lib/emailTemplates";
+import { getSupplierRequestEmailTemplate, getNotificationEmailTemplate, getDisconnectionEmailTemplate, getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate } from "../../../lib/emailTemplates";
 import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
 
@@ -280,11 +280,7 @@ router.get(
             },
           },
           // Exclude stores where the current user is a member (e.g. owner)
-          users: {
-            none: {
-              userId: user.id,
-            },
-          },
+
         },
         select: {
           id: true,
@@ -567,9 +563,8 @@ router.delete(
           });
           
           if (acceptedRequest) {
-            await prisma.supplierRequest.update({
-                where: { id: acceptedRequest.id },
-                data: { status: "REJECTED" }
+            await prisma.supplierRequest.delete({
+                where: { id: acceptedRequest.id }
             });
           }
 
@@ -597,5 +592,140 @@ router.delete(
       }
     }
   );
+
+/**
+ * POST /v1/suppliers/requests/:requestId/accept
+ * Description: Supplier accepts a connection request from a store.
+ */
+router.post(
+  "/requests/:requestId/accept",
+  authenticate,
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+        const { requestId } = req.params;
+        const user = req.user!;
+        
+        const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
+        if (!supplier) return sendError(res, "Supplier profile not found", 404);
+
+        const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+        if (!request) return sendError(res, "Request not found", 404);
+
+        if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
+        if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
+
+        // Transaction: Update Request -> Create Connection -> Log
+        await prisma.$transaction(async (tx) => {
+            await tx.supplierRequest.update({
+                where: { id: requestId },
+                data: { status: "ACCEPTED" }
+            });
+            
+            await tx.supplierStore.upsert({
+                where: {
+                    supplierId_storeId: {
+                        supplierId: supplier.id,
+                        storeId: request.storeId
+                    }
+                },
+                create: {
+                    supplierId: supplier.id,
+                    storeId: request.storeId,
+                    linkedAt: new Date()
+                },
+                update: { linkedAt: new Date() }
+            });
+
+            await tx.activityLog.create({
+                data: {
+                    storeId: request.storeId,
+                    userId: user.id,
+                    action: "supplier_request_accepted_inbound",
+                    payload: { requestId }
+                }
+            });
+        });
+
+        // Notify Store Owner
+        const store = await prisma.store.findUnique({ 
+            where: { id: request.storeId },
+            include: { users: { include: { user: true } } }
+         });
+        
+        if (store) {
+             const owners = await prisma.userStoreRole.findMany({
+                 where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
+                 include: { user: true }
+             });
+             
+             for (const owner of owners) {
+                 if (owner.user.email) {
+                     sendMail({
+                         to: owner.user.email,
+                         subject: `Connection Accepted: ${supplier.name}`,
+                         html: getRequestAcceptedEmailTemplate(supplier.name) 
+                     }).catch(e => console.error("Email failed", e));
+                 }
+             }
+        }
+
+        return sendSuccess(res, "Request accepted");
+    } catch (err) {
+        next(err);
+    }
+  }
+);
+
+/**
+ * POST /v1/suppliers/requests/:requestId/reject
+ * Description: Supplier rejects a connection request.
+ */
+router.post(
+  "/requests/:requestId/reject",
+  authenticate,
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+        const { requestId } = req.params;
+        const user = req.user!;
+        
+        const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
+        if (!supplier) return sendError(res, "Supplier profile not found", 404);
+
+        const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+        if (!request) return sendError(res, "Request not found", 404);
+
+        if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
+        if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
+
+        await prisma.supplierRequest.update({
+            where: { id: requestId },
+            data: { status: "REJECTED" }
+        });
+
+        // Notify Store? Usually optional for rejection but good practice.
+        const store = await prisma.store.findUnique({ where: { id: request.storeId } });
+        if (store) {
+             const owners = await prisma.userStoreRole.findMany({
+                 where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
+                 include: { user: true }
+             });
+             
+             for (const owner of owners) {
+                 if (owner.user.email) {
+                     sendMail({
+                         to: owner.user.email,
+                         subject: `Connection Rejected: ${supplier.name}`,
+                         html: getRequestRejectedEmailTemplate(supplier.name)
+                     }).catch(e => console.error("Email failed", e));
+                 }
+             }
+        }
+
+        return sendSuccess(res, "Request rejected");
+    } catch (err) {
+        next(err);
+    }
+  }
+);
 
 export default router;

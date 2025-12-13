@@ -825,34 +825,46 @@ dashboardRouter.get(
       });
       const connectedSet = new Set(existingConnections.map(c => c.supplierId));
 
-      // Fetch pending requests
+      // Fetch pending requests with createdById
       const pendingReqs = await prisma.supplierRequest.findMany({
         where: { storeId: store.id, status: "PENDING" },
-        select: { supplierId: true }
+        select: { id: true, supplierId: true, createdById: true, createdAt: true }
       });
-      const pendingSet = new Set(pendingReqs.map(r => r.supplierId));
+      const pendingMap = new Map(pendingReqs.map(r => [r.supplierId, r]));
 
       // Map results with status
-      const directory = suppliers.map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        contactName: s.contactName,
-        phone: s.phone,
-        address: s.address,
-        email: s.user?.email || null, // fallback
-        connectionStatus: connectedSet.has(s.id) 
-            ? "CONNECTED" 
-            : (pendingSet.has(s.id) ? "PENDING" : "NONE")
-      }));
+      const directory = suppliers.map((s: any) => {
+        const req:any = pendingMap.get(s.id);
+        let status = "NONE";
+        let requestId = null;
+        let requestDate = null;
+        
+        if (connectedSet.has(s.id)) {
+            status = "CONNECTED";
+        } else if (req) {
+            requestId = req.id;
+            requestDate = req.createdAt;
+            // Check if inbound or outbound
+            // If createdById matches the supplier's userId, it is Inbound (Supplier -> Store)
+            if (s.userId && req.createdById === s.userId) {
+                status = "PENDING_INBOUND";
+            } else {
+                status = "PENDING_OUTBOUND";
+            }
+        }
 
-      // If middleware didn't decrypt (e.g. because of custom select structure or specific config),
-      // we might need manual decrypt. But based on earlier turns, findMany+select works seamlessly if config is right.
-      // "Supplier" fields are encrypted: name, phone.
-      // "User" fields are encrypted: email.
-      // The middleware handles nested selects usually? 
-      // Checking prisma_crypto_middleware.ts: "deepDecrypt" handles specific recursions but mostly "allModels.findMany" calls "deepDecrypt".
-      // deepDecrypt checks keys. "user" -> "User" model? If key is "user", infer "User".
-      // Yes, logical inference in deepDecrypt handles "user" -> "User".
+        return {
+            id: s.id,
+            name: s.name,
+            contactName: s.contactName,
+            phone: s.phone,
+            address: s.address,
+            email: s.user?.email || null,
+            connectionStatus: status,
+            requestId,
+            requestDate
+        };
+      });
 
       return sendSuccess(res, "Suppliers directory retrieved", { suppliers: directory });
     } catch (err) {
@@ -992,20 +1004,20 @@ dashboardRouter.delete(
         }
       });
 
-      // Cancel the underlying accepted request to allow re-discovery
-      const acceptedReq = await prisma.supplierRequest.findFirst({
+      await prisma.supplierRequest.deleteMany({
+        where: {
+          storeId: store.id,
+          supplierId
+        }
+      })
+
+      // Delete ALL requests (Accepted, Pending, etc.) to ensure clean re-discovery
+      await prisma.supplierRequest.deleteMany({
         where: {
             supplierId,
-            storeId: store.id,
-            status: "ACCEPTED"
+            storeId: store.id
         }
       });
-      if (acceptedReq) {
-        await prisma.supplierRequest.update({
-            where: { id: acceptedReq.id },
-            data: { status: "REJECTED" }
-        });
-      }
 
       // Also mark any ACCEPTED requests as... actually keep them as history.
       // But maybe we should cleanup pending ones?

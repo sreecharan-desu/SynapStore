@@ -51,7 +51,6 @@ model User {
   stores         UserStoreRole[]
 }
 
-
 model UserStoreRole {
   id        String   @id @default(uuid())
   userId    String
@@ -147,7 +146,7 @@ model Upload {
   status    UploadStatus @default(PENDING)
   metadata  Json?
   createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt @default(now())
+  updatedAt DateTime     @default(now()) @updatedAt
   store     Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@index([storeId, status])
@@ -166,7 +165,7 @@ model StockMovement {
   createdAt     DateTime            @default(now())
   inventory     InventoryBatch      @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
   medicine      Medicine            @relation(fields: [medicineId], references: [id], onDelete: Cascade)
-  performedBy   User?               @relation(fields: [performedById], references: [id], onDelete: SetNull)
+  performedBy   User?               @relation(fields: [performedById], references: [id])
   saleItem      SaleItem?           @relation(fields: [saleItemId], references: [id])
   store         Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
@@ -182,7 +181,7 @@ model ActivityLog {
   payload   Json?
   createdAt DateTime @default(now())
   store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user      User?    @relation(fields: [userId], references: [id])
 
   @@index([storeId, createdAt])
 }
@@ -214,7 +213,7 @@ model Sale {
   externalRef   String?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  createdBy     User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy     User?          @relation(fields: [createdById], references: [id])
   store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
   items         SaleItem[]
 
@@ -289,6 +288,7 @@ model SupplierRequest {
 
 enum Role {
   SUPERADMIN
+  ADMIN
   STORE_OWNER
   MANAGER
   STAFF
@@ -359,5 +359,4 @@ enum SupplierRequestStatus {
   PENDING
   ACCEPTED
   REJECTED
-  CANCELLED
 }
