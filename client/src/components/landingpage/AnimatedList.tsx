@@ -6,25 +6,26 @@ import {
   TrendingUp,
   Clock,
   ShoppingCart,
-  Bell,
   Zap,
   Upload,
   FileSpreadsheet,
   Receipt,
-  Check,
   Download,
+  Bell,
+  Check,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
 
-const cn = (...classes: any[]) => classes.filter(Boolean).join(" ");
-
-// Notification Data (unchanged)
+// --- Data ---
 const notifications = [
   {
     name: "Low Stock Alert",
     description: "Paracetamol 500mg - Only 12 units remaining",
     time: "2m ago",
     icon: AlertTriangle,
-    color: "#EF4444",
+    color: "bg-red-500",
+    textColor: "text-red-500",
     badge: "Urgent",
   },
   {
@@ -32,7 +33,8 @@ const notifications = [
     description: "Amoxicillin capsules expiring in 15 days",
     time: "5m ago",
     icon: Clock,
-    color: "#F59E0B",
+    color: "bg-amber-500",
+    textColor: "text-amber-500",
     badge: "Action Required",
   },
   {
@@ -40,7 +42,8 @@ const notifications = [
     description: "New shipment of 150 items processed",
     time: "8m ago",
     icon: Package,
-    color: "#3AA18A",
+    color: "bg-emerald-500",
+    textColor: "text-emerald-500",
     badge: "Success",
   },
   {
@@ -48,575 +51,327 @@ const notifications = [
     description: "₹2,450 sale completed - 8 items sold",
     time: "12m ago",
     icon: ShoppingCart,
-    color: "#2E7D73",
+    color: "bg-teal-600",
+    textColor: "text-teal-600",
     badge: "Completed",
   },
   {
-    name: "Auto-Reorder Triggered",
+    name: "Auto-Reorder",
     description: "Metformin tablets reordered automatically",
     time: "15m ago",
     icon: Zap,
-    color: "#79D3B6",
+    color: "bg-cyan-500",
+    textColor: "text-cyan-500",
     badge: "Automated",
   },
   {
-    name: "Inventory Updated",
+    name: "Inventory Sync",
     description: "Stock levels synced across 3 locations",
     time: "18m ago",
     icon: CheckCircle2,
-    color: "#3AA18A",
+    color: "bg-emerald-600",
+    textColor: "text-emerald-600",
     badge: "Synced",
   },
 ];
 
-// ExcelUploadAnimation, Notification, ReceiptGeneration components
-// (UNCHANGED — copy them exactly from your original file)
-const ExcelUploadAnimation = () => {
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [currentStep, setCurrentStep] = useState(0);
+const uploadSteps = [
+  { label: "Uploading file", icon: Upload },
+  { label: "Parsing data", icon: FileSpreadsheet },
+  { label: "Validating entries", icon: CheckCircle2 },
+  { label: "Syncing inventory", icon: Package },
+  { label: "Finalizing", icon: Download },
+];
 
-  const steps = [
-    { label: "Uploading file", icon: Upload },
-    { label: "Parsing data", icon: FileSpreadsheet },
-    { label: "Validating entries", icon: CheckCircle2 },
-    { label: "Deduplicating records", icon: Check },
-    { label: "Mapping columns", icon: Zap },
-    { label: "Syncing inventory", icon: Package },
-    { label: "Finalizing", icon: Download },
-  ];
+const receiptItems = [
+  { name: "Paracetamol 500mg", qty: 2, price: 45 },
+  { name: "Amoxicillin Cap", qty: 1, price: 180 },
+  { name: "Vitamin D3", qty: 3, price: 240 },
+];
 
+// --- Components ---
+
+const Card = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("relative overflow-hidden rounded-3xl bg-white border border-slate-200 shadow-xl", className)}>
+    <div className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-slate-100 opacity-50" />
+    <div className="relative z-10 h-full p-6">{children}</div>
+  </div>
+);
+
+const ExcelUploadCard = () => {
+  const [progress, setProgress] = useState(0);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
-    const progressInterval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          return 0;
-        }
-        return prev + 2;
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) return 0;
+        return prev + 1;
       });
     }, 50);
-
-    return () => clearInterval(progressInterval);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    setCurrentStep(Math.floor((uploadProgress / 100) * steps.length));
-  }, [uploadProgress]);
+    setStep(Math.floor((progress / 100) * uploadSteps.length));
+  }, [progress]);
 
   return (
-    <div className="space-y-6 h-full">
-      {/* Upload Card */}
-      <div className="relative group">
-        <div className="absolute -inset-0.5 bg-brand-gradient rounded-2xl opacity-75 group-hover:opacity-100 blur transition duration-500"></div>
-        <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-2xl">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-lg">
-                <FileSpreadsheet className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">
-                  Inventory_Data.xlsx
-                </h3>
-                <p className="text-xs text-brand-text-muted">2.4 MB • 1,250 items</p>
-              </div>
-            </div>
-            <Upload className="w-5 h-5 text-brand-primary animate-bounce" />
+    <Card className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-emerald-100 rounded-2xl text-emerald-600">
+            <FileSpreadsheet className="w-6 h-6" />
           </div>
-
-          {/* Progress Bar */}
-          <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
-            <div
-              className="absolute inset-y-0 left-0 bg-brand-gradient transition-all duration-300 rounded-full"
-              style={{ width: `${uploadProgress}%` }}
-            >
-              <div className="absolute inset-0 bg-white/30 animate-shimmer"></div>
-            </div>
+          <div>
+            <h3 className="font-bold text-slate-900">Bulk Import</h3>
+            <p className="text-sm text-slate-500">Inventory_Data.csv</p>
           </div>
-
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-brand-text-muted font-medium">
-              {uploadProgress}% Complete
-            </span>
-            <span className="text-brand-primary font-semibold">
-              {currentStep + 1}/{steps.length} Steps
-            </span>
-          </div>
+        </div>
+        <div className="text-xs font-semibold px-3 py-1 bg-slate-100 rounded-full text-slate-600">
+          {progress}%
         </div>
       </div>
 
-      {/* Steps Progress */}
-      <div className="space-y-3">
-        {steps.map((step, idx) => {
-          const StepIcon = step.icon;
-          const isActive = idx === currentStep;
-          const isComplete = idx < currentStep;
-
+      <div className="space-y-6 flex-1">
+        {uploadSteps.map((s, i) => {
+          const isActive = i === step;
+          const isDone = i < step;
           return (
-            <div
-              key={idx}
-              className={cn(
-                "relative group transition-all duration-500",
-                isActive && "scale-105"
-              )}
-            >
+            <div key={i} className="flex items-center gap-4">
               <div
                 className={cn(
-                  "absolute -inset-0.5 rounded-xl opacity-0 blur transition duration-500",
-                  isActive &&
-                  "opacity-75 bg-brand-gradient"
-                )}
-              ></div>
-              <div
-                className={cn(
-                  "relative flex items-center gap-3 p-3 rounded-xl border backdrop-blur-sm transition-all duration-500",
-                  isComplete && "bg-brand-pale/80 border-brand-primary/20",
-                  isActive && "bg-white/90 border-brand-primary/50 shadow-lg",
-                  !isActive && !isComplete && "bg-white/50 border-brand-border"
+                  "w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300",
+                  isDone ? "bg-emerald-500 text-white" : isActive ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400"
                 )}
               >
-                <div
-                  className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-500",
-                    isComplete && "bg-brand-primary",
-                    isActive &&
-                    "bg-brand-gradient animate-pulse",
-                    !isActive && !isComplete && "bg-gray-200"
-                  )}
-                >
-                  {isComplete ? (
-                    <Check className="w-4 h-4 text-white" />
-                  ) : (
-                    <StepIcon
-                      className={cn(
-                        "w-4 h-4",
-                        isActive ? "text-white" : "text-gray-400"
-                      )}
-                    />
-                  )}
-                </div>
-                <span
-                  className={cn(
-                    "text-sm font-medium transition-colors",
-                    isComplete && "text-emerald-700",
-                    isActive && "text-gray-900",
-                    !isActive && !isComplete && "text-gray-400"
-                  )}
-                >
-                  {step.label}
-                </span>
-                {isActive && (
-                  <div className="ml-auto flex gap-1">
-                    <div
-                      className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce"
-                      style={{ animationDelay: "0ms" }}
-                    ></div>
-                    <div
-                      className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce"
-                      style={{ animationDelay: "150ms" }}
-                    ></div>
-                    <div
-                      className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce"
-                      style={{ animationDelay: "300ms" }}
-                    ></div>
-                  </div>
-                )}
+                {isDone ? <Check className="w-4 h-4" /> : <s.icon className="w-4 h-4" />}
               </div>
+              <span
+                className={cn(
+                  "text-sm font-medium transition-colors duration-300",
+                  isActive || isDone ? "text-slate-800" : "text-slate-400"
+                )}
+              >
+                {s.label}
+              </span>
+              {isActive && (
+                <motion.div
+                  layoutId="active-indicator"
+                  className="ml-auto w-2 h-2 bg-emerald-500 rounded-full"
+                />
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          { label: "Items", value: "1,250", color: "blue" },
-          { label: "Categories", value: "48", color: "emerald" },
-        ].map((stat, idx) => (
-          <div key={idx} className="relative group">
-            <div
-              className={cn(
-                "absolute -inset-0.5 rounded-xl opacity-0 group-hover:opacity-75 blur transition duration-500",
-                stat.color === "blue" ? "bg-brand-primary" : "bg-brand-primary-light"
-              )}
-            ></div>
-            <div className="relative bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-white/20 shadow-lg">
-              <div className="text-2xl font-black bg-gradient-to-r from-blue-600 to-emerald-600 bg-clip-text text-transparent">
-                {stat.value}
-              </div>
-              <div className="text-xs text-gray-600 font-medium">
-                {stat.label}
-              </div>
-            </div>
-          </div>
-        ))}
+      <div className="mt-8 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+        <motion.div
+          className="h-full bg-emerald-500 rounded-full"
+          style={{ width: `${progress}%` }}
+        />
       </div>
-    </div>
+    </Card>
   );
 };
 
-const Notification = ({
-  name,
-  description,
-  icon: Icon,
-  color,
-  time,
-  badge,
-  index,
-}: {
-  name: string;
-  description: string;
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  color: string;
-  time: string;
-  badge?: string;
-  index: number;
-}) => {
-  return (
-    <div
-      className="relative mx-auto w-full cursor-pointer overflow-hidden rounded-xl p-4 transition-all duration-300 hover:scale-[102%] bg-white/80 backdrop-blur-xl border border-white/20 shadow-lg hover:shadow-2xl group"
-      style={{
-        animation: `slideIn 0.5s ease-out ${index * 0.1}s both`,
-        zIndex: 50 - index,
-      }}
-    >
-      <div
-        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
-        style={{ backgroundColor: color }}
-      />
-
-      <div className="flex items-start gap-3 pl-2">
-        <div
-          className="flex w-10 h-10 items-center justify-center rounded-xl shrink-0 shadow-md"
-          style={{
-            backgroundColor: `${color}15`,
-            color: color,
-          }}
-        >
-          <Icon className="w-5 h-5" />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <span className="text-sm font-bold text-gray-900">{name}</span>
-            {badge && (
-              <span
-                className="text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap"
-                style={{
-                  backgroundColor: `${color}15`,
-                  color: color,
-                }}
-              >
-                {badge}
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-gray-600 leading-relaxed">{description}</p>
-          <div className="flex items-center gap-1.5 mt-2">
-            <div className="w-1 h-1 rounded-full bg-gray-300" />
-            <span className="text-xs text-gray-500">{time}</span>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-5 transition-opacity rounded-xl pointer-events-none"
-        style={{ backgroundColor: color }}
-      />
-    </div>
-  );
-};
-
-const ReceiptGeneration = () => {
-  const [generationProgress, setGenerationProgress] = useState(0);
-  const [showReceipt, setShowReceipt] = useState(false);
-
-  const receiptItems = [
-    { name: "Paracetamol 500mg", qty: 2, price: 45 },
-    { name: "Amoxicillin Cap", qty: 1, price: 180 },
-    { name: "Vitamin D3", qty: 3, price: 240 },
-    { name: "Aspirin 75mg", qty: 1, price: 35 },
-  ];
-
-  useEffect(() => {
-    const progressTimer = setInterval(() => {
-      setGenerationProgress((prev) => {
-        if (prev >= 100) {
-          setShowReceipt(true);
-          return 100;
-        }
-        return prev + 5;
-      });
-    }, 80);
-
-    return () => clearInterval(progressTimer);
-  }, []);
-
-  useEffect(() => {
-    if (generationProgress >= 100) {
-      const resetTimer = setTimeout(() => {
-        setGenerationProgress(0);
-        setShowReceipt(false);
-      }, 5000);
-      return () => clearTimeout(resetTimer);
-    }
-  }, [generationProgress]);
-
-  const total = receiptItems.reduce(
-    (sum, item) => sum + item.qty * item.price,
-    0
+const NotificationCard = () => {
+  // Initialize with stable uniqueIds
+  const [items, setItems] = useState(() =>
+    notifications.slice(0, 4).map((item, i) => ({
+      ...item,
+      uniqueId: `${item.name}-${i}-${Date.now()}`
+    }))
   );
 
-  return (
-    <div className="space-y-6 h-full">
-      {/* Generation Status */}
-      <div className="relative group">
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl opacity-75 group-hover:opacity-100 blur transition duration-500"></div>
-        <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl p-6 border border-white/20 shadow-2xl">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
-                <Receipt className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">
-                  Receipt #INV-2024-0847
-                </h3>
-                <p className="text-xs text-gray-500">
-                  Processing transaction...
-                </p>
-              </div>
-            </div>
-            {showReceipt && (
-              <Download className="w-5 h-5 text-purple-600 animate-bounce" />
-            )}
-          </div>
-
-          {/* Progress */}
-          {!showReceipt && (
-            <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-purple-600 to-pink-600 transition-all duration-300 rounded-full"
-                style={{ width: `${generationProgress}%` }}
-              >
-                <div className="absolute inset-0 bg-white/30 animate-shimmer"></div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Receipt Preview */}
-      <div
-        className={cn(
-          "relative transition-all duration-700 transform",
-          showReceipt ? "opacity-100 scale-100" : "opacity-0 scale-95"
-        )}
-      >
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-400 to-pink-400 rounded-2xl opacity-75 blur"></div>
-        <div className="relative bg-white/95 backdrop-blur-xl rounded-2xl border border-white/20 shadow-2xl overflow-hidden">
-          {/* Receipt Header */}
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-6 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-bold">SynapStore Pharmacy</h3>
-              <Receipt className="w-6 h-6" />
-            </div>
-            <p className="text-sm text-purple-100">
-              123 Medical Plaza, New Delhi
-            </p>
-            <p className="text-xs text-purple-200 mt-1">GST: 07AABCU9603R1ZX</p>
-          </div>
-
-          {/* Receipt Body */}
-          <div className="p-6 space-y-4">
-            <div className="flex justify-between text-xs text-gray-600 border-b border-gray-200 pb-2">
-              <span>Receipt #INV-2024-0847</span>
-              <span>{new Date().toLocaleDateString()}</span>
-            </div>
-
-            {/* Items */}
-            <div className="space-y-3">
-              {receiptItems.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="flex justify-between items-center text-sm"
-                  style={{
-                    animation: `fadeInUp 0.4s ease-out ${idx * 0.1}s both`,
-                    opacity: showReceipt ? 1 : 0,
-                  }}
-                >
-                  <div className="flex-1">
-                    <div className="font-semibold text-gray-900">
-                      {item.name}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Qty: {item.qty} × ₹{item.price}
-                    </div>
-                  </div>
-                  <div className="font-bold text-gray-900">
-                    ₹{item.qty * item.price}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Total */}
-            <div className="border-t-2 border-gray-200 pt-4 flex justify-between items-center">
-              <span className="text-lg font-bold text-gray-900">
-                Total Amount
-              </span>
-              <span className="text-2xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                ₹{total}
-              </span>
-            </div>
-
-            {/* Footer */}
-            <div className="pt-4 border-t border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                <span className="text-xs text-emerald-600 font-semibold">
-                  Payment Complete
-                </span>
-              </div>
-              <span className="text-xs text-gray-500">Cash</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          {
-            label: "Items Sold",
-            value: receiptItems.reduce((sum, item) => sum + item.qty, 0),
-            icon: ShoppingCart,
-          },
-          { label: "Revenue", value: `₹${total}`, icon: TrendingUp },
-        ].map((stat, idx) => (
-          <div key={idx} className="relative group">
-            <div className="absolute -inset-0.5 rounded-xl opacity-0 group-hover:opacity-75 bg-gradient-to-r from-purple-400 to-pink-400 blur transition duration-500"></div>
-            <div className="relative bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-white/20 shadow-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <stat.icon className="w-4 h-4 text-purple-600" />
-                <span className="text-xs text-gray-600 font-medium">
-                  {stat.label}
-                </span>
-              </div>
-              <div className="text-xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                {stat.value}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-export default function AnimatedInventoryShowcase() {
-  const [visibleNotifications, setVisibleNotifications] = useState<any[]>([]);
-
   useEffect(() => {
-    let index = 0;
     const interval = setInterval(() => {
-      setVisibleNotifications((prev: any) => {
-        const next = [...prev, notifications[index % notifications.length]];
-        return next.slice(-5); // Keep only last 5
-      });
-      index++;
-    }, 2000);
+      setItems((prev) => {
+        const next = [...prev];
+        const newNotification = notifications[Math.floor(Math.random() * notifications.length)];
+        const uniqueKey = `${newNotification.name}-${Date.now()}`;
 
+        // Remove first, add new to end to simulate stream
+        if (next.length >= 5) next.shift();
+        next.push({ ...newNotification, uniqueId: uniqueKey });
+        return next;
+      });
+    }, 2500);
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <section className="relative min-h-screen py-12 sm:py-16 md:py-24 overflow-hidden bg-background-page">
-      <style>{`
-        @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-20px); } }
-        .animate-shimmer { animation: shimmer 2s infinite; }
-        .animate-float { animation: float 6s ease-in-out infinite; }
-        @media (max-width: 640px) {
-          .notification-scroll { -webkit-overflow-scrolling: touch; }
-        }
-      `}</style>
-
-      {/* Background Elements */}
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-10 sm:top-20 right-10 sm:right-20 w-48 h-48 sm:w-96 sm:h-96 bg-brand-primary/10 rounded-full blur-3xl animate-pulse" />
-        <div
-          className="absolute bottom-10 sm:bottom-20 left-10 sm:left-20 w-40 h-40 sm:w-80 sm:h-80 bg-brand-primary-light/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "1s" }}
-        />
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 sm:w-96 sm:h-96 bg-brand-primary-dark/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "2s" }}
-        />
+    <Card className="h-full bg-slate-50/50">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 bg-white rounded-xl shadow-sm border border-slate-100">
+          <Bell className="w-5 h-5 text-slate-600" />
+        </div>
+        <h3 className="font-bold text-slate-900">Live Updates</h3>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center mb-8 sm:mb-12 lg:mb-16">
-          <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/80 backdrop-blur-xl border border-brand-primary/20 shadow-lg mb-3 sm:mb-4 animate-float">
-            <Bell className="w-3 h-3 sm:w-4 sm:h-4 text-brand-primary" />
-            <span className="text-xs sm:text-sm font-semibold text-brand-primary-dark">
-              Live Activity Feed
-            </span>
+      <div className="space-y-3 overflow-hidden relative h-[400px]">
+        {/* Gradient fade at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-slate-50 to-transparent z-10 pointer-events-none" />
+
+        <AnimatePresence mode="popLayout">
+          {items.map((item: any) => (
+            <motion.div
+              layout
+              initial={{ opacity: 0, x: -20, scale: 0.95 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              key={item.uniqueId}
+              className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-start gap-4"
+            >
+              <div
+                className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
+                  item.color,
+                  "text-white"
+                )}
+              >
+                <item.icon className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="font-semibold text-slate-900 text-sm">{item.name}</span>
+                  <span className="text-[10px] text-slate-400">{item.time}</span>
+                </div>
+                <p className="text-xs text-slate-500 leading-snug truncate">{item.description}</p>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+    </Card>
+  );
+};
+
+const RevenueCard = () => {
+  const total = receiptItems.reduce((acc, item) => acc + item.price * item.qty, 0);
+  return (
+    <Card className="flex flex-col justify-between overflow-visible">
+      {/* Floating Receipt Effect */}
+      <motion.div
+        animate={{ y: [0, -10, 0] }}
+        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        className="relative z-10 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden mx-auto w-full max-w-[280px]"
+      >
+        <div className="bg-slate-900 p-4 text-white flex justify-between items-center">
+          <div className="flex gap-2 items-center">
+            <Receipt className="w-4 h-4 text-emerald-400" />
+            <span className="font-semibold text-sm">Receipt</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-brand-text mb-3 sm:mb-4 px-4">
-            Real-time Inventory Intelligence
-          </h2>
-          <p className="text-base sm:text-lg md:text-xl text-brand-text-muted max-w-3xl mx-auto leading-relaxed px-4">
-            Watch your pharmacy operations come alive with instant uploads,
-            smart alerts, and automated receipt generation
-          </p>
+          <span className="text-xs opacity-70">#INV-8493</span>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="space-y-2">
+            {receiptItems.map((item, i) => (
+              <div key={i} className="flex justify-between text-xs text-slate-600">
+                <span>{item.name} <span className="text-slate-400">x{item.qty}</span></span>
+                <span className="font-medium text-slate-900">₹{item.price * item.qty}</span>
+              </div>
+            ))}
+          </div>
+          <div className="h-px bg-slate-100" />
+          <div className="flex justify-between items-center">
+            <span className="text-xs font-bold text-slate-900">Total Paid</span>
+            <span className="text-lg font-bold text-emerald-600">₹{total}</span>
+          </div>
+        </div>
+        {/* Torn paper effect bottom */}
+        <div className="h-3 bg-white w-full" style={{ maskImage: "radial-gradient(circle at 10px bottom, transparent 6px, black 0)", maskSize: "20px 10px", maskRepeat: "repeat-x", maskPosition: "bottom" }} />
+      </motion.div>
+
+      {/* Background Stats */}
+      <div className="mt-8 grid grid-cols-2 gap-4">
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+          <TrendingUp className="w-5 h-5 text-emerald-500 mb-2" />
+          <div className="text-2xl font-bold text-slate-900">₹14.2k</div>
+          <div className="text-xs text-slate-500">Daily Revenue</div>
+        </div>
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+          <ShoppingCart className="w-5 h-5 text-blue-500 mb-2" />
+          <div className="text-2xl font-bold text-slate-900">849</div>
+          <div className="text-xs text-slate-500">Transactions</div>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+export default function AnimatedInventoryShowcase() {
+  return (
+    <section className="py-24 bg-white relative overflow-hidden">
+      {/* Background Decor */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-full pointer-events-none">
+        <div className="absolute top-40 left-10 w-72 h-72 bg-emerald-100/50 rounded-full blur-3xl" />
+        <div className="absolute bottom-40 right-10 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl" />
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 relative z-10">
+        <div className="text-center mb-20">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 text-slate-600 text-sm font-medium mb-6"
+          >
+            <Zap className="w-4 h-4 fill-amber-400 text-amber-500" />
+            Live System Demo
+          </motion.div>
+          <motion.h2
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.1 }}
+            className="text-4xl md:text-5xl font-bold text-slate-900 mb-6 tracking-tight"
+          >
+            Watch your pharmacy <span className="text-emerald-600">come alive</span>
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.2 }}
+            className="text-xl text-slate-500 max-w-2xl mx-auto leading-relaxed"
+          >
+            Experience the power of real-time synchronization. From bulk uploads to instant sales tracking, everything happens in the blink of an eye.
+          </motion.p>
         </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-[600px]">
+          <motion.div
+            initial={{ opacity: 0, x: -50 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.3 }}
+            className="h-full"
+          >
+            <ExcelUploadCard />
+          </motion.div>
 
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.4 }}
+            className="h-full"
+          >
+            <NotificationCard />
+          </motion.div>
 
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-
-        {/* Three Column Layout - UPDATED: items-stretch, consistent heights */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12 max-w-6xl mx-auto items-stretch">
-          {/* Left: Excel Upload */}
-          <div className="h-full flex flex-col">
-            <div className="flex-1">
-              <ExcelUploadAnimation />
-            </div>
-          </div>
-
-          {/* Center: Notifications */}
-          <div className="h-full flex flex-col">
-            <div className="relative min-h-[550px] h-full rounded-2xl bg-white/70 backdrop-blur-sm border border-gray-200 shadow-xl overflow-hidden">
-              {/* Gradient Overlays */}
-              <div className="absolute top-0 inset-x-0 h-20 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
-              <div className="absolute bottom-0 inset-x-0 h-20 bg-gradient-to-t from-white to-transparent z-10 pointer-events-none" />
-
-              {/* Content: use padding without huge top offset so columns align */}
-              <div className="absolute inset-0 p-6 overflow-y-auto space-y-4 notification-scroll">
-                {visibleNotifications.map((notification: any, idx) => (
-                  <Notification
-                    key={`${notification.name}-${idx}`}
-                    {...notification}
-                    index={idx}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Receipt Generation */}
-          <div className="h-full flex flex-col">
-            <div className="flex-1">
-              <ReceiptGeneration />
-            </div>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.5 }}
+            className="h-full"
+          >
+            <RevenueCard />
+          </motion.div>
         </div>
       </div>
     </section>

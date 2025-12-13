@@ -1,21 +1,6 @@
 // CTAAndFooter.tsx
-
-/* Simple icon component — marked aria-hidden and with improved className handling */
-const ArrowRight = () => (
-  <svg
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    aria-hidden="true"
-    focusable="false"
-    className="transform transition-transform group-hover:translate-x-1"
-  >
-    <path d="M5 12h14M12 5l7 7-7 7" />
-  </svg>
-);
+import { MaskContainer } from "@/components/ui/svg-mask-effect";
+import { Twitter, Linkedin, Github } from "lucide-react";
 
 export default function CTAAndFooter() {
   const year = new Date().getFullYear();
@@ -127,58 +112,108 @@ export default function CTAAndFooter() {
       `}</style>
 
       {/* CTA Section */}
-      <section className="relative py-24 gradient-animated overflow-hidden">
-        {/* Animated Background Orbs */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-float" />
-          <div
-            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-teal-300/10 rounded-full blur-3xl animate-float"
-            style={{ animationDelay: "2s" }}
-          />
-        </div>
-
-        <div className="max-w-5xl mx-auto px-6 text-center relative z-10">
-          <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight animate-fadeInUp stagger-1 drop-shadow-lg">
-            Ready to transform your pharmacy?
-          </h2>
-
-          <p className="text-xl md:text-2xl text-white/95 mb-10 max-w-3xl mx-auto leading-relaxed animate-fadeInUp stagger-2 drop-shadow">
-            Join thousands of pharmacies already using{" "}
-            <span className="font-bold text-white">SynapStore</span> to
-            streamline operations and save time.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fadeInUp stagger-3">
+      <section className="relative w-full border-t border-slate-100 bg-slate-50">
+        <MaskContainer
+          revealText={
+            <div className="flex flex-col items-center justify-center text-center p-10 mt-10 h-full w-full bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
+              <h2 className="text-5xl md:text-7xl font-extrabold mb-8 tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-slate-900 via-slate-600 to-slate-400">
+                Ready to <span className="text-slate-900">scale?</span>
+              </h2>
+              <p className="text-xl md:text-2xl text-slate-500 mb-12 max-w-3xl mx-auto leading-relaxed font-light">
+                Your pharmacy deserves a system that works as hard as you do.
+                <br />
+                <span className="text-sm font-semibold uppercase tracking-widest mt-8 flex items-center justify-center gap-2 text-slate-400">
+                  <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
+                  Hover to reveal
+                </span>
+              </p>
+              <div className="px-8 py-4 rounded-full border border-dashed border-slate-300 text-slate-400 text-sm font-medium tracking-wide">
+                synapstore.com/start
+              </div>
+            </div>
+          }
+          className="h-[30rem] rounded-none border-b border-slate-200 bg-slate-50"
+          revealSize={500}
+        >
+          <div className="flex flex-col items-center justify-center text-center p-10 mt-10 h-full w-full">
+            <h2 className="text-5xl md:text-7xl font-extrabold text-white mb-8 tracking-tighter drop-shadow-2xl">
+              Start <span className="text-emerald-300">Syncing.</span>
+            </h2>
+            <p className="text-xl md:text-2xl text-white/90 mb-12 max-w-3xl mx-auto leading-relaxed font-medium">
+              Join 5,000+ pharmacies modernizing their stack today.
+            </p>
             <a
               href="/login"
-              className="cta-button group inline-flex items-center justify-center gap-2 px-10 py-5 bg-white text-emerald-700 rounded-full font-bold text-lg shadow-2xl hover:shadow-white/20 focus:outline-none focus:ring-4 focus:ring-white/30 focus-ring"
-              aria-label="Get started with SynapStore - Login"
+              className="inline-flex items-center justify-center gap-3 px-12 py-6 bg-white text-emerald-700 rounded-full font-bold text-xl shadow-[0_0_40px_-10px_rgba(255,255,255,0.5)] hover:bg-emerald-50 hover:scale-105 transition-all"
             >
-              <span>Get Started Free</span>
-              <ArrowRight />
+              Get Started Free
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-6 h-6"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
             </a>
           </div>
-        </div>
+        </MaskContainer>
       </section>
 
       {/* FOOTER */}
-      <footer className="bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-16">
-          {/* Bottom Bar */}
-          <div className="border-t border-slate-200 pt-8 flex flex-col md:flex-row justify-between items-center gap-2">
-            <p className="text-sm text-slate-600 font-medium">
-              &copy; {year} SynapStore. All rights reserved.
+      {/* FOOTER */}
+      <footer className="relative bg-white pt-24 pb-12 overflow-hidden">
+        {/* Background Decor */}
+        <div className="absolute inset-0 w-full h-full bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:24px_24px] opacity-50 pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-24 bg-gradient-to-b from-slate-50 to-transparent pointer-events-none" />
+
+        <div className="max-w-7xl mx-auto px-6 relative z-10 flex flex-col items-center justify-center text-center">
+
+          {/* Brand Section */}
+          <div className="mb-10 space-y-6 max-w-2xl mx-auto">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <img src="/logo.svg" alt="SynapStore Logo" className="w-32 h-32 mt-5 -mr-7 object-contain" />
+              <span className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent tracking-tight">SynapStore</span>
+            </div>
+
+            <p className="text-lg text-slate-500 leading-relaxed font-medium">
+              The intelligent inventory operating system for modern pharmacies. <br />
+              Streamlining workflows, preventing stockouts, and maximizing profitability.
             </p>
 
-            <div className="flex items-center gap-6 text-sm">
-              {/* Pulsing Status Dot */}
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse-status" aria-hidden="true" />
-                <span className="text-slate-700 font-medium">All Systems Operational</span>
-              </div>
+            {/* Social Links */}
+            <div className="flex items-center justify-center gap-8 pt-4">
+              <a href="#" className="group flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-sky-500 group-hover:border-sky-500/30 group-hover:shadow-sky-500/20 group-hover:scale-110 transition-all duration-300">
+                  <Twitter className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-semibold text-slate-400 group-hover:text-sky-600 transition-colors opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 duration-300">Twitter</span>
+              </a>
+              <a href="#" className="group flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-blue-600 group-hover:border-blue-600/30 group-hover:shadow-blue-600/20 group-hover:scale-110 transition-all duration-300">
+                  <Linkedin className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-semibold text-slate-400 group-hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 duration-300">LinkedIn</span>
+              </a>
+              <a href="#" className="group flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-slate-900 group-hover:border-slate-900/30 group-hover:shadow-slate-900/20 group-hover:scale-110 transition-all duration-300">
+                  <Github className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-semibold text-slate-400 group-hover:text-slate-900 transition-colors opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 duration-300">GitHub</span>
+              </a>
+            </div>
+          </div>
 
-              <a href="#" className="link-hover text-slate-600 hover:text-emerald-600 font-medium">Security</a>
-              <a href="#" className="link-hover text-slate-600 hover:text-emerald-600 font-medium">Privacy</a>
+          {/* Bottom Bar */}
+          <div className="w-full border-t border-dashed border-slate-200 pt-8 mt-8 flex flex-col md:flex-row justify-between items-center gap-6 text-sm text-slate-500">
+            <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
+              <p className="font-medium">&copy; {year} SynapStore Inc.</p>
+              <div className="flex items-center gap-4 text-xs font-medium">
+                <a href="#" className="hover:text-emerald-600 transition-colors">Privacy Policy</a>
+                <a href="#" className="hover:text-emerald-600 transition-colors">Terms of Service</a>
+                <a href="#" className="hover:text-emerald-600 transition-colors">Cookies</a>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100 shadow-sm">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-emerald-700 font-bold text-xs tracking-wide uppercase">All Systems Normal</span>
             </div>
           </div>
         </div>

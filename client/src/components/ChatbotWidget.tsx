@@ -18,86 +18,21 @@ interface Message {
 }
 
 const OrbWithEyes = () => {
-    const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-    const orbRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handleMouseMove = (e: MouseEvent) => {
-            if (orbRef.current) {
-                const rect = orbRef.current.getBoundingClientRect();
-                // Calculate position relative to the center of the orb
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-
-                // Calculate normalized vector pointing to mouse
-                const dx = e.clientX - centerX;
-                const dy = e.clientY - centerY;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                // Limit the eye movement radius
-                const maxRadius = 3;
-                const moveX = (dx / distance) * Math.min(distance / 20, maxRadius);
-                const moveY = (dy / distance) * Math.min(distance / 20, maxRadius);
-
-                setMousePos({ x: moveX || 0, y: moveY || 0 });
-            }
-        };
-
-        window.addEventListener('mousemove', handleMouseMove);
-        return () => window.removeEventListener('mousemove', handleMouseMove);
-    }, []);
-
     return (
-        <div ref={orbRef} className="relative w-24 h-24 flex items-center justify-center">
-            {/* Bouncing Wrapper for Laugh Animation */}
+        <div className="relative w-20 h-20 flex items-center justify-center">
+            {/* Bouncing Wrapper */}
             <motion.div
                 className="w-full h-full relative flex items-center justify-center"
                 animate={{ y: [0, -6, 0, -3, 0] }}
-                transition={{ duration: 2, repeat: Infinity, repeatDelay: 1, ease: "easeInOut" }}
+                transition={{ duration: 4, repeat: Infinity, repeatDelay: 1, ease: "easeInOut" }}
             >
-                {/* Rotating Orb Image */}
+                {/* Rotating/Wiggling Character Image */}
                 <motion.img
-                    src="/chatbot-orb.png"
-                    alt="Chatbot Orb"
-                    className="w-full h-full object-contain filter drop-shadow-xl"
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                />
-
-                {/* Eyes Container - Positioned absolutely on top, moves with bounce */}
-                <div className="absolute top-[38%] left-[25%] flex gap-2 w-1/2 justify-center items-center z-10">
-                    {/* Left Eye - Smaller and Squints to Laugh */}
-                    <motion.div
-                        className="w-3 h-3.5 bg-white rounded-full flex items-center justify-center shadow-inner overflow-hidden relative"
-                        animate={{ scaleY: [1, 0.5, 1, 0.5, 1] }}
-                        transition={{ duration: 2, repeat: Infinity, repeatDelay: 1, times: [0, 0.2, 0.5, 0.7, 1] }}
-                    >
-                        <motion.div
-                            className="w-1.5 h-1.5 bg-black rounded-full"
-                            animate={{ x: mousePos.x, y: mousePos.y }}
-                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                        />
-                    </motion.div>
-
-                    {/* Right Eye - Smaller and Squints to Laugh */}
-                    <motion.div
-                        className="w-3 h-3.5 bg-white rounded-full flex items-center justify-center shadow-inner overflow-hidden relative"
-                        animate={{ scaleY: [1, 0.5, 1, 0.5, 1] }}
-                        transition={{ duration: 2, repeat: Infinity, repeatDelay: 1, times: [0, 0.2, 0.5, 0.7, 1] }}
-                    >
-                        <motion.div
-                            className="w-1.5 h-1.5 bg-black rounded-full"
-                            animate={{ x: mousePos.x, y: mousePos.y }}
-                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                        />
-                    </motion.div>
-                </div>
-
-                {/* Mouth - Gentle Laugh */}
-                <motion.div
-                    className="absolute top-[60%] left-1/2 -translate-x-1/2 w-4 h-2 bg-white rounded-b-full z-10"
-                    animate={{ scale: [1, 1.2, 1, 1.2, 1] }}
-                    transition={{ duration: 2, repeat: Infinity, repeatDelay: 1, times: [0, 0.2, 0.5, 0.7, 1] }}
+                    src="/chatbot-icon.jpg"
+                    alt="SynapBot"
+                    className="w-full h-full object-cover rounded-full shadow-2xl border-4 border-white/20"
+                    animate={{ rotate: [0, -5, 5, -5, 5, 0] }}
+                    transition={{ duration: 3, repeat: Infinity, repeatDelay: 2, ease: "easeInOut" }}
                 />
             </motion.div>
         </div>
@@ -154,8 +89,20 @@ export const ChatbotWidget = () => {
 
     if (!isAuthenticated) return null;
 
+    const [isWet, setIsWet] = useState(false);
+
+    useEffect(() => {
+        if (isWet) {
+            const timer = setTimeout(() => setIsWet(false), 4000); // "Drying" takes 4 seconds
+            return () => clearTimeout(timer);
+        }
+    }, [isWet]);
+
     const handleSendMessage = async () => {
         if (!inputValue.trim()) return;
+
+        // Trigger splash effect
+        setIsWet(true);
 
         const userMsg: Message = { id: Date.now().toString(), role: "user", text: inputValue };
         setMessages(prev => [...prev, userMsg]);
@@ -242,14 +189,47 @@ export const ChatbotWidget = () => {
                                 <div className="flex items-center gap-4">
 
                                     {/* ICON: explicit transparent background, no wrapper box */}
-                                    <div className="flex items-center justify-center"
-                                        style={{ background: "transparent", width: 40, height: 40 }}>
-                                        {/* force svg background transparent and use current color */}
-                                        <FaRobot
-                                            className="w-10 h-10 text-white drop-shadow-lg"
-                                            style={{ background: "transparent" }}
-                                            aria-hidden="true"
+                                    <div className="relative flex items-center justify-center"
+                                        style={{ background: "transparent", width: 44, height: 44 }}>
+
+                                        <motion.img
+                                            src="/chatbot-icon.jpg"
+                                            alt="Bot"
+                                            className="w-full h-full object-cover rounded-full border-2 border-white/20 shadow-md relative z-10"
+                                            animate={isWet ? {
+                                                filter: ["brightness(1) saturate(1)", "brightness(1.3) saturate(1.5) drop-shadow(0 0 8px rgba(96, 165, 250, 0.8))", "brightness(1) saturate(1)"],
+                                                scale: [1, 1.1, 1]
+                                            } : {}}
+                                            transition={{ duration: 4, ease: "easeOut" }} // Drying duration
                                         />
+
+                                        {/* Water Splash Effects */}
+                                        <AnimatePresence>
+                                            {isWet && (
+                                                <>
+                                                    {/* Impact Splash */}
+                                                    <motion.div
+                                                        initial={{ opacity: 0, scale: 0.5 }}
+                                                        animate={{ opacity: [0, 0.8, 0], scale: 1.8 }}
+                                                        exit={{ opacity: 0 }}
+                                                        transition={{ duration: 0.6, ease: "easeOut" }}
+                                                        className="absolute inset-0 bg-blue-400/40 rounded-full z-20 pointer-events-none mix-blend-screen"
+                                                    />
+
+                                                    {/* Droplets running down (Drying) */}
+                                                    {[...Array(3)].map((_, i) => (
+                                                        <motion.div
+                                                            key={i}
+                                                            initial={{ y: -5, x: (i - 1) * 8, opacity: 0, scale: 0 }}
+                                                            animate={{ y: 25, opacity: [0, 1, 0], scale: [0, 1, 0.5] }}
+                                                            transition={{ duration: 2, delay: 0.2 + (i * 0.3), ease: "easeIn" }}
+                                                            className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-blue-300 rounded-full z-20 pointer-events-none shadow-[0_0_5px_rgba(147,197,253,0.8)]"
+                                                            style={{ marginLeft: -3, marginTop: -3 }}
+                                                        />
+                                                    ))}
+                                                </>
+                                            )}
+                                        </AnimatePresence>
                                     </div>
 
                                     <div className="flex flex-col">
@@ -296,7 +276,7 @@ export const ChatbotWidget = () => {
                                 >
                                     {msg.role === "bot" && (
                                         <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden bg-white border border-slate-200 shadow-sm">
-                                            <FaRobot className="w-5 h-5 text-indigo-500" />
+                                            <img src="/chatbot-icon.jpg" alt="Bot" className="w-full h-full object-cover" />
                                         </div>
                                     )}
                                     <div
@@ -351,7 +331,7 @@ export const ChatbotWidget = () => {
                             {isLoading && (
                                 <div className="flex justify-start items-end gap-3">
                                     <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden bg-white border border-slate-200 shadow-sm">
-                                        <FaRobot className="w-5 h-5 text-indigo-500" />
+                                        <img src="/chatbot-icon.jpg" alt="Bot" className="w-full h-full object-cover" />
                                     </div>
                                     <div className="bg-white border border-slate-100 px-5 py-4 rounded-2xl rounded-tl-none shadow-sm">
                                         <div className="flex gap-1.5 h-full items-center">
