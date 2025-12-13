@@ -223,6 +223,7 @@ const SuperAdminDashboard: React.FC = () => {
     const [supplierToToggle, setSupplierToToggle] = useState<{ id: string; name: string; isActive: boolean } | null>(null);
     const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
     const [userToConvert, setUserToConvert] = useState<{ id: string; name: string } | null>(null);
+    const [userToToggle, setUserToToggle] = useState<{ id: string; name: string; isActive: boolean } | null>(null);
 
     // Effects
     useEffect(() => {
@@ -344,6 +345,25 @@ const SuperAdminDashboard: React.FC = () => {
             alert("Error: " + err.message);
         }
     };
+
+    const initiateToggleUser = (user: User) => {
+        setUserToToggle({ id: user.id, name: user.username, isActive: user.isActive || false });
+    };
+
+    const performToggleUser = async () => {
+        if (!userToToggle) return;
+        try {
+            const res = await adminApi.suspendUser(userToToggle.id, !userToToggle.isActive);
+            if (res.data.success) {
+                fetchData();
+                setUserToToggle(null);
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Error: " + (err.message || "Failed to toggle user status"));
+        }
+    };
+
 
 
 
@@ -1012,6 +1032,13 @@ const SuperAdminDashboard: React.FC = () => {
                                                                 Convert
                                                             </Button>
                                                         )}
+                                                        <Button
+                                                            size="sm"
+                                                            className="!bg-black !text-white hover:!bg-slate-800 !border !border-black hover:scale-105 transition-all shadow-md shadow-slate-200 h-8 gap-2 font-medium"
+                                                            onClick={() => initiateToggleUser(user)}
+                                                        >
+                                                            {user.isActive ? "Suspend" : "Activate"}
+                                                        </Button>
                                                         <p
                                                             className="ml-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all hover:scale-110 cursor-pointer"
                                                             onClick={() => initiateDeleteUser(user.id, user.username)}
@@ -1577,7 +1604,62 @@ const SuperAdminDashboard: React.FC = () => {
                     </div>
                 )}
             </AnimatePresence>
-
+            {/* Suspend/Activate User Confirmation Modal */}
+            <AnimatePresence>
+                {userToToggle && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setUserToToggle(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${userToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
+                                    {userToToggle.isActive ? (
+                                        <Lock className="w-8 h-8 text-amber-500" />
+                                    ) : (
+                                        <Activity className="w-8 h-8 text-emerald-500" />
+                                    )}
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">
+                                        {userToToggle.isActive ? "Suspend User?" : "Activate User?"}
+                                    </h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to {userToToggle.isActive ? "suspend" : "activate"} access for <span className="font-semibold text-slate-900">"{userToToggle.name}"</span>?
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setUserToToggle(null)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${userToToggle.isActive
+                                            ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
+                                            : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
+                                            }`}
+                                        onClick={performToggleUser}
+                                    >
+                                        Confirm
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
 
 

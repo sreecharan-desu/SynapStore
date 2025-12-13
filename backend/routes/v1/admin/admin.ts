@@ -461,7 +461,50 @@ router.get("/users", requireRole("SUPERADMIN"), async (req: any, res) => {
 
 
 
+
+/* -----------------------
+   Admin - PATCH /v1/admin/users/:userId/suspend
+*/
+router.patch("/users/:userId/suspend", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+    const { userId } = req.params;
+    const body = req.body; // { isActive: boolean }
+    const isActive = body.isActive ?? false;
+
+    // Prevent suspending self
+    if (req.user?.id === userId) {
+      return sendError(res, "Cannot suspend your own account", 400);
+    }
+
+    const startUser = await prisma.user.findUnique({ where: { id: userId }, select: { username: true } });
+    if (!startUser) return sendError(res, "User not found", 404);
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { isActive },
+      select: { id: true, username: true, isActive: true, email: true }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user?.id,
+        actorType: "ADMIN",
+        action: isActive ? "ACTIVATE_USER" : "SUSPEND_USER",
+        resource: "User",
+        resourceId: userId,
+        payload: { username: user.username }
+      }
+    });
+
+    return sendSuccess(res, isActive ? "User activated" : "User suspended", { user });
+  } catch (err: any) {
+    return handlePrismaError(res, err, "User");
+  }
+});
+
+
 import { EntityManager } from "../../../lib/entity-manager";
+
 
 router.post(
   "/users/:userId/convert-to-supplier",
@@ -523,7 +566,7 @@ router.post(
             resourceId: userId,
           },
         });
-      }, { timeout: 10000 });
+      }, { timeout: 45000 });
 
       return sendSuccess(res, "User converted to supplier role");
     } catch (err: any) {
@@ -560,7 +603,7 @@ router.delete("/users/:id", requireRole("SUPERADMIN"), async (req: any, res) => 
           payload: { username, email },
         },
       });
-    }, { timeout: 10000 });
+    }, { timeout: 45000 });
 
     return sendSuccess(res, "User deleted successfully");
   } catch (err: any) {
@@ -591,7 +634,7 @@ router.delete("/stores/:id", requireRole("SUPERADMIN"), async (req: any, res) =>
           payload: { name: store.name },
         },
       });
-    }, { timeout: 10000 });
+    }, { timeout: 45000 });
 
     return sendSuccess(res, "Store deleted successfully");
   } catch (err: any) {
@@ -622,7 +665,7 @@ router.delete("/suppliers/:id", requireRole("SUPERADMIN"), async (req: any, res)
           payload: { name: supplier.name },
         },
       });
-    }, { timeout: 10000 });
+    }, { timeout: 45000 });
 
     return sendSuccess(res, "Supplier deleted successfully");
   } catch (err: any) {

@@ -634,7 +634,7 @@ router.post(
             where: { id: otpRow.userId ?? user.id },
             data: { isverified: true },
           });
-        }, { timeout: 10000 });
+        }, { timeout: 45000 });
       } catch (pErr: any) {
         console.error("Prisma mark OTP used / verify user error:", pErr);
         // if transaction failed, still respond success but warn

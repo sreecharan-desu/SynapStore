@@ -202,7 +202,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
             },
           });
         }
-      }, { timeout: 10000 });
+      }, { timeout: 45000 });
     } catch (e) {
       console.error("google signin: failed to persist logs", e);
     }

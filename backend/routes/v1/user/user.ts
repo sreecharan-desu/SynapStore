@@ -48,7 +48,7 @@ userRouter.delete("/me", authenticate, async (req: any, res) => {
                 payload: { reason: "Self service deletion" }
             }
         });
-    }, { timeout: 10000 });
+    }, { timeout: 45000 });
 
     return sendSuccess(res, "Account deleted successfully");
 

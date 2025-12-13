@@ -739,7 +739,7 @@ dashboardRouter.post(
             payload: { requestId: id, supplierId: reqRow.supplierId },
           },
         });
-      }, { timeout: 10000 });
+      }, { timeout: 45000 });
 
       // notify supplier (if supplier.userId exists)
       // notify supplier (if supplier.userId exists)
