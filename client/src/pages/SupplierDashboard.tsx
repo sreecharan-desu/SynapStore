@@ -159,7 +159,7 @@ const SupplierDashboard: React.FC = () => {
             if (activeTab === "marketplace") {
                 const res = await suppliersApi.getDiscoveryStores();
                 if (res.data.success) setStores(res.data.data.stores);
-            } else if (activeTab === "requests") {
+            } else if (activeTab === "requests" || activeTab === "orders") {
                 const res = await suppliersApi.getDetails(currentSupplier?.id);
                 if (res.data.success) setRequests(res.data.data.requests);
             } else if (activeTab === "my-stores" || activeTab === "upload") {
