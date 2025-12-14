@@ -1560,168 +1560,126 @@ dashboardRouter.get(
   }
 );
 
-/**
- * POST /v1/dashboard/sales/checkout
- * Create a new sale, deduct inventory, generate receipt, and return PDF.
- */
+/* ----------------------------------------
+   SALES CHECKOUT (FIXED TRANSACTION)
+----------------------------------------- */
+
 dashboardRouter.post(
   "/sales/checkout",
   async (req: AuthRequest, res: Response) => {
     try {
-      const { items, paymentMethod } = req.body; // Expect items: { medicineId, qty }[], paymentMethod?
-      
+      const { items, paymentMethod } = req.body;
+
       if (!items || !Array.isArray(items) || items.length === 0) {
         return sendError(res, "Invalid items", 400);
       }
 
-      await prisma.$transaction(async (tx) => {
-        let totalValue = 0;
-        let subtotal = 0;
-        const saleItemsCreate = [];
+      await prisma.$transaction(
+        async (tx) => {
+          let subtotal = 0;
+          const saleItemsCreate: any[] = [];
 
-        // 1. Process Items & Inventory
-        for (const item of items as any) {
-          const medicine = await tx.medicine.findUnique({
-            where: { id: item.medicineId },
-            include: { inventory: { orderBy: { expiryDate: 'asc' } } },
-{
-  timeout: 20000,
-});
-          });
-
-          if (!medicine) throw new Error(`Medicine ${item.medicineId} not found`);
-
-          // Calculate Price (Assuming price is on Medicine or latest batch? Schema has price on backend/types but lets check schema)
-          // Schema: InventoryBatch has purchasePrice, mrp. Medicine has no price field in schema! 
-          // Wait, types.ts had price? type Medicine has price?: number in frontend types.
-          // Schema verification: Medicine model has NO price. InventoryBatch has mrp.
-          // We should use MRP from batch or a default.
-          // Let's grab the MRP from the first available batch or default to 0.
-          
-          let qtyToDeduct = item.qty;
-          let itemTotal = 0;
-          let currentUnitPrice = 0;
-
-          // FIFO Deduction
-          // We need to track which batches we took from to calculate exact cost/price if needed, 
-          // but for SaleItem usually we pick one unit price (e.g. MRP).
-          // Simplification: Use MRP of the first batch found, or 0.
-          
-          const availableBatches = medicine.inventory.filter(b => b.qtyAvailable > 0);
-          const totalStock = availableBatches.reduce((acc, b) => acc + b.qtyAvailable, 0);
-          
-          if (totalStock < item.qty) {
-             throw new Error(`Insufficient stock for ${medicine.brandName}. Requested: ${item.qty}, Available: ${totalStock}`);
-          }
-
-          // Use MRP of the first batch as the selling price for this line item (approximated)
-          // Ideally we might split lines if prices differ, but let's prevent complexity.
-          const sellingPrice = Number(availableBatches[0]?.mrp) || 0; 
-          currentUnitPrice = sellingPrice;
-
-          for (const batch of availableBatches) {
-            if (qtyToDeduct <= 0) break;
-            
-            const deduct = Math.min(batch.qtyAvailable, qtyToDeduct);
-            
-            // Deduct
-            await tx.inventoryBatch.update({
-              where: { id: batch.id },
-              data: { qtyAvailable: { decrement: deduct } }
-            });
-            
-            // Log Movement (Optional but good)
-            await tx.stockMovement.create({
-              data: {
-                storeId: req.store.id,
-                inventoryId: batch.id,
-                medicineId: medicine.id,
-                delta: -deduct,
-                reason: "SALE",
-                performedById: req.user?.id
-              }
+          for (const item of items) {
+            const medicine = await tx.medicine.findUnique({
+              where: { id: item.medicineId },
+              include: { inventory: { orderBy: { expiryDate: "asc" } } },
             });
 
-            qtyToDeduct -= deduct;
-          }
-          
-          itemTotal = sellingPrice * item.qty;
-          subtotal += itemTotal;
-          
-          saleItemsCreate.push({
-            medicineId: medicine.id,
-            qty: item.qty,
-            unitPrice: sellingPrice,
-            lineTotal: itemTotal
-          });
-        }
-
-        totalValue = subtotal; // Apply tax/discount logic if needed later
-
-        // 2. Create Sale
-        const sale = await tx.sale.create({
-          data: {
-            storeId: req.store.id,
-            createdById: req.user?.id,
-            paymentMethod: (paymentMethod || "CASH") as any,
-            paymentStatus: "PAID",
-            subtotal,
-            totalValue,
-            items: {
-              create: saleItemsCreate
+            if (!medicine) {
+              throw new Error(`Medicine ${item.medicineId} not found`);
             }
-          },
-          include: {
-            items: { include: { medicine: true } },
-            createdBy: true,
-            store: true
+
+            let qtyToDeduct = item.qty;
+            const availableBatches = medicine.inventory.filter(
+              (b: any) => b.qtyAvailable > 0
+            );
+
+            const totalStock = availableBatches.reduce(
+              (sum: number, b: any) => sum + b.qtyAvailable,
+              0
+            );
+
+            if (totalStock < item.qty) {
+              throw new Error(
+                `Insufficient stock for ${medicine.brandName}`
+              );
+            }
+
+            const sellingPrice = Number(availableBatches[0]?.mrp) || 0;
+
+            for (const batch of availableBatches) {
+              if (qtyToDeduct <= 0) break;
+
+              const deduct = Math.min(batch.qtyAvailable, qtyToDeduct);
+
+              await tx.inventoryBatch.update({
+                where: { id: batch.id },
+                data: { qtyAvailable: { decrement: deduct } },
+              });
+
+              await tx.stockMovement.create({
+                data: {
+                  storeId: req.store.id,
+                  inventoryId: batch.id,
+                  medicineId: medicine.id,
+                  delta: -deduct,
+                  reason: "SALE",
+                  performedById: req.user?.id,
+                },
+              });
+
+              qtyToDeduct -= deduct;
+            }
+
+            const lineTotal = sellingPrice * item.qty;
+            subtotal += lineTotal;
+
+            saleItemsCreate.push({
+              medicineId: medicine.id,
+              qty: item.qty,
+              unitPrice: sellingPrice,
+              lineTotal,
+            });
           }
-        });
 
-        // 3. Create Receipt Record via Transaction
-        const receiptData = {
-          storeName: req.store.name,
-          date: sale.createdAt,
-          saleId: sale.id,
-          total: sale.totalValue,
-          // @ts-ignore
-          items: sale.items.map((i:any) => ({ name: i.medicine.brandName, qty: i.qty, price: i.unitPrice, total: i.lineTotal }))
-        };
-        // @ts-ignore
-        await tx.receipt.create({
-          data: {
-            saleId: sale.id,
-            data: receiptData as any,
-             // Generate a simple receipt number if needed, e.g., using timestamp
-            receiptNo: `REC-${Date.now()}`
-          }
-        });
+          const sale = await tx.sale.create({
+            data: {
+              storeId: req.store.id,
+              createdById: req.user?.id,
+              paymentMethod: (paymentMethod || "CASH") as any,
+              paymentStatus: "PAID",
+              subtotal,
+              totalValue: subtotal,
+              items: { create: saleItemsCreate },
+            },
+            include: {
+              items: { include: { medicine: true } },
+              store: true,
+            },
+          });
 
-        return { sale, receiptNo: `REC-${Date.now()}` };
-      }).then(async ({ sale, receiptNo }) => {
-          // 4. Generate & Stream PDF (Outside transaction to keep it fast)
-          // We use the shared helper for consistent "Clean & Neat" design + Decryption
-          
-          const doc = new PDFDocument({ margin: 50 });
-          
-          res.setHeader('x-sale-id', sale.id);
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename=receipt-${sale.id}.pdf`);
-          
-          doc.pipe(res);
-          
-          await generateReceiptPDF(doc, sale, receiptNo, req.store, res);
-          
-      }).catch(err => {
-         // If transaction fails
-         console.error("Checkout validation failed:", err);
-         if (!res.headersSent) {
-            return sendError(res, err.message || "Checkout failed", 400);
-         }
-      });
+          await tx.receipt.create({
+            data: {
+              saleId: sale.id,
+              receiptNo: `REC-${Date.now()}`,
+              data: {
+                storeName: sale.store.name,
+                saleId: sale.id,
+                total: sale.totalValue,
+              } as any,
+            },
+          });
 
-    } catch (error) {
-       if (!res.headersSent) handlePrismaError(res, error);
+          return sale;
+        },
+        {
+          timeout: 45000,
+        }
+      );
+    } catch (err) {
+      if (!res.headersSent) {
+        handlePrismaError(res, err);
+      }
     }
   }
 );
