@@ -1,18 +1,17 @@
 
 import prisma from "../lib/prisma";
-import bcrypt from "bcrypt";
 import { crypto$ } from "../lib/crypto";
 
 // Helpers
 const getRandomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 const getRandomFloat = (min: number, max: number) => parseFloat((Math.random() * (max - min) + min).toFixed(2));
-const getRandomElement = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+const getRandomElement = <T>(arr: T[]): T | undefined => arr[Math.floor(Math.random() * arr.length)];
 const subDays = (date: Date, days: number) => new Date(date.getTime() - days * 24 * 60 * 60 * 1000);
 const addDays = (date: Date, days: number) => new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 
 // Data Sources
-const MEDICINE_CATEGORIES = ["Antibiotics", "Analgesics", "Antipyretics", "Antiseptics", "Vitamins", "Supplements", "Cardiology", "Dermatology"];
-const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Injection", "Cream", "Gel", "Ointment"];
+const MEDICINE_CATEGORIES = ["Antibiotics", "Analgesics", "Antipyretics", "Antiseptics", "Vitamins", "Supplements", "Cardiology", "Dermatology", "Neurology", "Gastroenterology"];
+const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Injection", "Cream", "Gel", "Ointment", "Drop", "Spray"];
 const DRUG_NAMES = [
   { brand: "Amoxil", generic: "Amoxicillin" },
   { brand: "Panadol", generic: "Paracetamol" },
@@ -43,236 +42,264 @@ const DRUG_NAMES = [
   { brand: "Sertraline", generic: "Sertraline" },
   { brand: "Simvastatin", generic: "Simvastatin" },
   { brand: "Metoprolol", generic: "Metoprolol" },
-  { brand: "Pantoprazole", generic: "Pantoprazole" }
+  { brand: "Pantoprazole", generic: "Pantoprazole" },
+  { brand: "Azithromycin", generic: "Azithromycin" },
+  { brand: "Doxycycline", generic: "Doxycycline" },
+  { brand: "Cephalexin", generic: "Cephalexin" },
+  { brand: "Prednisone", generic: "Prednisone" },
+  { brand: "Tramadol", generic: "Tramadol" },
+  { brand: "Clonazepam", generic: "Clonazepam" },
+  { brand: "Lorazepam", generic: "Lorazepam" },
+  { brand: "Alprazolam", generic: "Alprazolam" },
+  { brand: "Zolpidem", generic: "Zolpidem" },
+  { brand: "Citalopram", generic: "Citalopram" }
 ];
 
 async function main() {
-  console.log("🌱 Starting seed...");
+  console.log("🌱 Starting rich seed for EXISTING data...");
 
-  // ---------------------------------------------------------
-  // 1. Ensure Base Users & Store (Existing logic preserved)
-  // ---------------------------------------------------------
-
-  // Store Owner
-  const ownerEmail = "sreecharan309@gmail.com";
-  const ownerEmailEnc = crypto$.encryptCellDeterministic(ownerEmail);
-  const ownerPasswordHash = await bcrypt.hash("12345678", 10);
-  const storeOwner = await prisma.user.upsert({
-    where: { email: ownerEmailEnc },
-    update: { username: "storeowner1", passwordHash: ownerPasswordHash, globalRole: null, isActive: true, isverified: true },
-    create: { username: "storeowner1", email: ownerEmail, passwordHash: ownerPasswordHash, globalRole: null, isActive: true, isverified: true },
+  // 1. Fetch Existing Context
+  const allStores = await prisma.store.findMany({
+    include: { 
+        users: true // To get store owner ID for `createdById` fields
+    } 
   });
-  console.log(`Ensured Store Owner: ${ownerEmail}`);
-
-  // Store
-  const storeSlug = "sreecharan's-store";
-  const store = await prisma.store.upsert({
-    where: { slug: storeSlug },
-    update: { name: "Demo Pharmacy", timezone: "Asia/Kolkata", currency: "INR" },
-    create: { name: "Demo Pharmacy", slug: storeSlug, timezone: "Asia/Kolkata", currency: "INR" },
-  });
-  console.log(`Ensured Store: ${store.name}`);
-
-  // Role
-  await prisma.userStoreRole.upsert({
-    where: { userId_storeId: { userId: storeOwner.id, storeId: store.id } },
-    update: { role: "STORE_OWNER" },
-    create: { userId: storeOwner.id, storeId: store.id, role: "STORE_OWNER" },
-  });
-
-  // Supplier User
-  const supplierEmail = "bhanuprakashalahari.04@gmail.com";
-  const supplierEmailEnc = crypto$.encryptCellDeterministic(supplierEmail);
-  const supplierPasswordHash = await bcrypt.hash("12345678", 10);
-  const supplierUser = await prisma.user.upsert({
-    where: { email: supplierEmailEnc },
-    update: { username: "global_supplier", passwordHash: supplierPasswordHash, globalRole: "SUPPLIER", isActive: true, isverified: true },
-    create: { username: "global_supplier", email: supplierEmail, passwordHash: supplierPasswordHash, globalRole: "SUPPLIER", isActive: true, isverified: true },
-  });
-  console.log(`Ensured Supplier User: ${supplierEmail}`);
-
-  // Supplier Profile
-  const supplierProfile = await prisma.supplier.upsert({
-    where: { userId: supplierUser.id },
-    update: { name: "Global Meds Inc.", contactName: "John Doe", phone: "+1234567890", defaultLeadTime: 2, defaultMOQ: 100 },
-    create: { name: "Global Meds Inc.", contactName: "John Doe", phone: "+1234567890", userId: supplierUser.id, defaultLeadTime: 2, defaultMOQ: 100 },
-  });
-
-
   
+  const allSuppliers = await prisma.supplier.findMany();
 
-  // ---------------------------------------------------------
-  // 2. Populate Enormous Data (Medicines, Inventory, Sales)
-  // ---------------------------------------------------------
-
-  console.log("📦 Generating Medicines...");
-  const medicines = [];
-  
-  // Create ~50 Medicines
-  for (let i = 0; i < 50; i++) {
-    const drug = getRandomElement(DRUG_NAMES);
-    const strength = getRandomElement(["10mg", "20mg", "50mg", "100mg", "250mg", "500mg"]);
-    const form = getRandomElement(DOSAGE_FORMS);
-    
-    // Check if exists to avoid noise in logs or duplicate errors (though ID is uuid)
-    // We'll create distinct entries.
-    const med = await prisma.medicine.create({
-      data: {
-        storeId: store.id,
-        brandName: `${drug.brand} ${strength}`,
-        genericName: drug.generic,
-        dosageForm: form,
-        strength: strength,
-        category: getRandomElement(MEDICINE_CATEGORIES),
-        sku: `SKU-${getRandomInt(10000, 99999)}`,
-        uom: "Pack",
-        isActive: true,
-        taxInfo: { rate: 5 },
-      }
-    });
-    medicines.push(med);
+  if (allStores.length === 0) {
+    console.warn("⚠️ No stores found! Please ensure users/stores exist first.");
+    return;
   }
-  console.log(`✅ Created ${medicines.length} Medicines.`);
-
-  console.log("🏭 Generating Inventory Batches...");
-  const inventoryBatches:any[]= [];
   
-  for (const med of medicines) {
-    // Create 1-4 batches per medicine
-    const numBatches = getRandomInt(1, 4);
-    for (let j = 0; j < numBatches; j++) {
-      const isExpired = Math.random() < 0.1; // 10% chance of expired
-      const expiryDate = isExpired 
-        ? subDays(new Date(), getRandomInt(10, 300))
-        : addDays(new Date(), getRandomInt(30, 700));
-        
-      const batch = await prisma.inventoryBatch.create({
-        data: {
-          storeId: store.id,
-          medicineId: med.id,
-          batchNumber: `BN-${getRandomInt(100000, 999999)}`,
-          qtyReceived: getRandomInt(100, 1000),
-          qtyAvailable: getRandomInt(20, 800), // Assuming some sold
-          qtyReserved: 0,
-          expiryDate: expiryDate,
-          purchasePrice: getRandomFloat(10, 500),
-          mrp: getRandomFloat(50, 1000),
-          receivedAt: subDays(new Date(), getRandomInt(1, 100)),
-          location: `Shelf ${getRandomElement(['A', 'B', 'C'])}-${getRandomInt(1, 10)}`,
-        }
-      });
-      inventoryBatches.push(batch);
+  if (allSuppliers.length === 0) {
+      console.warn("⚠️ No suppliers found! Some features like supplier linking will be skipped.");
+  }
+
+  console.log(`Found ${allStores.length} Stores and ${allSuppliers.length} Suppliers.`);
+
+  // 2. Iterate through EACH Store to enrich data
+  for (const store of allStores) {
+    console.log(`\n🏪 Processing Store: ${store.name} (${store.slug})...`);
+    
+    // Determine a primary user (owner) for this store to attribute actions to
+    // If no explicit role, pick any linked user, or null
+    const owner = store.users.find(u => u.role === "STORE_OWNER") || store.users[0];
+    const ownerId = owner?.userId;
+
+    if (!ownerId) {
+        console.warn(`   ⚠️ No owner found for store ${store.name}, skipping transactional data creation (sales, requests) that requires user ID.`);
+        // potentially continue, but creating sales/requests without createdById might fail if schema requires it or logic needs it
+        // Schema: Sale.createdById is nullable? Yes. But good to have.
     }
-  }
-  console.log(`✅ Created ${inventoryBatches.length} Inventory Batches.`);
 
-  console.log("💰 Generating Sales History (This may take a moment)...");
-  
-  // Generate 200 Sales distributed over last 60 days
-  const salePromises = [];
-  const PAYMENT_METHODS: any[] = ["CASH", "CARD", "UPI"];
-  
-  for (let i = 0; i < 200; i++) {
-    const saleDate = subDays(new Date(), getRandomInt(0, 60));
+    // --- Medicines ---
+    const existingMedsCount = await prisma.medicine.count({ where: { storeId: store.id } });
+    const targetMeds = 50;
+    const medsToCreate = targetMeds - existingMedsCount;
     
-    // Create Sale
-    const createSaleParams = async () => {
-        const numItems = getRandomInt(1, 5);
-        let subtotal = 0;
-        const saleItemsData = [];
-
-        // Select random items
-        for(let k=0; k<numItems; k++) {
-            const batch = getRandomElement(inventoryBatches);
-            const qty = getRandomInt(1, 5);
-            const unitPrice = Number(batch.mrp); // Use MRP as price
-            const lineTotal = unitPrice * qty;
-            
-            subtotal += lineTotal;
-            
-            saleItemsData.push({
-                medicineId: batch.medicineId,
-                inventoryBatchId: batch.id,
-                qty: qty,
-                unitPrice: unitPrice,
-                lineTotal: lineTotal
-            });
-        }
-
-        const tax = subtotal * 0.05;
-        const total = subtotal + tax;
-
-        await prisma.sale.create({
-            data: {
+    if (medsToCreate > 0) {
+        console.log(`   💊 Creating ${medsToCreate} additional medicines...`);
+        const medsData = [];
+        for(let i=0; i<medsToCreate; i++) {
+             const drug = getRandomElement(DRUG_NAMES)!;
+             const strength = getRandomElement(["10mg", "20mg", "50mg", "100mg", "250mg", "500mg"]);
+             const form = getRandomElement(DOSAGE_FORMS);
+             
+             medsData.push({
                 storeId: store.id,
-                createdById: storeOwner.id, // Attributed to owner
-                subtotal: subtotal,
-                tax: tax,
-                discounts: 0,
-                totalValue: total,
-                paymentMethod: getRandomElement(PAYMENT_METHODS),
-                paymentStatus: "PAID",
-                createdAt: saleDate, // Past date
-                updatedAt: saleDate,
-                items: {
-                    create: saleItemsData
+                brandName: `${drug.brand} ${strength}`, // Append random strength to ensure uniqueness if needed
+                genericName: drug.generic,
+                dosageForm: form,
+                strength: strength,
+                category: getRandomElement(MEDICINE_CATEGORIES),
+                sku: `SKU-${getRandomInt(10000, 99999)}`,
+                uom: "Pack",
+                isActive: true,
+                taxInfo: { rate: 5 },
+             });
+        }
+        // Use createMany if supported or loop
+        // Prisma createMany is supported for simple creates
+        await prisma.medicine.createMany({ data: medsData });
+    } else {
+        console.log(`   💊 Sufficient medicines exist (${existingMedsCount}).`);
+    }
+
+    // Refetch all medicines for this store to link inventory
+    const storeMedicines = await prisma.medicine.findMany({ where: { storeId: store.id } });
+
+    // --- Inventory Batches ---
+    // Ensure every medicine has at least 1 batch, some have multiple
+    console.log(`   🏭 enriching inventory...`);
+    const newBatches = [];
+    
+    for (const med of storeMedicines) {
+        // Check if batches exist
+        const batchCount = await prisma.inventoryBatch.count({ where: { medicineId: med.id } });
+        if (batchCount === 0 || Math.random() < 0.3) { // Create if missing OR 30% chance to add more
+             const numBatches = getRandomInt(1, 3);
+             for (let j = 0; j < numBatches; j++) {
+                  const isExpired = Math.random() < 0.15; // 15% chance
+                  const lowStock = Math.random() < 0.2; // 20% chance
+                  
+                  const expiryDate = isExpired 
+                    ? subDays(new Date(), getRandomInt(10, 300))
+                    : addDays(new Date(), getRandomInt(30, 700));
+
+                  const qtyReceived = getRandomInt(100, 1000);
+                  // For low stock: < 20
+                  const qtyAvailable = lowStock ? getRandomInt(0, 15) : getRandomInt(20, qtyReceived);
+                  
+                  newBatches.push({
+                      storeId: store.id,
+                      medicineId: med.id,
+                      batchNumber: `BN-${getRandomInt(100000, 999999)}`,
+                      qtyReceived: qtyReceived,
+                      qtyAvailable: qtyAvailable, 
+                      qtyReserved: 0,
+                      expiryDate: expiryDate,
+                      purchasePrice: getRandomFloat(10, 500),
+                      mrp: getRandomFloat(50, 1000),
+                      receivedAt: subDays(new Date(), getRandomInt(1, 100)),
+                      location: `Shelf ${getRandomElement(['A', 'B', 'C'])}-${getRandomInt(1, 10)}`,
+                  });
+             }
+        }
+    }
+    if (newBatches.length > 0) {
+        await prisma.inventoryBatch.createMany({ data: newBatches });
+        console.log(`      Created ${newBatches.length} new inventory batches.`);
+    }
+
+    // Refetch batches for Sales generation
+    const storeBatches = await prisma.inventoryBatch.findMany({ where: { storeId: store.id } });
+
+    // --- Historical Sales ---
+    // Generate sales if low count
+    const salesCount = await prisma.sale.count({ where: { storeId: store.id } });
+    if (salesCount < 50 && storeBatches.length > 0) {
+         console.log(`   💰 Generating historical sales...`);
+         const salesToCreate = 150 - salesCount; 
+         const PAYMENT_METHODS: any[] = ["CASH", "CARD", "UPI"];
+         
+         const salePromises = [];
+         
+         for(let i=0; i<salesToCreate; i++) {
+            const saleDate = subDays(new Date(), getRandomInt(0, 60)); 
+            
+            // Build items
+            const numItems = getRandomInt(1, 5);
+            let subtotal = 0;
+            const itemsData = [];
+            
+            for(let k=0; k<numItems; k++) {
+                const batch = getRandomElement(storeBatches)!;
+                const qty = getRandomInt(1, 4);
+                const unitPrice = Number(batch.mrp);
+                const lineTotal = unitPrice * qty;
+                subtotal += lineTotal;
+                
+                itemsData.push({
+                    medicineId: batch.medicineId,
+                    inventoryBatchId: batch.id,
+                    qty: qty,
+                    unitPrice: unitPrice,
+                    lineTotal: lineTotal
+                });
+            }
+            
+            const tax = subtotal * 0.05;
+            const total = subtotal + tax;
+
+            salePromises.push(prisma.sale.create({
+                data: {
+                    storeId: store.id,
+                    createdById: ownerId,
+                    subtotal: subtotal,
+                    tax: tax,
+                    discounts: 0,
+                    totalValue: total,
+                    paymentMethod: getRandomElement(PAYMENT_METHODS),
+                    paymentStatus: "PAID",
+                    createdAt: saleDate, 
+                    updatedAt: saleDate,
+                    items: {
+                        create: itemsData
+                    }
+                }
+            }));
+         }
+         
+         // Batch execute
+         const chunkSize = 10;
+         for (let i = 0; i < salePromises.length; i += chunkSize) {
+            await Promise.all(salePromises.slice(i, i + chunkSize));
+         }
+         console.log(`      Generated ${salesToCreate} sales.`);
+    }
+
+    // --- Suppliers Linking ---
+    if (allSuppliers.length > 0) {
+        console.log(`   🤝 Ensuring Supplier Connections...`);
+        // Ensure at least 50% of suppliers are connected or pending
+        for (const supplier of allSuppliers) {
+            // Check existence
+            const existingLink = await prisma.supplierStore.findUnique({
+                where: { supplierId_storeId: { supplierId: supplier.id, storeId: store.id } }
+            });
+            
+            const existingReq = await prisma.supplierRequest.findFirst({
+                where: { supplierId: supplier.id, storeId: store.id }
+            });
+
+            if (!existingLink && !existingReq) {
+                // Randomly Decide to link, pending, or ignore
+                const action = Math.random();
+                if (action < 0.4) {
+                    // Create Link
+                    await prisma.supplierStore.create({
+                        data: {
+                            supplierId: supplier.id,
+                            storeId: store.id,
+                            linkedAt: subDays(new Date(), getRandomInt(1, 60))
+                        }
+                    });
+                    // And create an archived request for it
+                    if (ownerId) {
+                        await prisma.supplierRequest.create({
+                            data: {
+                                supplierId: supplier.id,
+                                storeId: store.id,
+                                status: "ACCEPTED",
+                                message: "Auto-generated acceptance from seed",
+                                createdById: ownerId,
+                                createdAt: subDays(new Date(), 60)
+                            }
+                        });
+                    }
+                } else if (action < 0.7 && ownerId) {
+                    // Create Pending Request (Inbound from Supplier? or Outbound?)
+                    // Let's create an "Incoming" request example (CreatedBy = Supplier User)
+                    if (supplier.userId) {
+                         await prisma.supplierRequest.create({
+                            data: {
+                                supplierId: supplier.id,
+                                storeId: store.id,
+                                status: "PENDING",
+                                message: "I would like to partner with your pharmacy.",
+                                createdById: supplier.userId,
+                                createdAt: subDays(new Date(), getRandomInt(0, 5))
+                            }
+                        });
+                    }
                 }
             }
-        });
-    };
-    salePromises.push(createSaleParams());
+        }
+    }
   }
-  
-  // Run in chunks to avoid connection exhaustion if huge
-  const chunkSize = 20;
-  for (let i = 0; i < salePromises.length; i += chunkSize) {
-    await Promise.all(salePromises.slice(i, i + chunkSize));
-  }
-  
-  console.log(`✅ Created 200 Sales.`);
 
-  // ---------------------------------------------------------
-  // 3. Supplier Requests & Links
-  // ---------------------------------------------------------
-  console.log("🤝 Generating Supplier Requests...");
-  
-  // Link Supplier to Store
-  await prisma.supplierStore.upsert({
-      where: {
-          supplierId_storeId: { supplierId: supplierProfile.id, storeId: store.id }
-      },
-      create: {
-          supplierId: supplierProfile.id,
-          storeId: store.id,
-          linkedAt: subDays(new Date(), 30)
-      },
-      update: {}
-  });
-
-  // Create a few past requests
-  await prisma.supplierRequest.create({
-      data: {
-          supplierId: supplierProfile.id,
-          storeId: store.id,
-          status: "ACCEPTED",
-          message: "Hi, I'd like to supply your pharmacy.",
-          createdById: supplierUser.id,
-          createdAt: subDays(new Date(), 31)
-      }
-  });
-
-   await prisma.supplierRequest.create({
-      data: {
-          supplierId: supplierProfile.id,
-          storeId: store.id,
-          status: "PENDING",
-          message: "New catalog available for next season.",
-          createdById: supplierUser.id,
-          createdAt: subDays(new Date(), 2)
-      }
-  });
-
-  console.log("✅ Seeding completed successfully.");
+  console.log("\n✅ Rich Seed Completed!");
 }
 
 main()

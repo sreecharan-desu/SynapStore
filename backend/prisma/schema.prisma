@@ -281,6 +281,7 @@ model SupplierRequest {
   updatedAt   DateTime              @updatedAt
   store       Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
   supplier    Supplier              @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  payload     Json?
 
   @@index([storeId, status])
   @@index([supplierId, status])

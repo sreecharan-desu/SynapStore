@@ -8,6 +8,8 @@ import { sendMail } from "../../../lib/mailer";
 import { getSupplierRequestEmailTemplate, getNotificationEmailTemplate, getDisconnectionEmailTemplate, getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate } from "../../../lib/emailTemplates";
 import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
+import { InventoryService } from "../../../lib/inventory";
+import { getReceiptEmailTemplate } from "../../../lib/emailTemplates";
 
 const router = Router();
 
@@ -467,6 +469,7 @@ router.get(
           storeId: true,
           supplierId: true,
           updatedAt : true,
+          payload: true,
           store: {
             select: {
               name : true
@@ -749,6 +752,85 @@ router.post(
         }
 
         return sendSuccess(res, "Request rejected");
+    } catch (err) {
+        next(err);
+    }
+  }
+);
+
+const fulfillSchema = z.object({
+  items: z.array(z.object({
+    medicineId: z.string().uuid(),
+    quantity: z.number().int().positive(),
+    batchNumber: z.string().optional(),
+    expiryDate: z.string().optional(), // ISO string preferred
+    purchasePrice: z.number().optional(),
+    mrp: z.number().optional(),
+  })).min(1)
+});
+
+/**
+ * POST /v1/suppliers/requests/:requestId/fulfill
+ * Description: Supplier fulfills an accepted reorder request by uploading inventory data.
+ */
+router.post(
+  "/requests/:requestId/fulfill",
+  authenticate,
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+        const { requestId } = req.params;
+        const user = req.user!;
+        
+        const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
+        if (!supplier) return sendError(res, "Supplier profile not found", 404);
+
+        const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+        if (!request) return sendError(res, "Request not found", 404);
+
+        if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
+        if (request.status !== "ACCEPTED") return sendError(res, "Request must be ACCEPTED before fulfillment", 400);
+
+        const parsed = fulfillSchema.safeParse(req.body);
+        if (!parsed.success) return handleZodError(res, parsed.error);
+
+        // Convert expiryDate string to Date object
+        const items = parsed.data.items.map(i => ({
+            ...i,
+            expiryDate: i.expiryDate ? new Date(i.expiryDate) : undefined
+        }));
+
+        const result = await InventoryService.fulfillReorder(
+            request.storeId,
+            supplier.id,
+            requestId,
+            items,
+            user.id
+        );
+
+        // Notify Store Owner
+        const store = await prisma.store.findUnique({ 
+             where: { id: request.storeId },
+             include: { users: { include: { user: true } } }
+        });
+        
+        if (store) {
+             const owners = await prisma.userStoreRole.findMany({
+                 where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
+                 include: { user: true }
+             });
+             
+             for (const owner of owners) {
+                 if (owner.user.email) {
+                     sendMail({
+                         to: owner.user.email,
+                         subject: `Reorder Received: ${supplier.name}`,
+                         html: getReceiptEmailTemplate(store.name, { count: items.length }) 
+                     }).catch(e => console.error("Email failed", e));
+                 }
+             }
+        }
+
+        return sendSuccess(res, "Reorder fulfilled and inventory created", result);
     } catch (err) {
         next(err);
     }

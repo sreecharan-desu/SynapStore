@@ -35,6 +35,9 @@ export const dashboardApi = {
     createSupplierRequest: (data: { supplierId: string; message?: string }) => client.post<{ success: boolean; data: SupplierRequest }>("api/v1/dashboard/supplier-requests", data),
     disconnectSupplier: (supplierId: string) => client.delete<{ success: boolean; message: string }>(`api/v1/dashboard/suppliers/${supplierId}`),
     suppliersDirectory: (q?: string) => client.get<{ success: boolean; data: { suppliers: any[] } }>("api/v1/dashboard/suppliers-directory", { params: { q } }),
+    getInventory: (q?: string) => client.get<{ success: boolean; data: { inventory: any[] } }>("api/v1/dashboard/inventory", { params: { q } }),
+    getSuggestions: () => client.get<{ success: boolean; data: { suggestions: any[] } }>("api/v1/dashboard/suggestions"),
+    reorder: (data: { supplierId: string; items: any[]; note?: string }) => client.post<{ success: boolean; data: { request: SupplierRequest } }>("api/v1/dashboard/reorder", data),
 };
 
 // --- Suppliers ---
@@ -47,6 +50,7 @@ export const suppliersApi = {
     getDetails: (supplierId?: string) => client.get<{ success: boolean; data: { supplier: Supplier & { supplierStores?: { store: Store }[] }; requests: SupplierRequest[] } }>("api/v1/supplier-requests", { params: { supplierId } }),
     acceptRequest: (requestId: string) => client.post<{ success: boolean; message: string }>(`api/v1/supplier-requests/requests/${requestId}/accept`),
     rejectRequest: (requestId: string) => client.post<{ success: boolean; message: string }>(`api/v1/supplier-requests/requests/${requestId}/reject`),
+    fulfillRequest: (requestId: string, data: { items: any[] }) => client.post<{ success: boolean; data: any }>(`api/v1/supplier-requests/requests/${requestId}/fulfill`, data),
     disconnectStore: (storeId: string) => client.delete<{ success: boolean; message: string }>(`api/v1/supplier-requests/stores/${storeId}`),
 };
 

@@ -7,7 +7,7 @@ import prisma from "../../../lib/prisma";
 import { requireRole } from "../../../middleware/requireRole";
 import { crypto$ } from "../../../lib/crypto";
 import { sendMail } from "../../../lib/mailer";
-import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getStoreConnectionRequestEmailTemplate, getSupplierRequestEmailTemplate, getDisconnectionEmailTemplate } from "../../../lib/emailTemplates";
+import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getStoreConnectionRequestEmailTemplate, getSupplierRequestEmailTemplate, getDisconnectionEmailTemplate, getReorderRequestEmailTemplate } from "../../../lib/emailTemplates";
 // import router from "../auth/email-auth"; 
 import { sendSuccess, sendError, handlePrismaError, sendInternalError, handleZodError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
@@ -1192,6 +1192,217 @@ dashboardRouter.post(
       next(err);
     }
   }
+);
+
+/**
+ * GET /v1/dashboard/inventory
+ * Description: List all medicines with comprehensive inventory data for reordering.
+ */
+dashboardRouter.get(
+  "/inventory",
+  authenticate,
+  storeContext,
+  requireStore,
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const store = req.store!;
+      const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+      
+      const where: any = { storeId: store.id, isActive: true };
+      if (q) {
+          where.OR = [
+              { brandName: { contains: q, mode: 'insensitive' } },
+              { genericName: { contains: q, mode: 'insensitive' } }
+          ];
+      }
+
+      const medicines = await prisma.medicine.findMany({
+        where,
+        include: {
+          inventory: {
+            where: { qtyAvailable: { gt: 0 } },
+            orderBy: { expiryDate: 'asc' }
+          },
+          suppliers: {
+              select: { id: true, name: true, contactName: true }
+          }
+        },
+        take: 100 // pagination
+      });
+
+      const result = medicines.map(m => {
+          const totalQty = m.inventory.reduce((sum, b) => sum + b.qtyAvailable, 0);
+          const expiringSoon = m.inventory.some(b => b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 90*24*60*60*1000));
+          return {
+              ...m,
+              totalQty,
+              expiringSoon,
+              batches: m.inventory
+          };
+      });
+
+      return sendSuccess(res, "Inventory list for reorder", { inventory: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+const reorderSchema = z.object({
+  supplierId: z.string().uuid(),
+  items: z.array(z.object({
+    medicineId: z.string().uuid(),
+    quantity: z.number().int().positive(),
+  })).min(1),
+  note: z.string().optional()
+});
+
+/**
+ * POST /v1/dashboard/reorder
+ * Description: Create a reorder request for a supplier.
+ */
+dashboardRouter.post(
+  "/reorder",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "MANAGER"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+        const parsed = reorderSchema.safeParse(req.body);
+        if (!parsed.success) {
+            // @ts-ignore
+            return handleZodError(res, parsed.error);
+        }
+
+        const store = req.store!;
+        const user = req.user!;
+        const { supplierId, items, note } = parsed.data;
+
+        // Verify supplier exists
+        const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+        if (!supplier) return sendError(res, "Supplier not found", 404);
+
+        // Fetch medicine names for the email/message details
+        const medIds = items.map(i => i.medicineId);
+        const meds = await prisma.medicine.findMany({ 
+            where: { id: { in: medIds } },
+            select: { id: true, brandName: true, strength: true }
+        });
+        const medMap = new Map(meds.map(m => [m.id, m]));
+
+        // Construct readable message and enhanced items for payload
+        let details = "Items:\n";
+        const enhancedItems = items.map(item => {
+            const m = medMap.get(item.medicineId);
+            const name = m ? `${m.brandName} ${m.strength || ''}` : "Unknown Item";
+            details += `- ${name}: ${item.quantity} units\n`;
+            return {
+                ...item,
+                medicineName: name
+            };
+        });
+
+        if (note) details += `\nNote: ${note}`;
+
+        const request = await prisma.supplierRequest.create({
+            data: {
+                storeId: store.id,
+                supplierId,
+                message: JSON.stringify({ type: "REORDER", items: enhancedItems, note }), // Structured for system
+                // @ts-ignore
+                payload: { items: enhancedItems, note, type: "REORDER" }, // Clean structured data
+                status: "PENDING",
+                createdById: user.id
+            }
+        });
+
+        // Notify Supplier
+        if (supplier.userId) {
+            const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+            if (supUser?.email) {
+                 sendMail({
+                     to: supUser.email,
+                     subject: `New Reorder Request from ${store.name}`,
+                     html: getReorderRequestEmailTemplate(
+                         supUser.email, 
+                         store.name, 
+                         request.id, 
+                         details,
+                         process.env.FRONTEND_URL || "http://localhost:5173"
+                     ),
+                 });
+            }
+        }
+        
+        // Notify Store Owner (Confirmation)
+        if (user.email) {
+            // Optional: send confirmation email to requester
+        }
+
+        await prisma.activityLog.create({
+            data: {
+                storeId: store.id,
+                userId: user.id,
+                action: "reorder_created",
+                payload: { requestId: request.id, supplierId, itemCount: items.length }
+            }
+        });
+
+        return sendSuccess(res, "Reorder request sent successfully", { request });
+    } catch (err) {
+        next(err);
+    }
+  }
+);
+
+
+/**
+ * GET /v1/dashboard/suggestions
+ * Desc: Get automated reorder suggestions based on low stock
+ */
+dashboardRouter.get(
+  "/suggestions",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+        const { user } = req;
+        if (!user) return sendError(res, "Unauthenticated", 401);
+        
+        const store = req.store;
+        if (!store) return sendError(res, "Store context not found", 404);
+
+    // Group inventory by medicine
+    const inventory = await prisma.inventoryBatch.groupBy({
+      by: ['medicineId'],
+      where: { storeId: store.id },
+      _sum: { qtyAvailable: true }
+    });
+
+    const lowStockThreshold = 20; // Hardcoded for now
+    const lowStockIds = inventory.filter(i => (i._sum.qtyAvailable || 0) < lowStockThreshold).map(i => i.medicineId);
+
+    if (lowStockIds.length === 0) {
+      return sendSuccess(res, "No suggestions", { suggestions: [] });
+    }
+
+    const medicines = await prisma.medicine.findMany({
+      where: { id: { in: lowStockIds } },
+      select: { id: true, brandName: true, strength: true, genericName: true }
+    });
+
+    // Calculate suggested quantity (target = 50)
+    const suggestions = medicines.map(m => {
+      const current = inventory.find(i => i.medicineId === m.id)?._sum.qtyAvailable || 0;
+      return {
+        medicineId: m.id,
+        brandName: m.brandName,
+        currentStock: current,
+        suggestedQty: 50 - current,
+        reason: "Low Stock"
+      };
+    });
+
+        return sendSuccess(res, "Suggestions generated", { suggestions });
+    }
 );
 
 export default dashboardRouter;

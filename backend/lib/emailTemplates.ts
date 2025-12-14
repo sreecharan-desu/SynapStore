@@ -205,9 +205,24 @@ export function getReceiptEmailTemplate(storeName: string, receiptData: any): st
 
 export function getNotificationEmailTemplate(title: string, message: string): string {
   return wrapContent(`
-    <h2 style="${HEADING_STYLES}">${title}</h2>
     <p style="${PARAGRAPH_STYLES}">
-      ${message}
+       ${message}
     </p>
   `, title);
 }
+
+export function getReorderRequestEmailTemplate(supplierEmail: string, storeName: string, requestId: string, details: string, frontendUrl: string): string {
+  return wrapContent(`
+    <h2 style="${HEADING_STYLES}">New Reorder Request</h2>
+    <p style="${PARAGRAPH_STYLES}">
+      <strong>${storeName}</strong> has sent a new reorder request (ID: #${requestId.slice(0, 6)}).
+    </p>
+    <div style="background-color: #f9fafb; padding: 20px; border-left: 4px solid #111827; margin: 24px 0; color: #4b5563;">
+        <pre style="font-family: inherit; white-space: pre-wrap;">${details}</pre>
+    </div>
+    <div style="text-align: center;">
+      <a href="${frontendUrl}/supplier/requests" style="${BUTTON_STYLES}">View Request</a>
+    </div>
+  `, "Reorder Request");
+}
+

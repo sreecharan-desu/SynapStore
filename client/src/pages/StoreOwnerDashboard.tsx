@@ -1,30 +1,9 @@
-// src/pages/StoreOwnerDashboard.tsx
 import React from "react";
 import { useRecoilValue } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-    Store,
-    ShoppingCart,
-    Users,
-    Package,
-    Activity,
-    Bell,
-    Calendar,
-    Check,
-    ChevronDown,
-    ChevronUp,
-    DollarSign,
-    FileText,
-    Link,
-    Lock,
-    LogOut,
-    Search,
-    Settings,
-    Truck,
-    X,
-    Zap,
-} from "lucide-react";
+import {  Bell, Settings, LogOut, Users, Package,  Calendar,  Search,  X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store } from "lucide-react";
+
 import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
 import { dashboardApi } from "../lib/api/endpoints";
@@ -53,6 +32,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from "../components/ui/select";
+import { FaRupeeSign } from "react-icons/fa";
+
+const Skeleton = ({ className }: { className?: string }) => (
+    <div className={`animate-pulse bg-slate-200 rounded-md ${className}`} />
+);
 
 const chartConfig = {
     revenue: {
@@ -197,6 +181,110 @@ const StoreOwnerDashboard: React.FC = () => {
     const notificationRef = React.useRef<HTMLDivElement>(null);
     const [selectedTheme, setSelectedTheme] = React.useState("green");
     const [selectedAvatar, setSelectedAvatar] = React.useState("fruit-strawberry");
+
+    // Reorder State
+    const [reorderModalOpen, setReorderModalOpen] = React.useState(false);
+    const [inventoryList, setInventoryList] = React.useState<any[]>([]);
+    const [cart, setCart] = React.useState<Map<string, number>>(new Map()); // medicineId -> qty
+    const [reorderSupplierId, setReorderSupplierId] = React.useState<string>("");
+    const [reorderNote, setReorderNote] = React.useState("");
+    const [isAiLoading, setIsAiLoading] = React.useState(false);
+
+    const handleOpenReorder = async () => {
+        setReorderModalOpen(true);
+        try {
+            const res = await dashboardApi.getInventory();
+            if (res.data.success) {
+                setInventoryList(res.data.data.inventory);
+            }
+        } catch (err) {
+            console.error("Failed to fetch inventory for reorder", err);
+        }
+    };
+
+    const handleAddToCart = (medicineId: string, qty: number) => {
+        setCart(prev => {
+            const newCart = new Map(prev);
+            if (qty <= 0) newCart.delete(medicineId);
+            else newCart.set(medicineId, qty);
+            return newCart;
+        });
+    };
+
+    const submitReorder = async () => {
+        if (!reorderSupplierId) {
+            alert("Please select a supplier.");
+            return;
+        }
+        if (cart.size === 0) {
+            alert("Please add items to reorder.");
+            return;
+        }
+
+        const items = Array.from(cart.entries()).map(([medicineId, quantity]) => ({
+            medicineId,
+            quantity
+        }));
+
+        try {
+            const res = await dashboardApi.reorder({
+                supplierId: reorderSupplierId,
+                items,
+                note: reorderNote
+            });
+            if (res.data.success) {
+                alert("Reorder request sent successfully!");
+                setReorderModalOpen(false);
+                setCart(new Map());
+                setReorderNote("");
+                setReorderSupplierId("");
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to send reorder: " + err.message);
+        }
+    };
+
+    const handleSmartFill = async () => {
+        setIsAiLoading(true);
+        // Simulate AI thinking time
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        try {
+            const res = await dashboardApi.getSuggestions();
+            if (res.data.success) {
+                const suggestions = res.data.data.suggestions;
+                if (suggestions.length === 0) {
+                    alert("No low stock items found.");
+                    setIsAiLoading(false);
+                    return;
+                }
+                
+                // Auto-fill Cart
+                setCart(prev => {
+                   const newCart = new Map(prev);
+                   suggestions.forEach((s: any) => {
+                       newCart.set(s.medicineId, s.suggestedQty);
+                   });
+                   return newCart;
+                });
+
+                // Auto-select Supplier (Pick first available if not set)
+                if (!reorderSupplierId && data?.lists?.suppliers?.length) {
+                    setReorderSupplierId(data.lists.suppliers[0].id);
+                }
+
+                // Auto-fill Note with "AI" message
+                const storeName = data?.store?.name || "Our Pharmacy";
+                const aiNote = `Hello,\n\nI would like to place an urgent restock request for ${suggestions.length} items for ${storeName}. Please prioritize immediate dispatch.\n\nGenerated by SynapStore AI 🤖`;
+                setReorderNote(aiNote);
+            }
+        } catch (err) {
+            console.error("Failed to get suggestions", err);
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
 
     // Load theme/avatar
     React.useEffect(() => {
@@ -391,7 +479,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const stats = [
         {
-            icon: DollarSign,
+            icon: FaRupeeSign,
             label: "Revenue (30d)",
             value: `$${data?.overview.recentRevenue.toLocaleString() ?? "0"}`,
             color: theme.primary,
@@ -456,22 +544,18 @@ const StoreOwnerDashboard: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Middle: Global Search */}
-                    <div className="hidden md:flex flex-1 max-w-md">
-                        <div className="relative w-full group">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <Search className={`h-4 w-4 text-slate-400 group-focus-within:${theme.text} transition-colors`} />
-                            </div>
-                            <input
-                                type="text"
-                                placeholder="Search inventory, sales, or suppliers..."
-                                className={`block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl leading-5 bg-slate-50/50 text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-opacity-20 focus:${theme.ring} focus:${theme.border} transition-all duration-200 sm:text-sm shadow-sm`}
-                            />
-                        </div>
-                    </div>
+             
 
                     {/* Right: Actions */}
                     <div className="flex items-center gap-3 shrink-0">
+                        {/* Reorder Button */}
+                        <Button 
+                            onClick={handleOpenReorder}
+                            className="bg-slate-900 text-white hover:bg-slate-800 shadow-sm gap-2"
+                        >
+                            <Package className="w-4 h-4" /> New Reorder
+                        </Button>
+
                         {/* Date */}
                         <div className="hidden xl:flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white border border-slate-200/80 px-3 py-2 rounded-lg shadow-sm">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -1032,6 +1116,203 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </Button>
                                 </div>
                             </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Reorder Modal */}
+            <AnimatePresence>
+                {reorderModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-800">New Reorder Request</h2>
+                                    <p className="text-sm text-slate-500">Select items to restock and choose a supplier.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        onClick={handleSmartFill}
+                                        disabled={isAiLoading}
+                                        className="hidden md:flex gap-2 text-white bg-gradient-to-r from-indigo-500 to-purple-600 border-none hover:opacity-90 shadow-md shadow-indigo-200 transition-all duration-300 relative overflow-hidden group"
+                                    >
+                                        {isAiLoading ? (
+                                             <Sparkles className="w-4 h-4 animate-spin" /> 
+                                        ) : (
+                                            <Sparkles className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                                        )}
+                                        {isAiLoading ? "Generate AI Draft..." : "AI Auto-Fill"}
+                                        <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent z-10" />
+                                    </Button>
+                                    <button onClick={() => setReorderModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                        <X className="w-6 h-6 text-slate-400" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {isAiLoading ? (
+                                <div className="flex-1 overflow-hidden flex flex-col md:flex-row animate-pulse">
+                                    <div className="flex-1 p-6 border-r border-slate-100">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <Skeleton className="w-8 h-8 rounded-full" />
+                                            <Skeleton className="h-10 w-full rounded-xl" />
+                                        </div>
+                                        <div className="space-y-4">
+                                            {[1, 2, 3, 4].map((i) => (
+                                                <div key={i} className="flex justify-between items-center p-4 border border-slate-50 rounded-xl">
+                                                    <div className="space-y-2">
+                                                        <Skeleton className="h-4 w-32" />
+                                                        <Skeleton className="h-3 w-20" />
+                                                    </div>
+                                                    <Skeleton className="h-8 w-16 rounded-md" />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="w-full md:w-80 p-6 bg-slate-50 flex flex-col gap-4">
+                                        <Skeleton className="h-6 w-32 mb-2" />
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Skeleton className="h-4 w-20" />
+                                                <Skeleton className="h-10 w-full rounded-md" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Skeleton className="h-32 w-full rounded-xl" />
+                                            </div>
+                                            <Skeleton className="h-12 w-full rounded-xl mt-4" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+
+                            <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                                {/* Left: Inventory Selection */}
+                                <div className="flex-1 p-6 overflow-y-auto border-r border-slate-100">
+                                    <div className="mb-4 relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search medicines..."
+                                            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                                            // Implement filtering logic if desired, for now relying on scroll list
+                                        />
+                                    </div>
+                                    <div className="space-y-3">
+                                        {inventoryList.map((med) => (
+                                            <div key={med.id} className="p-4 border border-slate-100 rounded-xl hover:border-emerald-200 hover:shadow-sm transition-all flex justify-between items-center group">
+                                                <div>
+                                                    <p className="font-bold text-slate-800">{med.brandName} <span className="text-slate-400 font-normal text-xs ml-1">{med.strength}</span></p>
+                                                    <p className="text-xs text-slate-500">{med.genericName}</p>
+                                                    <div className="flex gap-2 mt-1">
+                                                        <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">Curr: {med.totalQty}</span>
+                                                        {med.expiringSoon && <span className="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded">Expiring Soon</span>}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    {cart.has(med.id) ? (
+                                                        <div className="flex items-center bg-slate-100 rounded-lg p-1">
+                                                            <button 
+                                                                onClick={() => handleAddToCart(med.id, (cart.get(med.id) || 0) - 1)}
+                                                                className="w-7 h-7 flex items-center justify-center hover:bg-white rounded-md transition-colors"
+                                                            >-</button>
+                                                            <span className="w-8 text-center font-bold text-sm">{cart.get(med.id)}</span>
+                                                            <button 
+                                                                onClick={() => handleAddToCart(med.id, (cart.get(med.id) || 0) + 1)}
+                                                                className="w-7 h-7 flex items-center justify-center hover:bg-white rounded-md transition-colors"
+                                                            >+</button>
+                                                        </div>
+                                                    ) : (
+                                                        <Button size="sm" variant="outline" onClick={() => handleAddToCart(med.id, 1)} className="hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200">
+                                                            Add
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Right: Cart & Details */}
+                                <div className="w-full md:w-80 bg-slate-50 p-6 flex flex-col overflow-y-auto">
+                                    <h3 className="font-bold text-slate-700 mb-4">Order Summary</h3>
+                                    
+                                    <div className="flex-1 space-y-4">
+                                        <div>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <label className="block text-sm font-medium text-slate-600">Select Supplier</label>
+                                                <span className="text-xs text-slate-400">
+                                                    {data?.lists?.suppliers?.length || 0} available
+                                                </span>
+                                            </div>
+                                            <Select value={reorderSupplierId} onValueChange={setReorderSupplierId} disabled={!data?.lists?.suppliers?.length}>
+                                                <SelectTrigger className="w-full bg-white border-slate-200">
+                                                    <SelectValue placeholder="Choose Supplier" />
+                                                </SelectTrigger>
+                                                <SelectContent className="z-[9999]" position="popper">
+                                                    {data?.lists?.suppliers?.map((s) => (
+                                                        <SelectItem key={s.id} value={s.id}>
+                                                            {s.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            {!data?.lists?.suppliers?.length && (   
+                                                <p className="text-xs text-red-500 mt-1">
+                                                    No suppliers linked. Please go to Directory to add one.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="bg-white rounded-xl border border-slate-200 p-4 min-h-[100px]">
+                                            {cart.size === 0 ? (
+                                                <div className="text-center text-slate-400 text-sm py-4">
+                                                    Cart is empty
+                                                </div>
+                                            ) : (
+                                                <ul className="space-y-2">
+                                                    {Array.from(cart.entries()).map(([id, qty]) => {
+                                                        const m = inventoryList.find(x => x.id === id);
+                                                        return (
+                                                            <li key={id} className="text-sm flex justify-between">
+                                                                <span className="truncate max-w-[140px] text-slate-600">{m?.brandName}</span>
+                                                                <span className="font-bold text-slate-800">x{qty}</span>
+                                                            </li>
+                                                        )
+                                                    })}
+                                                </ul>
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-600 mb-2">Note (Optional)</label>
+                                            <textarea 
+                                                className="w-full p-3 text-sm border border-slate-200 rounded-xl resize-none focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                                                rows={3}
+                                                placeholder="Urgent delivery needed..."
+                                                value={reorderNote}
+                                                onChange={e => setReorderNote(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <Button 
+                                        className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/30"
+                                        disabled={cart.size === 0 || !reorderSupplierId}
+                                        onClick={submitReorder}
+                                    >
+                                        Send Request ({cart.size} Items)
+                                    </Button>
+                                </div>
+                            </div>
+                            )}
                         </motion.div>
                     </div>
                 )}

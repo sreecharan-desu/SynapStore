@@ -99,6 +99,55 @@ const SupplierDashboard: React.FC = () => {
 
     const currentSupplier = auth.suppliers && auth.suppliers.length > 0 ? auth.suppliers[0] : null;
 
+    // Fulfill Modal State
+    const [fulfillModalOpen, setFulfillModalOpen] = useState(false);
+    const [requestToFulfill, setRequestToFulfill] = useState<SupplierRequest | null>(null);
+    const [fulfillItems, setFulfillItems] = useState<any[]>([]);
+    
+    // Helper to open fulfill modal
+    const openFulfillModal = (req: SupplierRequest) => {
+        if (req.payload?.type === 'REORDER' && req.payload.items) {
+             setRequestToFulfill(req);
+             // Pre-fill items from request, defaulting quantity to requested
+             // We need to allow user to add batch numbers/expiry
+             setFulfillItems(req.payload.items.map((i: any) => ({
+                 medicineId: i.medicineId,
+                 medicineName: i.medicineName || "Unknown Item",
+                 quantity: i.quantity,
+                 batchNumber: "", // Supplier must input
+                 expiryDate: "", 
+                 purchasePrice: 0,
+                 mrp: 0
+             })));
+             setFulfillModalOpen(true);
+        } else {
+            alert("This request does not contain reorder items or is malformed.");
+        }
+    };
+
+    const handleSubmitFulfillment = async () => {
+         if (!requestToFulfill) return;
+         try {
+             // Validate
+             if (fulfillItems.some(i => !i.batchNumber || !i.expiryDate)) {
+                 alert("Please provide Batch Number and Expiry Date for all items.");
+                 return;
+             }
+
+             const res = await suppliersApi.fulfillRequest(requestToFulfill.id, { items: fulfillItems });
+             if (res.data.success) {
+                 alert("Reorder fulfilled successfully!");
+                 setFulfillModalOpen(false);
+                 setRequestToFulfill(null);
+                 setFulfillItems([]);
+                 // Optionally update status logic if backend changed status (it doesn't change from ACCEPTED, but logs it)
+             }
+         } catch (err: any) {
+             console.error(err);
+             alert("Failed to fulfill: " + err.message);
+         }
+    };
+
     useEffect(() => {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -600,6 +649,14 @@ const SupplierDashboard: React.FC = () => {
                                                                                             Reject
                                                                                         </Button>
                                                                                     </div>
+                                                                                ) : isInbound && req.status === "ACCEPTED" && req.payload?.type === "REORDER" ? (
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        className="h-8 shadow-sm bg-blue-600 hover:bg-blue-700 text-white border-0"
+                                                                                        onClick={() => openFulfillModal(req)}
+                                                                                    >
+                                                                                        Fulfill Order
+                                                                                    </Button>
                                                                                 ) : (
                                                                                     <span className="text-xs text-slate-400 font-medium">No actions</span>
                                                                                 )}
@@ -1072,6 +1129,97 @@ const SupplierDashboard: React.FC = () => {
                         </AnimatePresence>
                     </div>
                 </main>
+
+                {/* Fulfill Reorder Modal */}
+                {fulfillModalOpen && requestToFulfill && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 overflow-hidden max-h-[90vh] flex flex-col"
+                        >
+                            <div className="flex justify-between items-start mb-4 shrink-0">
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-800">Fulfill Reorder #{requestToFulfill.id.slice(0, 6)}</h3>
+                                    <p className="text-sm text-slate-500">Provide batch details for the requested items.</p>
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={() => setFulfillModalOpen(false)}><XCircle className="w-5 h-5 text-slate-400" /></Button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto pr-1 space-y-4">
+                                {fulfillItems.map((item, idx) => (
+                                    <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-bold text-slate-700 text-sm">{item.medicineName} <span className="text-slate-500 font-normal ms-2">(Qty: {item.quantity})</span></span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-500 mb-1">Batch Number</label>
+                                                <input
+                                                    type="text"
+                                                    value={item.batchNumber}
+                                                    onChange={e => {
+                                                        const newItems = [...fulfillItems];
+                                                        newItems[idx].batchNumber = e.target.value;
+                                                        setFulfillItems(newItems);
+                                                    }}
+                                                    placeholder="Batch #"
+                                                    className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-500 mb-1">Expiry Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={item.expiryDate}
+                                                    onChange={e => {
+                                                        const newItems = [...fulfillItems];
+                                                        newItems[idx].expiryDate = e.target.value;
+                                                        setFulfillItems(newItems);
+                                                    }}
+                                                    className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                 <label className="block text-xs font-medium text-slate-500 mb-1">Cost Price (Optional)</label>
+                                                 <input
+                                                     type="number"
+                                                     value={item.purchasePrice}
+                                                     onChange={e => {
+                                                         const newItems = [...fulfillItems];
+                                                         newItems[idx].purchasePrice = parseFloat(e.target.value);
+                                                         setFulfillItems(newItems);
+                                                     }}
+                                                     className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                                                 />
+                                            </div>
+                                            <div>
+                                                 <label className="block text-xs font-medium text-slate-500 mb-1">MRP (Optional)</label>
+                                                 <input
+                                                     type="number"
+                                                     value={item.mrp}
+                                                     onChange={e => {
+                                                         const newItems = [...fulfillItems];
+                                                         newItems[idx].mrp = parseFloat(e.target.value);
+                                                         setFulfillItems(newItems);
+                                                     }}
+                                                     className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                                                 />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100 shrink-0">
+                                <Button variant="secondary" onClick={() => setFulfillModalOpen(false)}>Cancel</Button>
+                                <Button onClick={handleSubmitFulfillment} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                                    <CheckCircle className="w-4 h-4" /> Confirm & Send
+                                </Button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
 
                 {/* Connection Request Modal */}
                 {selectedStore && (

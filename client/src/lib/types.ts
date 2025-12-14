@@ -107,6 +107,7 @@ export interface SupplierRequest {
     supplier?: Supplier;
     store?: Store;
     createdById?: string;
+    payload?: any;
 }
 
 export interface AdminStats {
