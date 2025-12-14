@@ -60,6 +60,11 @@ Storerouter.post(
         return sendError(res, "Store already exists", 409, { code: "store_exists" });
       }
 
+
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { globalRole: "STORE_OWNER" },
+      });
       // 1) Create store
       const store = await prisma.store.create({
         data: {

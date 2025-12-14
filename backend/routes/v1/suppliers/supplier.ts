@@ -472,7 +472,9 @@ router.get(
           payload: true,
           store: {
             select: {
-              name : true
+              id: true,
+              name: true,
+              slug: true
             }
           }
         }

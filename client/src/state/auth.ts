@@ -25,6 +25,7 @@ export type AuthState = {
   needsStoreSelection?: boolean;
   suppliers?: Array<{ id: string; storeId: string | null; name: string; isActive: boolean }>;
   supplierId?: { id: string } | null;
+  globalRole?: string | null;
 };
 
 const STORAGE_KEY = "synapstore:auth";
@@ -89,6 +90,7 @@ export const authState = atom<AuthState>({
     needsStoreSelection: false,
     suppliers: [],
     supplierId: null,
+    globalRole: null,
   },
   effects: [persistenceEffect(STORAGE_KEY)],
 });
@@ -118,6 +120,7 @@ export const clearAuthState = () =>
   needsStoreSelection: false,
   suppliers: [],
   supplierId: null,
+  globalRole: null,
 } satisfies AuthState);
 
 export const isTokenExpiredSafe = isTokenExpired;
