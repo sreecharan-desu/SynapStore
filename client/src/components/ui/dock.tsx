@@ -15,16 +15,14 @@ import {
     createContext,
     useContext,
     useEffect,
-    useMemo,
     useRef,
     useState,
 } from 'react';
 import { cn } from '../../lib/utils';
 
-const DOCK_HEIGHT = 128;
 const DEFAULT_MAGNIFICATION = 80;
 const DEFAULT_DISTANCE = 150;
-const DEFAULT_PANEL_HEIGHT = 64;
+const DEFAULT_PANEL_HEIGHT = 120;
 
 type DockProps = {
     children: React.ReactNode;
@@ -53,6 +51,7 @@ type DocContextType = {
     spring: SpringOptions;
     magnification: number;
     distance: number;
+    direction: 'horizontal' | 'vertical';
 };
 type DockProviderProps = {
     children: React.ReactNode;
@@ -76,54 +75,50 @@ function useDock() {
 function Dock({
     children,
     className,
+    direction = 'horizontal',
     spring = { mass: 0.1, stiffness: 150, damping: 12 },
     magnification = DEFAULT_MAGNIFICATION,
     distance = DEFAULT_DISTANCE,
     panelHeight = DEFAULT_PANEL_HEIGHT,
-}: DockProps) {
+}: DockProps & { direction?: 'horizontal' | 'vertical' }) {
     const mouseX = useMotionValue(Infinity);
     const isHovered = useMotionValue(0);
 
-    const maxHeight = useMemo(() => {
-        return Math.max(DOCK_HEIGHT, magnification + magnification / 2 + 4);
-    }, [magnification]);
-
-    const heightRow = useTransform(isHovered, [0, 1], [panelHeight, maxHeight]);
-    const height = useSpring(heightRow, spring);
+    const isVertical = direction === 'vertical';
 
     return (
         <motion.div
             style={{
-                height: height,
+                [isVertical ? 'width' : 'height']: panelHeight,
                 scrollbarWidth: 'none',
             }}
-            className='mx-2 flex max-w-full items-end overflow-x-auto'
+            className={cn(
+                'flex max-w-full overflow-visible p-2',
+                isVertical ? 'flex-col items-center justify-center' : 'items-end',
+                className
+            )}
         >
             <motion.div
-                onMouseMove={({ pageX }) => {
+                onMouseMove={({ pageX, pageY }) => {
                     isHovered.set(1);
-                    mouseX.set(pageX);
+                    mouseX.set(isVertical ? pageY : pageX);
                 }}
                 onMouseLeave={() => {
                     isHovered.set(0);
                     mouseX.set(Infinity);
                 }}
                 className={cn(
-                    'mx-auto flex w-fit gap-4 rounded-2xl px-4 relative group',
-                    className
+                    'flex rounded-2xl relative group',
+                    isVertical ? 'flex-col items-center w-full h-fit py-4 px-2 gap-6' : 'w-fit h-full items-end mx-auto px-4 gap-4',
                 )}
-                style={{ height: panelHeight }}
                 role='toolbar'
                 aria-label='Application dock'
             >
-                {/* Animated Border Layer */}
-                <div className="absolute inset-0 z-[-1] rounded-2xl overflow-hidden">
-                    <div className="absolute inset-[-50%] bg-[conic-gradient(from_0deg,#000,#402fb5_10%,#000_40%,#000_60%,#cf30aa_70%,#000_90%)] animate-[spin_4s_linear_infinite]" />
-                </div>
-                {/* Inner White Background */}
-                <div className="absolute inset-[1.5px] z-[-1] rounded-2xl bg-white" />
+                {/* Backgrounds - Simplified for vertical */}
+                <div className="absolute inset-0 z-[-1] rounded-2xl bg-white/40 border border-white/20" />
 
-                <DockProvider value={{ mouseX, spring, distance, magnification }}>
+
+                <DockProvider value={{ mouseX, spring, distance, magnification, direction }}>
                     {children}
                 </DockProvider>
             </motion.div>
@@ -134,27 +129,32 @@ function Dock({
 function DockItem({ children, className, onClick }: DockItemProps) {
     const ref = useRef<HTMLDivElement>(null);
 
-    const { distance, magnification, mouseX, spring } = useDock();
+    const { distance, magnification, mouseX, spring, direction } = useDock();
+    const isVertical = direction === 'vertical';
 
     const isHovered = useMotionValue(0);
-
     const mouseDistance = useTransform(mouseX, (val) => {
-        const domRect = ref.current?.getBoundingClientRect() ?? { x: 0, width: 0 };
-        return val - domRect.x - domRect.width / 2;
+        const domRect = ref.current?.getBoundingClientRect() ?? { x: 0, y: 0, width: 0, height: 0 };
+        return val - (isVertical ? domRect.y : domRect.x) - (isVertical ? domRect.height : domRect.width) / 2;
     });
 
-    const widthTransform = useTransform(
+    // Map distance to scale factor instead of pixel size
+    // Base size is 40. Target size is magnification.
+    // Scale = magnification / 40.
+    const targetScale = magnification / 40;
+
+    const scaleTransform = useTransform(
         mouseDistance,
         [-distance, 0, distance],
-        [40, magnification, 40]
+        [1, targetScale, 1]
     );
 
-    const width = useSpring(widthTransform, spring);
+    const scale = useSpring(scaleTransform, spring);
 
     return (
         <motion.div
             ref={ref}
-            style={{ width }}
+            style={{ width: 40, height: 40, scale }} // Fixed layout size, animate scale
             onClick={onClick}
             onHoverStart={() => isHovered.set(1)}
             onHoverEnd={() => isHovered.set(0)}
@@ -170,7 +170,7 @@ function DockItem({ children, className, onClick }: DockItemProps) {
         >
             {Children.map(children, (child) =>
                 // @ts-ignore
-                cloneElement(child as React.ReactElement, { width, isHovered })
+                cloneElement(child as React.ReactElement, { isHovered })
             )}
         </motion.div>
     );
@@ -180,6 +180,7 @@ function DockLabel({ children, className, ...rest }: DockLabelProps) {
     const restProps = rest as Record<string, unknown>;
     const isHovered = restProps['isHovered'] as MotionValue<number>;
     const [isVisible, setIsVisible] = useState(false);
+    const { direction } = useDock();
 
     useEffect(() => {
         const unsubscribe = isHovered.on('change', (latest) => {
@@ -202,7 +203,7 @@ function DockLabel({ children, className, ...rest }: DockLabelProps) {
                         className
                     )}
                     role='tooltip'
-                    style={{ x: '-50%' }}
+                    style={{ [direction === 'vertical' ? 'y' : 'x']: '-50%', [direction === 'vertical' ? 'left' : 'top']: direction === 'vertical' ? '120%' : '-1.5rem', [direction === 'vertical' ? 'top' : 'left']: direction === 'vertical' ? '50%' : '50%' }}
                 >
                     {children}
                 </motion.div>
@@ -211,19 +212,11 @@ function DockLabel({ children, className, ...rest }: DockLabelProps) {
     );
 }
 
-function DockIcon({ children, className, ...rest }: DockIconProps) {
-    const restProps = rest as Record<string, unknown>;
-    const width = restProps['width'] as MotionValue<number>;
-
-    const widthTransform = useTransform(width, (val) => val / 2);
-
+function DockIcon({ children, className }: DockIconProps) {
     return (
-        <motion.div
-            style={{ width: widthTransform }}
-            className={cn('flex items-center justify-center', className)}
-        >
+        <div className={cn('flex items-center justify-center w-full h-full', className)}>
             {children}
-        </motion.div>
+        </div>
     );
 }
 
