@@ -95,8 +95,6 @@ export const ChatbotWidget = () => {
         }
     }, [isWet]);
 
-    if (!isAuthenticated) return null;
-
     const handleSendMessage = async () => {
         if (!inputValue.trim()) return;
 
@@ -156,8 +154,29 @@ export const ChatbotWidget = () => {
         }
     };
 
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                isOpen &&
+                containerRef.current &&
+                !containerRef.current.contains(event.target as Node)
+            ) {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [isOpen]);
+
+    if (!isAuthenticated) return null;
+
     return (
-        <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-6 font-sans">
+        <div ref={containerRef} className="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-6 font-sans">
             <AnimatePresence>
                 {isOpen && (
                     <motion.div

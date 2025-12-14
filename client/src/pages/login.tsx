@@ -106,7 +106,7 @@ const GoogleSignInButton: React.FC<{
               type: "standard",
               shape: "pill",
               text: "continue_with",
-              width: "100%"
+              width: "400"
             });
             setRendered(true);
           }

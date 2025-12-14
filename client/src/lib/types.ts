@@ -120,3 +120,16 @@ export interface AdminStats {
     };
     recentActivity: any[];
 }
+
+export interface UploadSupplierParams {
+    storeSlug: string;
+    supplierId?: string;
+    file: File;
+}
+
+export interface SupplierUploadResponse {
+    upload_id: string;
+    status: string;
+    message: string;
+    details?: any;
+}
