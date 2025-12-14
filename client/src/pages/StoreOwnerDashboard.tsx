@@ -173,6 +173,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const [data, setData] = React.useState<DashboardData | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [supplierRequests, setSupplierRequests] = React.useState<SupplierRequest[]>([]);
+    const [myRequests, setMyRequests] = React.useState<SupplierRequest[]>([]);
     const [showNotifications, setShowNotifications] = React.useState(false);
     const [showFeedback, setShowFeedback] = React.useState(false);
     const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
@@ -334,8 +335,12 @@ const StoreOwnerDashboard: React.FC = () => {
                 // Let's stick to: If createdById != auth.user?.id, show notification.
                 // If I sent it, I don't need a notification.
                 const allRequests = requestsRes.data.data;
-                const inbound = allRequests.filter((r: SupplierRequest) => r.createdById !== auth.user?.id);
+                const inbound = allRequests.filter((r: SupplierRequest) => r.createdById !== auth.user?.id && r.status === 'PENDING');
                 setSupplierRequests(inbound);
+                
+                // Also track my sent requests/reorders
+                const outbound = allRequests.filter((r: SupplierRequest) => r.createdById === auth.user?.id);
+                setMyRequests(outbound);
             }
         } catch (err) {
             console.error("Failed to fetch dashboard data", err);
@@ -481,7 +486,7 @@ const StoreOwnerDashboard: React.FC = () => {
         {
             icon: FaRupeeSign,
             label: "Revenue (30d)",
-            value: `$${data?.overview.recentRevenue.toLocaleString() ?? "0"}`,
+            value: `₹${data?.overview.recentRevenue.toLocaleString() ?? "0"}`,
             color: theme.primary,
             bg: theme.light,
             text: theme.text,
@@ -766,7 +771,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                 <div className="flex items-center gap-4 mb-6">
                                     <div className="flex items-baseline gap-2">
                                         <span className="text-3xl font-bold text-slate-800">
-                                            ${data?.charts.salesByDay
+                                            ₹{data?.charts.salesByDay
                                                 .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0)
                                                 .reduce((acc, curr) => acc + curr.revenue, 0)
                                                 .toLocaleString()}
@@ -804,7 +809,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                             axisLine={false}
                                             tickMargin={12}
                                             tick={{ fill: '#94a3b8', fontSize: 12 }}
-                                            tickFormatter={(value) => `$${value}`}
+                                            tickFormatter={(value) => `₹${value}`}
                                         />
                                         <ChartTooltip
                                             cursor={{ stroke: '#e2e8f0' }}
@@ -959,6 +964,47 @@ const StoreOwnerDashboard: React.FC = () => {
                                 ))
                              ) : (
                                 <p className="text-sm text-slate-400 text-center py-8">No suppliers connected yet.</p>
+                             )}
+                        </div>
+                    </div>
+
+                    {/* Active Reorders */}
+                    <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm flex flex-col h-full mt-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <Package className={`w-5 h-5 ${theme.text}`} />
+                                Sent Reorders
+                            </h3>
+                        </div>
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                             {myRequests.length > 0 ? (
+                                myRequests
+                                .filter(r => r.payload?.type === 'REORDER')
+                                .map(req => (
+                                    <div key={req.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-bold text-slate-800">Order #{req.id.slice(0,6)}</p>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                    req.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700' :
+                                                    req.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
+                                                    'bg-amber-100 text-amber-700'
+                                                }`}>
+                                                    {req.status}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                {new Date(req.createdAt).toLocaleDateString()} • {req.payload?.items?.length || 0} Items
+                                            </p>
+                                        </div>
+                                        <div className="text-xs text-slate-400">
+                                            {/* Could add 'Cancel' button here if PENDING */}
+                                            To: {data?.lists?.suppliers?.find(s => s.id === req.supplierId)?.name || "Supplier"}
+                                        </div>
+                                    </div>
+                                ))
+                             ) : (
+                                <p className="text-sm text-slate-400 text-center py-8">No active reorders found.</p>
                              )}
                         </div>
                     </div>

@@ -65,7 +65,7 @@ const SupplierDashboard: React.FC = () => {
         return null; // Or a loading spinner
     }
 
-    const [activeTab, setActiveTab] = useState<"dashboard" | "marketplace" | "requests" | "profile" | "my-stores" | "upload">("dashboard");
+    const [activeTab, setActiveTab] = useState<"dashboard" | "marketplace" | "requests" | "orders" | "my-stores" | "profile" | "upload">("dashboard");
     const [loading, setLoading] = useState(false);
 
     // Data
@@ -336,18 +336,7 @@ const SupplierDashboard: React.FC = () => {
         </div>
     );
 
-    const filteredRequests = requests.filter(req => {
-        if (!searchQuery) return true;
-        const q = searchQuery.toLowerCase();
-        const storeName = req.store?.name || (stores.find(s => s.id === req.storeId)?.name) || "";
-        const id = req.storeId || "";
-        const msg = req.message || "";
-        const status = req.status || "";
-        return storeName.toLowerCase().includes(q) ||
-            id.toLowerCase().includes(q) ||
-            msg.toLowerCase().includes(q) ||
-            status.toLowerCase().includes(q);
-    });
+
 
     const pendingCount = requests.filter(r => r.status === "PENDING").length;
     const connectedCount = requests.filter(r => r.status === "ACCEPTED").length;
@@ -577,20 +566,36 @@ const SupplierDashboard: React.FC = () => {
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-slate-100">
-                                                            {filteredRequests.length === 0 ? (
-                                                                <tr>
-                                                                    <td colSpan={6} className="px-6 py-20 text-center">
-                                                                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                                            <Inbox className="w-8 h-8 text-slate-300" />
-                                                                        </div>
-                                                                        <h3 className="text-lg font-medium text-slate-900">No Requests Found</h3>
-                                                                        <p className="text-slate-500 mt-1 max-w-sm mx-auto">
-                                                                            {searchQuery ? "No requests match your search query." : "You haven't sent or received any connection requests yet. Check the Marketplace to connect with stores."}
-                                                                        </p>
-                                                                    </td>
-                                                                </tr>
-                                                            ) : (
-                                                                filteredRequests.map(req => {
+
+                                                            {(() => {
+                                                                const filteredRequests = requests.filter(req => {
+                                                                     // EXCLUDE reorders
+                                                                     if (req.payload?.type === 'REORDER') return false;
+
+                                                                     if (!searchQuery) return true;
+                                                                     const q = searchQuery.toLowerCase();
+                                                                     const storeName = req.store?.name || "";
+                                                                     const msg = req.message || "";
+                                                                     return storeName.toLowerCase().includes(q) || msg.toLowerCase().includes(q) || req.id.toLowerCase().includes(q);
+                                                                });
+
+                                                                if (filteredRequests.length === 0) {
+                                                                    return (
+                                                                        <tr>
+                                                                            <td colSpan={6} className="px-6 py-20 text-center">
+                                                                                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                                                    <Inbox className="w-8 h-8 text-slate-300" />
+                                                                                </div>
+                                                                                <h3 className="text-lg font-medium text-slate-900">No Requests Found</h3>
+                                                                                <p className="text-slate-500 mt-1 max-w-sm mx-auto">
+                                                                                    {searchQuery ? "No requests match your search query." : "You haven't sent or received any connection requests yet. Check the Marketplace to connect with stores."}
+                                                                                </p>
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                }
+
+                                                                return filteredRequests.map(req => {
                                                                     const isInbound = req.createdById !== auth.user?.id;
                                                                     const storeName = req.store?.name || (stores.find(s => s.id === req.storeId)?.name) || "Store (" + (req.storeId?.slice(0, 8) || "Unknown") + ")";
 
@@ -649,22 +654,14 @@ const SupplierDashboard: React.FC = () => {
                                                                                             Reject
                                                                                         </Button>
                                                                                     </div>
-                                                                                ) : isInbound && req.status === "ACCEPTED" && req.payload?.type === "REORDER" ? (
-                                                                                    <Button
-                                                                                        size="sm"
-                                                                                        className="h-8 shadow-sm bg-blue-600 hover:bg-blue-700 text-white border-0"
-                                                                                        onClick={() => openFulfillModal(req)}
-                                                                                    >
-                                                                                        Fulfill Order
-                                                                                    </Button>
                                                                                 ) : (
                                                                                     <span className="text-xs text-slate-400 font-medium">No actions</span>
                                                                                 )}
                                                                             </td>
                                                                         </tr>
-                                                                    )
-                                                                })
-                                                            )}
+                                                                    );
+                                                                });
+                                                            })()}
                                                         </tbody>
                                                     </table>
                                                 </div>
@@ -674,7 +671,192 @@ const SupplierDashboard: React.FC = () => {
                                 </motion.div>
                             )}
 
-                            {/* MY STORES TAB */}
+                            {/* ORDERS TAB */}
+                            {activeTab === "orders" && (
+                                <motion.div
+                                    key="orders"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="max-w-6xl mx-auto space-y-8"
+                                >
+                                    {/* Header */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-200">
+                                        <div>
+                                            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Orders Management</h2>
+                                            <p className="text-slate-500 mt-2 text-lg">Process and fulfill incoming stock requests.</p>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Search orders..." 
+                                                    value={searchQuery}
+                                                    onChange={e => setSearchQuery(e.target.value)}
+                                                    className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-64 shadow-sm"
+                                                />
+                                            </div>
+                                            <Button variant="outline" onClick={fetchData} className="border-slate-200 bg-white">
+                                                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* Orders List */}
+                                    <div className="space-y-6">
+                                        {(() => {
+                                            const filteredRequests = requests.filter(req => {
+                                                // Only show Reorders
+                                                if (req.payload?.type !== 'REORDER') return false;
+
+                                                if (!searchQuery) return true;
+                                                const q = searchQuery.toLowerCase();
+                                                return req.store?.name?.toLowerCase().includes(q) || req.id.toLowerCase().includes(q);
+                                            });
+                                            return filteredRequests.length === 0 ? (
+                                                <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center shadow-sm">
+                                                    <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                                                        <Package className="w-10 h-10 text-indigo-400" />
+                                                    </div>
+                                                    <h3 className="text-xl font-bold text-slate-900">No Orders Found</h3>
+                                                    <p className="text-slate-500 mt-2">You haven't received any reorder requests yet.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 gap-6">
+                                                    {requests.filter(req => req.payload?.type === 'REORDER').map(req => {
+                                                        const isPending = req.status === 'PENDING';
+                                                        const isAccepted = req.status === 'ACCEPTED';
+                                                        
+                                                        return (
+                                                            <div key={req.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 overflow-hidden group">
+                                                                {/* Order Header */}
+                                                                <div className="bg-white px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden">
+                                                                     <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500" />
+                                                                    
+                                                                    <div className="flex items-center gap-4 relative z-10">
+                                                                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold shadow-sm group-hover:scale-105 transition-transform">
+                                                                            {req.store?.name?.[0] || "S"}
+                                                                        </div>
+                                                                        <div>
+                                                                            <h3 className="font-bold text-slate-800 text-lg">{req.store?.name || "Unknown Store"}</h3>
+                                                                            <div className="flex items-center gap-3 text-xs text-slate-500 font-medium font-mono mt-1">
+                                                                                <span>Order #{req.id.slice(0, 8)}</span>
+                                                                                <span className="w-1 h-1 rounded-full bg-slate-300" />
+                                                                                <span>{new Date(req.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-3 relative z-10">
+                                                                         {/* Payment Badge */}
+                                                                         <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100 shadow-sm">
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                                            CASH
+                                                                        </div>
+
+                                                                        <div className={`px-4 py-1.5 rounded-full text-xs font-bold border flex items-center gap-2 shadow-sm ${
+                                                                            isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                            isAccepted ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                                            'bg-slate-100 text-slate-600 border-slate-200'
+                                                                        }`}>
+                                                                            {isPending && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}
+                                                                            {isAccepted && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+                                                                            {req.status}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Order Body */}
+                                                                <div className="p-6 bg-slate-50/30">
+                                                                    {/* Note if any */}
+                                                                    {req.payload?.note && (
+                                                                        <div className="bg-white/50 text-slate-600 text-sm p-4 rounded-xl mb-6 border border-indigo-100 relative pl-4 border-l-4 border-l-indigo-400 shadow-sm">
+                                                                            <span className="font-bold text-indigo-500 block text-xs mb-1 uppercase tracking-wider">Note from Store</span>
+                                                                            "{req.payload.note}"
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Items List */}
+                                                                    <div className="mb-6">
+                                                                        <div className="flex items-center justify-between mb-3">
+                                                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                                                                <Package className="w-4 h-4" /> Requested Items ({req.payload?.items?.length || 0})
+                                                                            </h4>
+                                                                             <div className="md:hidden flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">
+                                                                                CASH
+                                                                            </div>
+                                                                        </div>
+                                                                        
+                                                                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                                                                            <table className="w-full text-sm text-left">
+                                                                                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
+                                                                                    <tr>
+                                                                                        <th className="px-5 py-3 text-xs uppercase tracking-wider">Medicine</th>
+                                                                                        <th className="px-5 py-3 text-right text-xs uppercase tracking-wider">Qty</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-slate-100">
+                                                                                    {req.payload?.items?.map((item: any, idx: number) => (
+                                                                                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                                                                                            <td className="px-5 py-3 font-medium text-slate-700 flex items-center gap-3">
+                                                                                                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
+                                                                                                    <Package className="w-4 h-4" />
+                                                                                                </div>
+                                                                                                {item.medicineName || "Unknown Item"}
+                                                                                            </td>
+                                                                                            <td className="px-5 py-3 text-right text-slate-600 font-mono font-bold">
+                                                                                                {item.quantity}
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    ))}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Actions */}
+                                                                    <div className="flex justify-end pt-2 gap-3">
+                                                                        {isPending ? (
+                                                                            <>
+                                                                                <Button 
+                                                                                    variant="secondary" 
+                                                                                    onClick={() => handleRejectRequest(req.id)}
+                                                                                    className="bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-700 hover:border-red-200 shadow-sm transition-all"
+                                                                                >
+                                                                                    Reject
+                                                                                </Button>
+                                                                                <Button 
+                                                                                    onClick={() => handleAcceptRequest(req.id)}
+                                                                                    className="bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-lg shadow-emerald-500/20 border-none px-6 transition-all transform hover:scale-105"
+                                                                                >
+                                                                                    Accept Request
+                                                                                </Button>
+                                                                            </>
+                                                                        ) : isAccepted ? (
+                                                                            <Button 
+                                                                                onClick={() => openFulfillModal(req)}
+                                                                                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg shadow-blue-500/20 border-none px-6 gap-2 transition-all transform hover:scale-105"
+                                                                            >
+                                                                                <Package className="w-4 h-4" /> Fulfill Order
+                                                                            </Button>
+                                                                        ) : (
+                                                                            <div className="px-4 py-2 bg-slate-100 text-slate-400 rounded-lg text-sm font-medium italic">
+                                                                                {req.status === 'REJECTED' ? 'Rejected' : 'No actions available'}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                </motion.div>
+                            )}
                             {activeTab === "my-stores" && (
                                 <motion.div
                                     key="my-stores"
@@ -1289,6 +1471,13 @@ const SupplierDashboard: React.FC = () => {
                         <DockLabel>Requests</DockLabel>
                         <DockIcon>
                             <Inbox className={`w-8 h-8 transition-colors ${activeTab === 'requests' ? 'text-amber-500 fill-amber-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                        </DockIcon>
+                    </DockItem>
+
+                    <DockItem onClick={() => setActiveTab("orders")}>
+                        <DockLabel>Orders</DockLabel>
+                        <DockIcon>
+                            <Package className={`w-8 h-8 transition-colors ${activeTab === 'orders' ? 'text-indigo-500 fill-indigo-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
                         </DockIcon>
                     </DockItem>
 
