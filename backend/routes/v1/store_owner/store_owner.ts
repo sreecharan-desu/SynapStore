@@ -1583,7 +1583,10 @@ dashboardRouter.post(
         for (const item of items as any) {
           const medicine = await tx.medicine.findUnique({
             where: { id: item.medicineId },
-            include: { inventory: { orderBy: { expiryDate: 'asc' } } }
+            include: { inventory: { orderBy: { expiryDate: 'asc' } } },
+{
+  timeout: 20000,
+});
           });
 
           if (!medicine) throw new Error(`Medicine ${item.medicineId} not found`);
