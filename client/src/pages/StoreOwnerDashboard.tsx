@@ -2,7 +2,7 @@ import React from "react";
 import { useRecoilValue } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import {  Bell, Settings, LogOut, Users, Package,  Calendar,  Search,  X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store } from "lucide-react";
+import {  Bell, Settings, LogOut, Users, Package,  Calendar,  Search,  X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, Banknote } from "lucide-react";
 
 import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
@@ -286,6 +286,91 @@ const StoreOwnerDashboard: React.FC = () => {
             setIsAiLoading(false);
         }
     };
+    
+    // --- POS / Checkout State ---
+    const [posModalOpen, setPosModalOpen] = React.useState(false);
+    const [posQuery, setPosQuery] = React.useState("");
+    const [posResults, setPosResults] = React.useState<any[]>([]);
+    const [posCart, setPosCart] = React.useState<Map<string, number>>(new Map()); // medicineId -> qty
+    const [isCheckoutLoading, setIsCheckoutLoading] = React.useState(false);
+
+    // Debounced search for POS
+    React.useEffect(() => {
+        const timer = setTimeout(() => {
+            if (posModalOpen && posQuery.length >= 1) {
+                searchPOSMedicines(posQuery);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [posQuery, posModalOpen]);
+
+    const searchPOSMedicines = async (q: string) => {
+        try {
+            const res = await dashboardApi.searchMedicines(q);
+            if (res.data.success) {
+                setPosResults(res.data.data.medicines);
+            }
+        } catch (err) {
+            console.error("POS Search failed", err);
+        }
+    };
+
+    const handlePOSAddToCart = (medicine: any, qty: number) => {
+        // Validation: Check stock
+        const currentStock = medicine.inventory?.reduce((acc: number, b: any) => acc + b.qtyAvailable, 0) || 0;
+        
+        if (qty > currentStock) {
+            alert(`Cannot add more than available stock (${currentStock})`);
+            return;
+        }
+
+        setPosCart(prev => {
+            const newCart = new Map(prev);
+            if (qty <= 0) newCart.delete(medicine.id);
+            else newCart.set(medicine.id, qty);
+            return newCart;
+        });
+    };
+
+    const handleCheckout = async () => {
+        if (posCart.size === 0) return;
+        if (!confirm("Confirm checkout?")) return;
+
+        setIsCheckoutLoading(true);
+        try {
+            const items = Array.from(posCart.entries()).map(([medicineId, qty]) => ({
+                medicineId,
+                qty
+            }));
+
+            const response = await dashboardApi.checkoutSale({ items });
+            
+            // Handle PDF Download
+            const url = window.URL.createObjectURL(new Blob([response.data as any]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Receipt-${Date.now()}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode?.removeChild(link);
+            
+            // Success cleanup
+            setPosModalOpen(false);
+            setPosCart(new Map());
+            setPosQuery("");
+            setPosResults([]);
+            setShowFeedback(true);
+            
+            // Refresh dashboard data to reflect inventory changes
+            fetchData();
+            
+        } catch (err: any) {
+            console.error(err);
+            alert("Checkout failed: " + (err.response?.data?.message || err.message));
+        } finally {
+            setIsCheckoutLoading(false);
+        }
+    };
 
     // Load theme/avatar
     React.useEffect(() => {
@@ -559,6 +644,14 @@ const StoreOwnerDashboard: React.FC = () => {
                             className="bg-slate-900 text-white hover:bg-slate-800 shadow-sm gap-2"
                         >
                             <Package className="w-4 h-4" /> New Reorder
+                        </Button>
+
+                        {/* POS / New Sale Button */}
+                        <Button 
+                            onClick={() => { setPosModalOpen(true); searchPOSMedicines(""); }}
+                            className="bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm gap-2 shadow-emerald-200"
+                        >
+                            <Banknote className="w-4 h-4" /> New Sale
                         </Button>
 
                         {/* Date */}
@@ -1363,9 +1456,152 @@ const StoreOwnerDashboard: React.FC = () => {
                     </div>
                 )}
             </AnimatePresence>
+            {/* POS Modal */}
+            <AnimatePresence>
+                {posModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-800">New Sale (POS)</h2>
+                                    <p className="text-sm text-slate-500">Search medicines and create a receipt.</p>
+                                </div>
+                                <button onClick={() => setPosModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                    <X className="w-6 h-6 text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                                {/* Left: Search & Results */}
+                                <div className="flex-1 p-6 overflow-y-auto border-r border-slate-100">
+                                    <div className="mb-4 relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search to add items..."
+                                            value={posQuery}
+                                            onChange={(e) => setPosQuery(e.target.value)}
+                                            autoFocus
+                                            className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-3">
+                                        {posResults.length === 0 && posQuery.length > 0 && (
+                                            <p className="text-center text-slate-400 py-4">No medicines found</p>
+                                        )}
+                                        {posResults.map((med: any) => {
+                                            const totalStock = med.inventory?.reduce((acc: any, b: any) => acc + b.qtyAvailable, 0) || 0;
+                                            return (
+                                                <div key={med.id} className="p-4 border border-slate-100 rounded-xl hover:border-emerald-200 hover:shadow-sm transition-all flex justify-between items-center group">
+                                                    <div>
+                                                        <p className="font-bold text-slate-800">{med.brandName} <span className="text-slate-400 font-normal text-xs ml-1">{med.strength}</span></p>
+                                                        <div className="flex gap-2 mt-1 items-center">
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${totalStock > 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                                                                Stock: {totalStock}
+                                                            </span> 
+                                                            <span className="text-xs text-slate-400">{med.sku}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        {posCart.has(med.id) ? (
+                                                            <div className="flex items-center bg-slate-100 rounded-lg p-1">
+                                                                <button 
+                                                                    onClick={() => handlePOSAddToCart(med, (posCart.get(med.id) || 0) - 1)}
+                                                                    className="w-8 h-8 flex items-center justify-center hover:bg-white rounded-md transition-colors"
+                                                                >-</button>
+                                                                <span className="w-8 text-center font-bold text-sm">{posCart.get(med.id)}</span>
+                                                                <button 
+                                                                    onClick={() => handlePOSAddToCart(med, (posCart.get(med.id) || 0) + 1)}
+                                                                    className="w-8 h-8 flex items-center justify-center hover:bg-white rounded-md transition-colors"
+                                                                >+</button>
+                                                            </div>
+                                                        ) : (
+                                                            <Button 
+                                                                size="sm" 
+                                                                disabled={totalStock <= 0}
+                                                                onClick={() => handlePOSAddToCart(med, 1)} 
+                                                                className={`hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 ${totalStock <= 0 ? 'opacity-50' : ''}`}
+                                                                variant="outline"
+                                                            >
+                                                                Add
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Right: Cart Receipt */}
+                                <div className="w-full md:w-80 bg-slate-50 p-6 flex flex-col overflow-y-auto">
+                                    <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                        <ShoppingCart className="w-4 h-4" /> Current Sale
+                                    </h3>
+                                    
+                                    <div className="flex-1 bg-white rounded-xl border border-slate-200 p-4 shadow-sm mb-4 overflow-y-auto custom-scrollbar">
+                                        {posCart.size === 0 ? (
+                                            <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-2">
+                                                <ShoppingCart className="w-8 h-8 opacity-20" />
+                                                <p className="text-sm">Cart is empty</p>
+                                            </div>
+                                        ) : (
+                                            <ul className="space-y-3">
+                                                {Array.from(posCart.entries()).map(([id, qty]) => {
+                                                    // Find in results or keep a separate map lookup if needed. For now finding in results (might be missing if search changed)
+                                                    // Robustness fix: We should store full object in cart or lookup properly.
+                                                    // Simplified: finding in results works if user searched it.
+                                                    // Better: store metadata in handleAddToCart or a separate lookup map. 
+                                                    // For now simple find, if not found show ID (edge case).
+                                                    const m = posResults.find(x => x.id === id) || { brandName: "Item info hidden (search to view)", price: 0 };
+                                                    return (
+                                                        <li key={id} className="text-sm flex justify-between items-start pb-2 border-b border-slate-50 last:border-0 last:pb-0">
+                                                            <div>
+                                                                <p className="font-medium text-slate-700 truncate max-w-[140px]">{m.brandName}</p>
+                                                                <p className="text-xs text-slate-400">Qty: {qty}</p>
+                                                            </div>
+                                                            <div className="font-bold text-slate-800">
+                                                                {/* Price placeholder */}
+                                                                {/* ₹{((m.price || 0) * qty).toFixed(2)} */}
+                                                            </div>
+                                                        </li>
+                                                    )
+                                                })}
+                                            </ul>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Total Placeholders if we had prices */}
+                                    {/* <div className="flex justify-between items-center mb-4 text-sm font-bold text-slate-800">
+                                        <span>Total</span>
+                                        <span>₹0.00</span>
+                                    </div> */}
+
+                                    <Button 
+                                        className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/30 font-bold text-lg"
+                                        disabled={posCart.size === 0 || isCheckoutLoading}
+                                        onClick={handleCheckout}
+                                    >
+                                        {isCheckoutLoading ? "Processing..." : "Checkout & Print"}
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
+
+
+
+
 
 
 

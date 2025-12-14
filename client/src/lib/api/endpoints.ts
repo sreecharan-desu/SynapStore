@@ -38,6 +38,8 @@ export const dashboardApi = {
     getInventory: (q?: string) => client.get<{ success: boolean; data: { inventory: any[] } }>("api/v1/dashboard/inventory", { params: { q } }),
     getSuggestions: () => client.get<{ success: boolean; data: { suggestions: any[] } }>("api/v1/dashboard/suggestions"),
     reorder: (data: { supplierId: string; items: any[]; note?: string }) => client.post<{ success: boolean; data: { request: SupplierRequest } }>("api/v1/dashboard/reorder", data),
+    searchMedicines: (q: string) => client.get<{ success: boolean; data: { medicines: any[] } }>("api/v1/dashboard/medicines/search", { params: { q } }),
+    checkoutSale: (data: { items: { medicineId: string; qty: number }[] }) => client.post("api/v1/dashboard/sales/checkout", data, { responseType: 'blob' }),
 };
 
 // --- Suppliers ---
