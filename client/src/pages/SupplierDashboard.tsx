@@ -93,7 +93,10 @@ const SupplierDashboard: React.FC = () => {
         }
     }, [auth.suppliers]);
 
-    // Forms
+    // State to track if we've already done an initial load
+    const [dataLoaded, setDataLoaded] = useState(false);
+
+    // ... Forms ...
     const [requestMessage, setRequestMessage] = useState("");
     const [selectedStore, setSelectedStore] = useState<Store | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
@@ -143,7 +146,6 @@ const SupplierDashboard: React.FC = () => {
                 setFulfillModalOpen(false);
                 setRequestToFulfill(null);
                 setFulfillItems([]);
-                // Optionally update status logic if backend changed status (it doesn't change from ACCEPTED, but logs it)
             }
         } catch (err: any) {
             console.error(err);
@@ -151,60 +153,76 @@ const SupplierDashboard: React.FC = () => {
         }
     };
 
-    useEffect(() => {
-        fetchData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab]);
-
-    const fetchData = async () => {
+    // --- REFACTORED DATA FETCHING ---
+    // This replaces fetchData to center data handling and cache response
+    const refreshData = async () => {
         setLoading(true);
         try {
-            if (activeTab === "marketplace") {
-                const res = await suppliersApi.getDiscoveryStores();
-                if (res.data.success) setStores(res.data.data.stores);
-            } else if (activeTab === "requests" || activeTab === "orders" || activeTab === "history") {
-                const res = await suppliersApi.getDetails(currentSupplier?.id);
-                if (res.data.success) setRequests(res.data.data.requests);
-            } else if (activeTab === "my-stores" || activeTab === "upload") {
-                const res = await suppliersApi.getDetails(currentSupplier?.id);
+            // 1. Fetch Main Supplier Details (Requests, Orders, Connected Stores, Profile)
+            if (currentSupplier?.id) {
+                const res = await suppliersApi.getDetails(currentSupplier.id);
                 if (res.data.success) {
-                    setConnectedStores(res.data.data.supplier?.supplierStores?.map(s => s.store) || []);
-                }
-            } else if (activeTab === "profile") {
-                if (currentSupplier?.id) {
-                     const res = await suppliersApi.getDetails(currentSupplier.id);
-                     if (res.data.success) {
-                         const supData = res.data.data.supplier;
-                         const requestsData = res.data.data.requests;
+                    const supData = res.data.data.supplier;
+                    const requestsData = res.data.data.requests;
 
-                         // Always update requests if available
-                         if (requestsData) setRequests(requestsData);
+                    setRequests(requestsData || []);
 
-                         // Always update connected stores if available
-                         if (supData?.supplierStores) {
-                             setConnectedStores(supData.supplierStores.map((s: any) => s.store));
-                         }
+                    if (supData?.supplierStores) {
+                         setConnectedStores(supData.supplierStores.map((s: any) => s.store));
+                    }
 
-                         // Update profile form if on profile tab
-                         if (activeTab === "profile" && supData) {
-                             setProfileForm({
-                                 name: supData.name || "",
-                                 contactName: supData.contactName || "",
-                                 phone: supData.phone || "",
-                                 address: supData.address || "",
-                                 defaultLeadTime: supData.defaultLeadTime || 0,
-                                 defaultMOQ: supData.defaultMOQ || 0
-                             });
-                         }
-                     }
+                    // Populate profile form if needed (only if fields are empty to avoid overwriting user edits in progress?)
+                    // Actually, usually we overwrite on refresh.
+                    if (supData) {
+                         setProfileForm({
+                             name: supData.name || "",
+                             contactName: supData.contactName || "",
+                             phone: supData.phone || "",
+                             address: supData.address || "",
+                             defaultLeadTime: supData.defaultLeadTime || 0,
+                             defaultMOQ: supData.defaultMOQ || 0
+                         });
+                    }
                 }
             }
+
+            // 2. Fetch Marketplace (Stores) - Always fetch on refresh if we are on that tab OR if we want to cache everything
+            // Let's only fetch if on marketplace or if stores empty
+            if (activeTab === 'marketplace' || stores.length === 0) {
+                 const resStores = await suppliersApi.getDiscoveryStores();
+                 if (resStores.data.success) setStores(resStores.data.data.stores);
+            }
+
+            setDataLoaded(true);
+
         } catch (err) {
-            console.error("Fetch error", err);
+            console.error("Refresh error", err);
         } finally {
             setLoading(false);
         }
     };
+
+    // UseEffect: Initial Load + Refresh on Tab Change only if needed
+    useEffect(() => {
+        if (!currentSupplier) return;
+
+        // If data never loaded, load it.
+        if (!dataLoaded) {
+            refreshData();
+        } 
+        
+        // If switching to marketplace and we don't have stores, fetch them specifically?
+        // refreshData covers it.
+        
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentSupplier, dataLoaded]); // Remove activeTab dependency to prevent refetch on tab switch
+
+    // Special case: If user switches to Marketplace and stores are empty, we might want to trigger a fetch even if dataLoaded is true
+    useEffect(() => {
+        if (activeTab === 'marketplace' && stores.length === 0 && dataLoaded) {
+            refreshData();
+        }
+    }, [activeTab]);
 
     // ... (rest of code) ...
 
@@ -263,7 +281,7 @@ const SupplierDashboard: React.FC = () => {
                                                                                  alert(`Order Fulfilled & Accepted! Inventory Updated (ID: ${uploadId})`);
                                                                                  setPendingAcceptRequestId(null);
                                                                                  setActiveTab("orders"); 
-                                                                                 fetchData();
+                                                                                 refreshData();
                                                                              } else {
                                                                                  alert("Inventory Uploaded & Applied, but failed to update order status in local DB.");
                                                                              }
@@ -409,7 +427,7 @@ const SupplierDashboard: React.FC = () => {
                 alert("Request accepted!");
                 // Optimistic update
                 setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: "ACCEPTED" } : r));
-                fetchData(); // Refresh to get connection
+                refreshData(); // Refresh to get connection
             }
         } catch (err: any) {
             console.error(err);
@@ -454,6 +472,10 @@ const SupplierDashboard: React.FC = () => {
     const pendingCount = requests.filter(r => r.status === "PENDING").length;
     const connectedCount = requests.filter(r => r.status === "ACCEPTED").length;
 
+    const filteredMarketplaceStores = stores.filter(store => 
+        !requests.some(r => r.storeId === store.id && r.status === "PENDING")
+    );
+
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col relative">
 
@@ -477,13 +499,22 @@ const SupplierDashboard: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="relative z-50">
+                            <div className="flex items-center gap-3 relative z-50">
+                                <Button
+                                    onClick={() => refreshData()}
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-9 w-9 bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-emerald-600 transition-colors shadow-sm rounded-xl"
+                                    title="Refresh Data"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                                </Button>
                                 <Button
                                     onClick={handleLogout}
-                                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border-0 shadow-lg shadow-red-500/30 hover:shadow-red-500/50 rounded-xl px-5 py-2 h-auto text-sm font-semibold transition-all active:scale-95 flex items-center gap-2"
+                                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border-0 shadow-lg shadow-red-500/30 hover:shadow-red-500/50 rounded-xl px-4 py-2 h-auto text-sm font-semibold transition-all active:scale-95 flex items-center gap-2"
                                 >
                                     <LogOut className="w-4 h-4" />
-                                    <span>Logout</span>
+                                    <span className="hidden sm:inline">Logout</span>
                                 </Button>
                             </div>
                         </div>
@@ -579,7 +610,7 @@ const SupplierDashboard: React.FC = () => {
                                         <div className="text-center py-12 text-slate-400">Loading marketplace...</div>
                                     ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                            {stores.map(store => (
+                                            {filteredMarketplaceStores.map(store => (
                                                 <div key={store.id} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
                                                     <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:opacity-100 transition-opacity">
                                                         <StoreIcon className="w-12 h-12 text-slate-100 group-hover:text-emerald-50 group-hover:scale-110 transition-transform duration-500" />
@@ -603,7 +634,7 @@ const SupplierDashboard: React.FC = () => {
                                                     </div>
                                                 </div>
                                             ))}
-                                            {stores.length === 0 && (
+                                            {filteredMarketplaceStores.length === 0 && (
                                                 <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
                                                     No active stores found for discovery.
                                                 </div>
@@ -635,7 +666,7 @@ const SupplierDashboard: React.FC = () => {
                                                 <p
 
                                                     className="h-10 w-10 flex items-center justify-center bg-white hover:bg-slate-100 text-black rounded-full transition-colors"
-                                                    onClick={() => fetchData()}
+                                                    onClick={() => refreshData()}
                                                     title="Refresh requests"
                                                 >
                                                     <RefreshCw strokeWidth={2.5} className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
@@ -811,7 +842,7 @@ const SupplierDashboard: React.FC = () => {
                                                     className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-64 shadow-sm"
                                                 />
                                             </div>
-                                            <Button variant="outline" onClick={fetchData} className="border-slate-200 bg-white">
+                                            <Button variant="outline" onClick={refreshData} className="border-slate-200 bg-white">
                                                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                                             </Button>
                                         </div>
@@ -821,13 +852,30 @@ const SupplierDashboard: React.FC = () => {
                                     <div className="space-y-6">
                                         {(() => {
                                             const filteredRequests = requests.filter(req => {
+                                                // Robustly determine request type (using message if payload is missing)
+                                                let type = req.payload?.type;
+                                                
+                                                if (!type && req.message && typeof req.message === 'string' && req.message.trim().startsWith('{')) {
+                                                    try {
+                                                        // Try to parse message as JSON to recover payload
+                                                        const parsed = JSON.parse(req.message);
+                                                        if (parsed && parsed.type) {
+                                                            type = parsed.type;
+                                                            // Ensure payload is available for rendering
+                                                            if (!req.payload) req.payload = parsed; 
+                                                        }
+                                                    } catch (e) {
+                                                        // Not JSON, ignore
+                                                    }
+                                                }
+
                                                 // Only show Reorders AND Pending
-                                                if (req.payload?.type !== 'REORDER') return false;
+                                                if (type !== 'REORDER') return false;
                                                 if (req.status !== 'PENDING') return false;
 
                                                 if (!searchQuery) return true;
                                                 const q = searchQuery.toLowerCase();
-                                                return req.store?.name?.toLowerCase().includes(q) || req.id.toLowerCase().includes(q);
+                                                return (req.store?.name?.toLowerCase() || "").includes(q) || req.id.toLowerCase().includes(q);
                                             });
                                             return filteredRequests.length === 0 ? (
                                                 <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center shadow-sm">
@@ -998,7 +1046,7 @@ const SupplierDashboard: React.FC = () => {
                                                     className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none w-64 shadow-sm"
                                                 />
                                             </div>
-                                            <Button variant="outline" onClick={fetchData} className="border-slate-200 bg-white">
+                                            <Button variant="outline" onClick={refreshData} className="border-slate-200 bg-white">
                                                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                                             </Button>
                                         </div>
@@ -1008,11 +1056,24 @@ const SupplierDashboard: React.FC = () => {
                                     <div className="space-y-6">
                                         {(() => {
                                             const filteredRequests = requests.filter(req => {
-                                                if (req.payload?.type !== 'REORDER') return false;
+                                                // Robustly determine request type
+                                                let type = req.payload?.type;
+                                                
+                                                if (!type && req.message && typeof req.message === 'string' && req.message.trim().startsWith('{')) {
+                                                    try {
+                                                        const parsed = JSON.parse(req.message);
+                                                        if (parsed && parsed.type) {
+                                                            type = parsed.type;
+                                                            if (!req.payload) req.payload = parsed;
+                                                        }
+                                                    } catch (e) {}
+                                                }
+
+                                                if (type !== 'REORDER') return false;
 
                                                 if (!searchQuery) return true;
                                                 const q = searchQuery.toLowerCase();
-                                                return req.store?.name?.toLowerCase().includes(q) || req.id.toLowerCase().includes(q);
+                                                return (req.store?.name?.toLowerCase() || "").includes(q) || req.id.toLowerCase().includes(q);
                                             });
                                             return filteredRequests.length === 0 ? (
                                                 <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center shadow-sm">
@@ -1583,7 +1644,7 @@ const SupplierDashboard: React.FC = () => {
                                                                                  alert(`Order Fulfilled & Accepted! Inventory Updated (ID: ${uploadId})`);
                                                                                  setPendingAcceptRequestId(null);
                                                                                  setActiveTab("orders"); 
-                                                                                 fetchData();
+                                                                                 refreshData();
                                                                              } else {
                                                                                  alert("Inventory Uploaded & Applied, but failed to update order status in local DB.");
                                                                              }
@@ -1847,7 +1908,7 @@ const SupplierDashboard: React.FC = () => {
 
                 {/* Connection Request Modal */}
                 {/* Connection Request Modal - Only show if not in upload mode/tab */}
-                {selectedStore && activeTab !== 'upload' && (
+                {selectedStore && activeTab === 'marketplace' && !connectedStores.some(s => s.id === selectedStore.id) && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}

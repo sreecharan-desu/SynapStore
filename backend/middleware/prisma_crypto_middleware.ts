@@ -40,7 +40,12 @@ const ENCRYPT_FIELDS: Record<string, string[]> = {
   StockMovement: ["note"],
   
   // User model randomized fields
-  User: ["phone"]
+  User: ["phone"],
+
+  // Intermediate models (required for recursive decryption traversal)
+  SupplierStore: [],
+  SaleItem: [],
+  UserStoreRole: []
 };
 
 /**

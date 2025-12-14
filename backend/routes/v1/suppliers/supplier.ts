@@ -438,47 +438,49 @@ router.get(
           ? req.query.supplierId
           : undefined;
 
-      const supplier = await prisma.supplier.findUnique({
-        where: { id: supplierId },
-        include: {
-            supplierStores: {
-                include: {
-                    store: {
-                        select: {
-                            id: true,
-                            name: true,
-                            slug: true,
-                            currency: true,
-                            timezone: true,
-                            isActive: true
-                        }
-                    }
-                }
-            }
-        }
-      });
-
-      const requests = await prisma.supplierRequest.findMany({
-        where: { supplierId },
-        select: {
-          id: true,
-          createdAt: true,
-          createdById: true,
-          message: true,
-          status: true,
-          storeId: true,
-          supplierId: true,
-          updatedAt : true,
-          payload: true,
-          store: {
-            select: {
-              id: true,
-              name: true,
-              slug: true
+      const [supplier, requests] = await Promise.all([
+        prisma.supplier.findUnique({
+          where: { id: supplierId },
+          include: {
+              supplierStores: {
+                  include: {
+                      store: {
+                          select: {
+                              id: true,
+                              name: true,
+                              slug: true,
+                              currency: true,
+                              timezone: true,
+                              isActive: true
+                          }
+                      }
+                  }
+              }
+          }
+        }),
+        prisma.supplierRequest.findMany({
+          where: { supplierId },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            createdAt: true,
+            createdById: true,
+            message: true,
+            status: true,
+            storeId: true,
+            supplierId: true,
+            updatedAt : true,
+            payload: true,
+            store: {
+              select: {
+                id: true,
+                name: true,
+                slug: true
+              }
             }
           }
-        }
-      });
+        })
+      ]);
       return sendSuccess(res, "Supplier details retrieved", { supplier, requests });
     } catch (err) {
       next(err);

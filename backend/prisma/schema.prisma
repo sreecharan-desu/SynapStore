@@ -216,8 +216,18 @@ model Sale {
   createdBy     User?          @relation(fields: [createdById], references: [id])
   store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
   items         SaleItem[]
+  receipt       Receipt?
 
   @@index([storeId, paymentStatus])
+}
+
+model Receipt {
+  id        String   @id @default(uuid())
+  saleId    String   @unique
+  receiptNo String?
+  data      Json?
+  createdAt DateTime @default(now())
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
 }
 
 model SaleItem {

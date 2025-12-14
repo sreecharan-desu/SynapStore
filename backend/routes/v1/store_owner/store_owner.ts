@@ -1,3 +1,4 @@
+
 // src/routes/v1/dashboard.ts
 import { Router, Request, Response, NextFunction } from "express";
 import { storeContext, requireStore, RequestWithUser } from "../../../middleware/store";
@@ -12,6 +13,9 @@ import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getSt
 import { sendSuccess, sendError, handlePrismaError, sendInternalError, handleZodError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
 import { z } from "zod";
+import PDFDocument from "pdfkit";
+import { generateReceiptPDF } from "../../../utils/receipt_generator";
+import { decryptCell, dekFromEnv } from "../../../middleware/prisma_crypto_middleware";
 
 type RoleEnum = Role;
 
@@ -177,7 +181,7 @@ dashboardRouter.get(
       const [
         totalMedicines,
         totalBatches,
-        recentSalesCount, // We can get this from aggregate
+        // recentSalesCount removed (duplicate of salesStats._count)
         recentRevenueAgg,
         inventorySums,
         lowStockBatches,
@@ -198,9 +202,7 @@ dashboardRouter.get(
       ] = await Promise.all([
         prisma.medicine.count({ where: { storeId } }),
         prisma.inventoryBatch.count({ where: { storeId } }),
-        prisma.sale.count({
-          where: { storeId, createdAt: { gte: salesWindowStart } },
-        }),
+        // prisma.sale.count removed
         prisma.sale.aggregate({
           where: {
             storeId,
@@ -293,7 +295,7 @@ dashboardRouter.get(
         
         // --- NEW AGGREGATIONS ---
         
-        // AVG Order Value & Total Items (approx)
+        // AVG Order Value & Total Items (approx) & Count (replacing standalone count)
         prisma.sale.aggregate({
             where: { storeId, createdAt: { gte: salesWindowStart } },
             _avg: { totalValue: true },
@@ -371,7 +373,12 @@ dashboardRouter.get(
         `
       ]);
 
+      // Cache for 30s
+      res.setHeader('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
+
       // --- Processing ---
+      
+      const recentSalesCount = salesStats._count ?? 0;
 
       const recentRevenue = Number(recentRevenueAgg._sum?.totalValue ?? 0);
       const inventoryTotals = {
@@ -1204,18 +1211,11 @@ dashboardRouter.get(
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const store = req.store!;
-      const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+      const q = (req.query.q as string || "").toLowerCase();
       
-      const where: any = { storeId: store.id, isActive: true };
-      if (q) {
-          where.OR = [
-              { brandName: { contains: q, mode: 'insensitive' } },
-              { genericName: { contains: q, mode: 'insensitive' } }
-          ];
-      }
-
+      // Fetch all active medicines for store (filtering in memory after decryption)
       const medicines = await prisma.medicine.findMany({
-        where,
+        where: { storeId: store.id, isActive: true },
         include: {
           inventory: {
             where: { qtyAvailable: { gt: 0 } },
@@ -1225,18 +1225,44 @@ dashboardRouter.get(
               select: { id: true, name: true, contactName: true }
           }
         },
-        take: 100 // pagination
+        orderBy: { createdAt: 'desc' }
       });
 
+      const dek = dekFromEnv();
+
       const result = medicines.map(m => {
+          let brandName = m.brandName;
+          let genericName = m.genericName;
+          let strength = m.strength;
+
+          try {
+             // Decrypt fields
+             const db = decryptCell(m.brandName, dek); if(db) brandName = db;
+             const dg = decryptCell(m.genericName, dek); if(dg) genericName = dg;
+             const ds = decryptCell(m.strength, dek); if(ds) strength = ds;
+          } catch(e) {}
+
           const totalQty = m.inventory.reduce((sum, b) => sum + b.qtyAvailable, 0);
           const expiringSoon = m.inventory.some(b => b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 90*24*60*60*1000));
+          const isLowStock = totalQty < 20;
+
           return {
               ...m,
+              brandName, 
+              genericName,
+              strength, 
               totalQty,
               expiringSoon,
+              isLowStock,
               batches: m.inventory
           };
+      }).filter(m => {
+          if (!q) return true;
+          return (
+              (m.brandName && m.brandName.toLowerCase().includes(q)) || 
+              (m.genericName && m.genericName.toLowerCase().includes(q)) ||
+              (m.sku && m.sku.toLowerCase().includes(q))
+          );
       });
 
       return sendSuccess(res, "Inventory list for reorder", { inventory: result });
@@ -1300,16 +1326,22 @@ dashboardRouter.post(
                 medicineName: name
             };
         });
+      console.log(enhancedItems)
 
         if (note) details += `\nNote: ${note}`;
+
+        const payloadData = { 
+            items: enhancedItems, 
+            note: note || "", 
+            type: "REORDER" 
+        };
 
         const request = await prisma.supplierRequest.create({
             data: {
                 storeId: store.id,
                 supplierId,
-                message: JSON.stringify({ type: "REORDER", items: enhancedItems, note }), // Structured for system
-                // @ts-ignore
-                payload: { items: enhancedItems, note, type: "REORDER" }, // Clean structured data
+                message: JSON.stringify(payloadData), 
+                payload: payloadData, 
                 status: "PENDING",
                 createdById: user.id
             }
@@ -1402,5 +1434,339 @@ dashboardRouter.get(
         return sendSuccess(res, "Suggestions generated", { suggestions });
     }
 );
+
+
+
+
+
+/**
+ * GET /v1/dashboard/medicines/search
+ * Search medicines by brandName, genericName, or SKU.
+ */
+dashboardRouter.get(
+  "/medicines/search",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const q = (req.query.q as string || "").toLowerCase();
+      
+      // Fetch all active medicines for this store
+      // Note: For large inventories, this in-memory filtering is not scalable. 
+      // Ideally, use a search service or deterministic encryption for searchable fields.
+      const allMedicines = await prisma.medicine.findMany({
+        where: {
+          storeId: req.store.id,
+          isActive: true
+        },
+        include: {
+          inventory: {
+            where: { qtyAvailable: { gt: 0 } },
+            select: { id: true, qtyAvailable: true, batchNumber: true, expiryDate: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      
+      const dek = dekFromEnv();
+
+      // Decrypt and Filter in-memory
+      const matchedMedicines = allMedicines.map(med => {
+          let brandName = med.brandName;
+          let genericName = med.genericName;
+          let strength = med.strength;
+
+          try {
+             // Attempt decryption
+             const decryptedBrand = decryptCell(med.brandName, dek);
+             if (decryptedBrand) brandName = decryptedBrand;
+
+             const decryptedGeneric = decryptCell(med.genericName, dek);
+             if (decryptedGeneric) genericName = decryptedGeneric;
+             
+             const decryptedStrength = decryptCell(med.strength, dek);
+             if (decryptedStrength) strength = decryptedStrength;
+             
+          } catch(e) {}
+
+          return { ...med, brandName, genericName, strength };
+      }).filter(med => {
+          if (!q) return true; 
+          return (
+              (med.brandName && med.brandName.toLowerCase().includes(q)) ||
+              (med.genericName && med.genericName.toLowerCase().includes(q)) ||
+              (med.sku && med.sku.toLowerCase().includes(q))
+          );
+      });
+
+      return sendSuccess(res, "Medicines found", { medicines: matchedMedicines.slice(0, 5) });
+    } catch (error) {
+       handlePrismaError(res, error);
+    }
+  }
+);
+
+/**
+ * POST /v1/dashboard/sales/checkout
+ * Create a new sale, deduct inventory, generate receipt, and return PDF.
+ */
+dashboardRouter.post(
+  "/sales/checkout",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { items, paymentMethod } = req.body; // Expect items: { medicineId, qty }[], paymentMethod?
+      
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return sendError(res, "Invalid items", 400);
+      }
+
+      await prisma.$transaction(async (tx) => {
+        let totalValue = 0;
+        let subtotal = 0;
+        const saleItemsCreate = [];
+
+        // 1. Process Items & Inventory
+        for (const item of items as any) {
+          const medicine = await tx.medicine.findUnique({
+            where: { id: item.medicineId },
+            include: { inventory: { orderBy: { expiryDate: 'asc' } } }
+          });
+
+          if (!medicine) throw new Error(`Medicine ${item.medicineId} not found`);
+
+          // Calculate Price (Assuming price is on Medicine or latest batch? Schema has price on backend/types but lets check schema)
+          // Schema: InventoryBatch has purchasePrice, mrp. Medicine has no price field in schema! 
+          // Wait, types.ts had price? type Medicine has price?: number in frontend types.
+          // Schema verification: Medicine model has NO price. InventoryBatch has mrp.
+          // We should use MRP from batch or a default.
+          // Let's grab the MRP from the first available batch or default to 0.
+          
+          let qtyToDeduct = item.qty;
+          let itemTotal = 0;
+          let currentUnitPrice = 0;
+
+          // FIFO Deduction
+          // We need to track which batches we took from to calculate exact cost/price if needed, 
+          // but for SaleItem usually we pick one unit price (e.g. MRP).
+          // Simplification: Use MRP of the first batch found, or 0.
+          
+          const availableBatches = medicine.inventory.filter(b => b.qtyAvailable > 0);
+          const totalStock = availableBatches.reduce((acc, b) => acc + b.qtyAvailable, 0);
+          
+          if (totalStock < item.qty) {
+             throw new Error(`Insufficient stock for ${medicine.brandName}. Requested: ${item.qty}, Available: ${totalStock}`);
+          }
+
+          // Use MRP of the first batch as the selling price for this line item (approximated)
+          // Ideally we might split lines if prices differ, but let's prevent complexity.
+          const sellingPrice = Number(availableBatches[0]?.mrp) || 0; 
+          currentUnitPrice = sellingPrice;
+
+          for (const batch of availableBatches) {
+            if (qtyToDeduct <= 0) break;
+            
+            const deduct = Math.min(batch.qtyAvailable, qtyToDeduct);
+            
+            // Deduct
+            await tx.inventoryBatch.update({
+              where: { id: batch.id },
+              data: { qtyAvailable: { decrement: deduct } }
+            });
+            
+            // Log Movement (Optional but good)
+            await tx.stockMovement.create({
+              data: {
+                storeId: req.store.id,
+                inventoryId: batch.id,
+                medicineId: medicine.id,
+                delta: -deduct,
+                reason: "SALE",
+                performedById: req.user?.id
+              }
+            });
+
+            qtyToDeduct -= deduct;
+          }
+          
+          itemTotal = sellingPrice * item.qty;
+          subtotal += itemTotal;
+          
+          saleItemsCreate.push({
+            medicineId: medicine.id,
+            qty: item.qty,
+            unitPrice: sellingPrice,
+            lineTotal: itemTotal
+          });
+        }
+
+        totalValue = subtotal; // Apply tax/discount logic if needed later
+
+        // 2. Create Sale
+        const sale = await tx.sale.create({
+          data: {
+            storeId: req.store.id,
+            createdById: req.user?.id,
+            paymentMethod: (paymentMethod || "CASH") as any,
+            paymentStatus: "PAID",
+            subtotal,
+            totalValue,
+            items: {
+              create: saleItemsCreate
+            }
+          },
+          include: {
+            items: { include: { medicine: true } },
+            createdBy: true,
+            store: true
+          }
+        });
+
+        // 3. Create Receipt Record via Transaction
+        const receiptData = {
+          storeName: req.store.name,
+          date: sale.createdAt,
+          saleId: sale.id,
+          total: sale.totalValue,
+          // @ts-ignore
+          items: sale.items.map((i:any) => ({ name: i.medicine.brandName, qty: i.qty, price: i.unitPrice, total: i.lineTotal }))
+        };
+        // @ts-ignore
+        await tx.receipt.create({
+          data: {
+            saleId: sale.id,
+            data: receiptData as any,
+             // Generate a simple receipt number if needed, e.g., using timestamp
+            receiptNo: `REC-${Date.now()}`
+          }
+        });
+
+        return { sale, receiptNo: `REC-${Date.now()}` };
+      }).then(async ({ sale, receiptNo }) => {
+          // 4. Generate & Stream PDF (Outside transaction to keep it fast)
+          // We use the shared helper for consistent "Clean & Neat" design + Decryption
+          
+          const doc = new PDFDocument({ margin: 50 });
+          
+          res.setHeader('x-sale-id', sale.id);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename=receipt-${sale.id}.pdf`);
+          
+          doc.pipe(res);
+          
+          await generateReceiptPDF(doc, sale, receiptNo, req.store, res);
+          
+      }).catch(err => {
+         // If transaction fails
+         console.error("Checkout validation failed:", err);
+         if (!res.headersSent) {
+            return sendError(res, err.message || "Checkout failed", 400);
+         }
+      });
+
+    } catch (error) {
+       if (!res.headersSent) handlePrismaError(res, error);
+    }
+  }
+);
+
+/* -----------------------
+   Dashboard - POST /v1/dashboard/receipts
+*/
+/*
+ * GET /v1/dashboard/receipts
+ * Description: Retrieves all receipts for the store.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: STORE_OWNER, Store Context)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { receipts: [...] } }
+ *  - 500: Internal server error
+*/
+dashboardRouter.get("/receipts", requireRole("STORE_OWNER"), async (req: any, res) => {
+    try {
+        const receipts = await prisma.receipt.findMany({
+            where: {
+                sale: {
+                    storeId: req.store.id
+                }
+            },
+            orderBy: {
+                createdAt: "desc"
+            },
+            include: {
+                sale: {
+                    select: {
+                        totalValue: true,
+                        createdAt: true,
+                        items: {
+                          include: {
+                             medicine: true
+                          }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Map data if necessary to match frontend expectations, or send raw
+        return sendSuccess(res, "Receipts retrieved", { receipts });
+    } catch (err) {
+        return sendInternalError(res, err, "Failed to retrieve receipts");
+    }
+});
+
+/* -----------------------
+   Dashboard - GET /v1/dashboard/receipts/:id/pdf
+*/
+dashboardRouter.get("/receipts/:id/pdf", requireRole("STORE_OWNER"), async (req: any, res) => {
+    try {
+        const { id } = req.params;
+
+        const receipt = await prisma.receipt.findFirst({
+            where: {
+                id,
+                sale: {
+                    storeId: req.store.id
+                }
+            },
+            include: {
+                sale: {
+                    include: {
+                        items: {
+                            include: {
+                                medicine: true
+                            }
+                        },
+                        createdBy: true,
+                        store: true
+                    }
+                }
+            }
+        });
+
+        if (!receipt) {
+            return sendError(res, "Receipt not found", 404);
+        }
+
+        const sale = receipt.sale;
+        if (!sale) {
+             return sendError(res, "Associated sale data missing", 404);
+        }
+
+        const doc = new PDFDocument({ margin: 50 });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename=receipt-${receipt.receiptNo || id}.pdf`);
+
+        doc.pipe(res);
+
+
+        await generateReceiptPDF(doc, sale, receipt.receiptNo || sale.id.slice(0, 8), sale.store, res);
+
+    } catch (err) {
+        return sendInternalError(res, err, "Failed to generate receipt PDF");
+    }
+});
+
+
+
 
 export default dashboardRouter;

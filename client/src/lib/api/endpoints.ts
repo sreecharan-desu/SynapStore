@@ -38,6 +38,11 @@ export const dashboardApi = {
     getInventory: (q?: string) => client.get<{ success: boolean; data: { inventory: any[] } }>("api/v1/dashboard/inventory", { params: { q } }),
     getSuggestions: () => client.get<{ success: boolean; data: { suggestions: any[] } }>("api/v1/dashboard/suggestions"),
     reorder: (data: { supplierId: string; items: any[]; note?: string }) => client.post<{ success: boolean; data: { request: SupplierRequest } }>("api/v1/dashboard/reorder", data),
+    searchMedicines: (q: string) => client.get<{ success: boolean; data: { medicines: any[] } }>("api/v1/dashboard/medicines/search", { params: { q } }),
+    checkoutSale: (items: { medicineId: string; qty: number }[], paymentMethod?: string) => client.post("api/v1/dashboard/sales/checkout", { items, paymentMethod }, { responseType: 'blob' }),
+    getReceipts: () => client.get<{ success: boolean; data: { receipts: any[] } }>("api/v1/dashboard/receipts"),
+    getReceiptPDF: (id: string) => client.get(`api/v1/dashboard/receipts/${id}/pdf`, { responseType: 'blob' }),
+    sendReceiptEmail: (id: string, email: string) => client.post(`api/v1/dashboard/receipts/${id}/email`, { email }),
 };
 
 // --- Suppliers ---

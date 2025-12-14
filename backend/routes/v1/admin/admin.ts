@@ -115,72 +115,72 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
    Admin - POST /v1/admin/users/:userId/impersonate
 */
 
-/**
- * POST /v1/admin/users/:userId/impersonate
- * Description: Generates a JWT token to impersonate a specific user.
- * Headers: 
- *  - Authorization: Bearer <token> (Role: SUPERADMIN)
- * Body: None
- * Responses:
- *  - 200: { success: true, data: { token, user: { ... } } }
- *  - 403: User disabled or other permission error
- *  - 404: User not found
- *  - 500: Internal server error
- */
-router.post(
-  "/users/:userId/impersonate",
-  requireRole("SUPERADMIN"),
-  async (req: any, res) => {
-    try {
-      const targetUserId = String(req.params.userId);
+// /**
+//  * POST /v1/admin/users/:userId/impersonate
+//  * Description: Generates a JWT token to impersonate a specific user.
+//  * Headers: 
+//  *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+//  * Body: None
+//  * Responses:
+//  *  - 200: { success: true, data: { token, user: { ... } } }
+//  *  - 403: User disabled or other permission error
+//  *  - 404: User not found
+//  *  - 500: Internal server error
+//  */
+// router.post(
+//   "/users/:userId/impersonate",
+//   requireRole("SUPERADMIN"),
+//   async (req: any, res) => {
+//     try {
+//       const targetUserId = String(req.params.userId);
 
-      const user = await prisma.user.findUnique({
-        where: { id: targetUserId },
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          globalRole: true,
-          isActive: true,
-        },
-      });
+//       const user = await prisma.user.findUnique({
+//         where: { id: targetUserId },
+//         select: {
+//           id: true,
+//           username: true,
+//           email: true,
+//           globalRole: true,
+//           isActive: true,
+//         },
+//       });
 
-      if (!user) return sendError(res, "User not found", 404);
-      if (!user.isActive) return sendError(res, "User is disabled or suspended", 403, { code: "user_disabled" });
+//       if (!user) return sendError(res, "User not found", 404);
+//       if (!user.isActive) return sendError(res, "User is disabled or suspended", 403, { code: "user_disabled" });
 
-      // sign a token for the user - include an "impersonator" claim for audit
-      const token = signJwt({
-        sub: user.id,
-        email: user.email,
-        impersonatedBy: req.user?.id ?? null,
-      });
+//       // sign a token for the user - include an "impersonator" claim for audit
+//       const token = signJwt({
+//         sub: user.id,
+//         email: user.email,
+//         impersonatedBy: req.user?.id ?? null,
+//       });
 
-      // write audit log
-      await prisma.auditLog.create({
-        data: {
-          actorId: req.user?.id ?? null,
-          actorType: "SUPERADMIN",
-          action: "IMPERSONATE_USER",
-          resource: "User",
-          resourceId: user.id,
-          payload: { impersonatedBy: req.user?.id ?? null },
-        },
-      });
+//       // write audit log
+//       await prisma.auditLog.create({
+//         data: {
+//           actorId: req.user?.id ?? null,
+//           actorType: "SUPERADMIN",
+//           action: "IMPERSONATE_USER",
+//           resource: "User",
+//           resourceId: user.id,
+//           payload: { impersonatedBy: req.user?.id ?? null },
+//         },
+//       });
 
-      return sendSuccess(res, "Impersonation successful", {
-        token,
-        user: decryptUser({
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          globalRole: user.globalRole,
-        }),
-      });
-    } catch (err) {
-      return sendInternalError(res, err, "Failed to impersonate user");
-    }
-  }
-);
+//       return sendSuccess(res, "Impersonation successful", {
+//         token,
+//         user: decryptUser({
+//           id: user.id,
+//           username: user.username,
+//           email: user.email,
+//           globalRole: user.globalRole,
+//         }),
+//       });
+//     } catch (err) {
+//       return sendInternalError(res, err, "Failed to impersonate user");
+//     }
+//   }
+// );
 
 /* -----------------------
    Admin - GET /v1/admin/stores
@@ -597,8 +597,134 @@ router.post(
 );
 
 /* -----------------------
-   Admin - DELETE /v1/admin/users/:id
+   Admin - GET /v1/admin/graph
 */
+
+/**
+ * GET /v1/admin/graph
+ * Description: Returns a graph representation of the system (Users, Stores, Suppliers and their relations).
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { nodes: [...], edges: [...] } }
+ *  - 500: Internal server error
+ */
+router.get("/graph", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+    // Fetch all entities in parallel
+    const [
+      users,
+      stores,
+      suppliers,
+      userStoreRoles,
+      supplierStores,
+      supplierRequests
+    ] = await Promise.all([
+      prisma.user.findMany({
+        select: { id: true, username: true, email: true, globalRole: true }
+      }),
+      prisma.store.findMany({
+        select: { id: true, name: true, isActive: true }
+      }),
+      prisma.supplier.findMany({
+        select: { id: true, name: true, userId: true }
+      }),
+      prisma.userStoreRole.findMany({
+        select: { userId: true, storeId: true, role: true }
+      }),
+      prisma.supplierStore.findMany({
+        select: { supplierId: true, storeId: true }
+      }),
+      prisma.supplierRequest.findMany({
+          where: { status: "PENDING" },
+          select: { supplierId: true, storeId: true, createdById: true }
+      })
+    ]);
+
+    const nodes: any[] = [];
+    const edges: any[] = [];
+
+    // 1. User Nodes
+    users.forEach(u => {
+      const decrypted = decryptUser(u);
+      nodes.push({
+        id: `u_${u.id}`,
+        type: "USER",
+        label: decrypted?.username || "Unknown",
+        subLabel: decrypted?.email || "",
+        data: { role: u.globalRole }
+      });
+    });
+
+    // 2. Store Nodes
+    stores.forEach(s => {
+      nodes.push({
+        id: `s_${s.id}`,
+        type: "STORE",
+        label: s.name,
+        data: { isActive: s.isActive }
+      });
+    });
+
+    // 3. Supplier Nodes
+    suppliers.forEach(sup => {
+      nodes.push({
+        id: `sup_${sup.id}`,
+        type: "SUPPLIER",
+        label: sup.name,
+      });
+
+      // Edge: User -> Supplier (Management)
+      if (sup.userId) {
+        edges.push({
+          source: `u_${sup.userId}`,
+          target: `sup_${sup.id}`,
+          type: "MANAGES",
+          label: "Admin"
+        });
+      }
+    });
+
+    // 4. Edges: User -> Store
+    userStoreRoles.forEach(role => {
+      edges.push({
+        source: `u_${role.userId}`,
+        target: `s_${role.storeId}`,
+        type: "WORKS_AT",
+        label: role.role
+      });
+    });
+
+    // 5. Edges: Supplier <-> Store (Active Connection)
+    supplierStores.forEach(rel => {
+      edges.push({
+        source: `sup_${rel.supplierId}`,
+        target: `s_${rel.storeId}`,
+        type: "CONNECTED",
+        label: "Active"
+      });
+    });
+
+    // 6. Edges: SupplierRequest (Pending)
+    supplierRequests.forEach(req => {
+        // Need to be careful not to duplicate if multiple requests exist (though pending should be uniqueish)
+       if (req.supplierId && req.storeId) {
+            edges.push({
+                source: `sup_${req.supplierId}`,
+                target: `s_${req.storeId}`,
+                type: "REQUEST",
+                label: "Pending"
+            });
+       }
+    });
+
+    return sendSuccess(res, "Graph data retrieved", { nodes, edges });
+  } catch (err) {
+    return sendInternalError(res, err, "Failed to retrieve graph data");
+  }
+});
+
 router.delete("/users/:id", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const { id } = req.params;
