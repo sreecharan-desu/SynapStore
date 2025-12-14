@@ -852,13 +852,30 @@ const SupplierDashboard: React.FC = () => {
                                     <div className="space-y-6">
                                         {(() => {
                                             const filteredRequests = requests.filter(req => {
+                                                // Robustly determine request type (using message if payload is missing)
+                                                let type = req.payload?.type;
+                                                
+                                                if (!type && req.message && typeof req.message === 'string' && req.message.trim().startsWith('{')) {
+                                                    try {
+                                                        // Try to parse message as JSON to recover payload
+                                                        const parsed = JSON.parse(req.message);
+                                                        if (parsed && parsed.type) {
+                                                            type = parsed.type;
+                                                            // Ensure payload is available for rendering
+                                                            if (!req.payload) req.payload = parsed; 
+                                                        }
+                                                    } catch (e) {
+                                                        // Not JSON, ignore
+                                                    }
+                                                }
+
                                                 // Only show Reorders AND Pending
-                                                if (req.payload?.type !== 'REORDER') return false;
+                                                if (type !== 'REORDER') return false;
                                                 if (req.status !== 'PENDING') return false;
 
                                                 if (!searchQuery) return true;
                                                 const q = searchQuery.toLowerCase();
-                                                return req.store?.name?.toLowerCase().includes(q) || req.id.toLowerCase().includes(q);
+                                                return (req.store?.name?.toLowerCase() || "").includes(q) || req.id.toLowerCase().includes(q);
                                             });
                                             return filteredRequests.length === 0 ? (
                                                 <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center shadow-sm">
@@ -1039,11 +1056,24 @@ const SupplierDashboard: React.FC = () => {
                                     <div className="space-y-6">
                                         {(() => {
                                             const filteredRequests = requests.filter(req => {
-                                                if (req.payload?.type !== 'REORDER') return false;
+                                                // Robustly determine request type
+                                                let type = req.payload?.type;
+                                                
+                                                if (!type && req.message && typeof req.message === 'string' && req.message.trim().startsWith('{')) {
+                                                    try {
+                                                        const parsed = JSON.parse(req.message);
+                                                        if (parsed && parsed.type) {
+                                                            type = parsed.type;
+                                                            if (!req.payload) req.payload = parsed;
+                                                        }
+                                                    } catch (e) {}
+                                                }
+
+                                                if (type !== 'REORDER') return false;
 
                                                 if (!searchQuery) return true;
                                                 const q = searchQuery.toLowerCase();
-                                                return req.store?.name?.toLowerCase().includes(q) || req.id.toLowerCase().includes(q);
+                                                return (req.store?.name?.toLowerCase() || "").includes(q) || req.id.toLowerCase().includes(q);
                                             });
                                             return filteredRequests.length === 0 ? (
                                                 <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center shadow-sm">

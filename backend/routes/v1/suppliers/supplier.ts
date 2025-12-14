@@ -460,6 +460,7 @@ router.get(
         }),
         prisma.supplierRequest.findMany({
           where: { supplierId },
+          orderBy: { createdAt: 'desc' },
           select: {
             id: true,
             createdAt: true,

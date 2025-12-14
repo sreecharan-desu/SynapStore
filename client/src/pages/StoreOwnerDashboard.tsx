@@ -306,11 +306,13 @@ const StoreOwnerDashboard: React.FC = () => {
     const [isCheckoutLoading, setIsCheckoutLoading] = React.useState(false);
 
     // Debounced search for POS
+    // Debounced search for POS
     React.useEffect(() => {
+        if (!posModalOpen) return;
+
         const timer = setTimeout(() => {
-            if (posModalOpen && posQuery.length >= 1) {
-                searchPOSMedicines(posQuery);
-            }
+             // Fetch even if query is empty (to show recent items)
+             searchPOSMedicines(posQuery);
         }, 300);
         return () => clearTimeout(timer);
     }, [posQuery, posModalOpen]);
@@ -1564,7 +1566,10 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </div>
                                     <div className="space-y-3">
                                         {posResults.length === 0 && posQuery.length > 0 && (
-                                            <p className="text-center text-slate-400 py-4">No medicines found</p>
+                                            <p className="text-center text-slate-400 py-4">No medicines found matching "{posQuery}"</p>
+                                        )}
+                                        {posResults.length === 0 && posQuery.length === 0 && (
+                                            <p className="text-center text-slate-400 py-4">No medicines available in inventory.</p>
                                         )}
                                         {posResults.map((med: any) => {
                                             const totalStock = med.inventory?.reduce((acc: any, b: any) => acc + b.qtyAvailable, 0) || 0;

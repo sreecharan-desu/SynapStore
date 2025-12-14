@@ -15,6 +15,7 @@ import { notificationQueue } from "../../../lib/queue";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
 import { generateReceiptPDF } from "../../../utils/receipt_generator";
+import { decryptCell, dekFromEnv } from "../../../middleware/prisma_crypto_middleware";
 
 type RoleEnum = Role;
 
@@ -1210,18 +1211,11 @@ dashboardRouter.get(
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const store = req.store!;
-      const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+      const q = (req.query.q as string || "").toLowerCase();
       
-      const where: any = { storeId: store.id, isActive: true };
-      if (q) {
-          where.OR = [
-              { brandName: { contains: q, mode: 'insensitive' } },
-              { genericName: { contains: q, mode: 'insensitive' } }
-          ];
-      }
-
+      // Fetch all active medicines for store (filtering in memory after decryption)
       const medicines = await prisma.medicine.findMany({
-        where,
+        where: { storeId: store.id, isActive: true },
         include: {
           inventory: {
             where: { qtyAvailable: { gt: 0 } },
@@ -1231,18 +1225,44 @@ dashboardRouter.get(
               select: { id: true, name: true, contactName: true }
           }
         },
-        take: 100 // pagination
+        orderBy: { createdAt: 'desc' }
       });
 
+      const dek = dekFromEnv();
+
       const result = medicines.map(m => {
+          let brandName = m.brandName;
+          let genericName = m.genericName;
+          let strength = m.strength;
+
+          try {
+             // Decrypt fields
+             const db = decryptCell(m.brandName, dek); if(db) brandName = db;
+             const dg = decryptCell(m.genericName, dek); if(dg) genericName = dg;
+             const ds = decryptCell(m.strength, dek); if(ds) strength = ds;
+          } catch(e) {}
+
           const totalQty = m.inventory.reduce((sum, b) => sum + b.qtyAvailable, 0);
           const expiringSoon = m.inventory.some(b => b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 90*24*60*60*1000));
+          const isLowStock = totalQty < 20;
+
           return {
               ...m,
+              brandName, 
+              genericName,
+              strength, 
               totalQty,
               expiringSoon,
+              isLowStock,
               batches: m.inventory
           };
+      }).filter(m => {
+          if (!q) return true;
+          return (
+              (m.brandName && m.brandName.toLowerCase().includes(q)) || 
+              (m.genericName && m.genericName.toLowerCase().includes(q)) ||
+              (m.sku && m.sku.toLowerCase().includes(q))
+          );
       });
 
       return sendSuccess(res, "Inventory list for reorder", { inventory: result });
@@ -1306,16 +1326,22 @@ dashboardRouter.post(
                 medicineName: name
             };
         });
+      console.log(enhancedItems)
 
         if (note) details += `\nNote: ${note}`;
+
+        const payloadData = { 
+            items: enhancedItems, 
+            note: note || "", 
+            type: "REORDER" 
+        };
 
         const request = await prisma.supplierRequest.create({
             data: {
                 storeId: store.id,
                 supplierId,
-                message: JSON.stringify({ type: "REORDER", items: enhancedItems, note }), // Structured for system
-                // @ts-ignore
-                payload: { items: enhancedItems, note, type: "REORDER" }, // Clean structured data
+                message: JSON.stringify(payloadData), 
+                payload: payloadData, 
                 status: "PENDING",
                 createdById: user.id
             }
@@ -1421,20 +1447,15 @@ dashboardRouter.get(
   "/medicines/search",
   async (req: AuthRequest, res: Response) => {
     try {
-      const q = req.query.q as string;
-      if (!q || q.length < 1) {
-         return sendSuccess(res, "Search query empty", { medicines: [] });
-      }
+      const q = (req.query.q as string || "").toLowerCase();
       
-      const medicines = await prisma.medicine.findMany({
+      // Fetch all active medicines for this store
+      // Note: For large inventories, this in-memory filtering is not scalable. 
+      // Ideally, use a search service or deterministic encryption for searchable fields.
+      const allMedicines = await prisma.medicine.findMany({
         where: {
           storeId: req.store.id,
-          isActive: true,
-          OR: [
-            { brandName: { contains: q, mode: 'insensitive' } },
-            { genericName: { contains: q, mode: 'insensitive' } },
-            { sku: { contains: q, mode: 'insensitive' } },
-          ]
+          isActive: true
         },
         include: {
           inventory: {
@@ -1442,10 +1463,41 @@ dashboardRouter.get(
             select: { id: true, qtyAvailable: true, batchNumber: true, expiryDate: true }
           }
         },
-        take: 50
+        orderBy: { createdAt: 'desc' }
       });
       
-      return sendSuccess(res, "Medicines found", { medicines });
+      const dek = dekFromEnv();
+
+      // Decrypt and Filter in-memory
+      const matchedMedicines = allMedicines.map(med => {
+          let brandName = med.brandName;
+          let genericName = med.genericName;
+          let strength = med.strength;
+
+          try {
+             // Attempt decryption
+             const decryptedBrand = decryptCell(med.brandName, dek);
+             if (decryptedBrand) brandName = decryptedBrand;
+
+             const decryptedGeneric = decryptCell(med.genericName, dek);
+             if (decryptedGeneric) genericName = decryptedGeneric;
+             
+             const decryptedStrength = decryptCell(med.strength, dek);
+             if (decryptedStrength) strength = decryptedStrength;
+             
+          } catch(e) {}
+
+          return { ...med, brandName, genericName, strength };
+      }).filter(med => {
+          if (!q) return true; 
+          return (
+              (med.brandName && med.brandName.toLowerCase().includes(q)) ||
+              (med.genericName && med.genericName.toLowerCase().includes(q)) ||
+              (med.sku && med.sku.toLowerCase().includes(q))
+          );
+      });
+
+      return sendSuccess(res, "Medicines found", { medicines: matchedMedicines.slice(0, 5) });
     } catch (error) {
        handlePrismaError(res, error);
     }
