@@ -6,7 +6,7 @@ import {
     Package, TruckIcon, FileText, DollarSign,
     Search, Send, Clock, CheckCircle, XCircle,
     LogOut, AlertCircle, LayoutGrid, User, ShoppingBag, Inbox, Upload,
-    Store as StoreIcon, Phone, MapPin, Building, Download, FileSpreadsheet, RefreshCw, X
+    Store as StoreIcon, Phone, MapPin, Building, Download, FileSpreadsheet, RefreshCw, X, History
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -65,7 +65,7 @@ const SupplierDashboard: React.FC = () => {
         return null; // Or a loading spinner
     }
 
-    const [activeTab, setActiveTab] = useState<"dashboard" | "marketplace" | "requests" | "orders" | "my-stores" | "profile" | "upload">("dashboard");
+    const [activeTab, setActiveTab] = useState<"dashboard" | "marketplace" | "requests" | "orders" | "history" | "my-stores" | "profile" | "upload">("dashboard");
     const [loading, setLoading] = useState(false);
     const [uploadStatusMessage, setUploadStatusMessage] = useState<string>("");
 
@@ -104,49 +104,51 @@ const SupplierDashboard: React.FC = () => {
     const [fulfillModalOpen, setFulfillModalOpen] = useState(false);
     const [requestToFulfill, setRequestToFulfill] = useState<SupplierRequest | null>(null);
     const [fulfillItems, setFulfillItems] = useState<any[]>([]);
-    
+
     // Helper to open fulfill modal
     const openFulfillModal = (req: SupplierRequest) => {
         if (req.payload?.type === 'REORDER' && req.payload.items) {
-             setRequestToFulfill(req);
-             // Pre-fill items from request, defaulting quantity to requested
-             // We need to allow user to add batch numbers/expiry
-             setFulfillItems(req.payload.items.map((i: any) => ({
-                 medicineId: i.medicineId,
-                 medicineName: i.medicineName || "Unknown Item",
-                 quantity: i.quantity,
-                 batchNumber: "", // Supplier must input
-                 expiryDate: "", 
-                 purchasePrice: 0,
-                 mrp: 0
-             })));
-             setFulfillModalOpen(true);
+            setRequestToFulfill(req);
+            // Pre-fill items from request, defaulting quantity to requested
+            // We need to allow user to add batch numbers/expiry
+            setFulfillItems(req.payload.items.map((i: any) => ({
+                medicineId: i.medicineId,
+                medicineName: i.medicineName || "Unknown Item",
+                quantity: i.quantity,
+                batchNumber: "", // Supplier must input
+                expiryDate: "",
+                purchasePrice: 0,
+                mrp: 0
+            })));
+            setFulfillModalOpen(true);
         } else {
             alert("This request does not contain reorder items or is malformed.");
         }
     };
 
-    const handleSubmitFulfillment = async () => {
-         if (!requestToFulfill) return;
-         try {
-             // Validate
-             if (fulfillItems.some(i => !i.batchNumber || !i.expiryDate)) {
-                 alert("Please provide Batch Number and Expiry Date for all items.");
-                 return;
-             }
+    const [historyDetailRequest, setHistoryDetailRequest] = useState<SupplierRequest | null>(null);
 
-             const res = await suppliersApi.fulfillRequest(requestToFulfill.id, { items: fulfillItems });
-             if (res.data.success) {
-                 alert("Reorder fulfilled successfully!");
-                 setFulfillModalOpen(false);
-                 setRequestToFulfill(null);
-                 setFulfillItems([]);
-                 // Optionally update status logic if backend changed status (it doesn't change from ACCEPTED, but logs it)
-             }
-         } catch (err: any) {
-             console.error(err);
-             alert("Failed to fulfill: " + err.message);
-         }
+    const handleSubmitFulfillment = async () => {
+        if (!requestToFulfill) return;
+        try {
+            // Validate
+            if (fulfillItems.some(i => !i.batchNumber || !i.expiryDate)) {
+                alert("Please provide Batch Number and Expiry Date for all items.");
+                return;
+            }
+
+            const res = await suppliersApi.fulfillRequest(requestToFulfill.id, { items: fulfillItems });
+            if (res.data.success) {
+                alert("Reorder fulfilled successfully!");
+                setFulfillModalOpen(false);
+                setRequestToFulfill(null);
+                setFulfillItems([]);
+                // Optionally update status logic if backend changed status (it doesn't change from ACCEPTED, but logs it)
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to fulfill: " + err.message);
+        }
     };
 
     useEffect(() => {
@@ -160,9 +162,15 @@ const SupplierDashboard: React.FC = () => {
             if (activeTab === "marketplace") {
                 const res = await suppliersApi.getDiscoveryStores();
                 if (res.data.success) setStores(res.data.data.stores);
-            } else {
-                // For requests, orders, my-stores, upload, profile - we need supplier details
-                // We should always fetch full details to keep state consistent
+            } else if (activeTab === "requests" || activeTab === "orders" || activeTab === "history") {
+                const res = await suppliersApi.getDetails(currentSupplier?.id);
+                if (res.data.success) setRequests(res.data.data.requests);
+            } else if (activeTab === "my-stores" || activeTab === "upload") {
+                const res = await suppliersApi.getDetails(currentSupplier?.id);
+                if (res.data.success) {
+                    setConnectedStores(res.data.data.supplier?.supplierStores?.map(s => s.store) || []);
+                }
+            } else if (activeTab === "profile") {
                 if (currentSupplier?.id) {
                      const res = await suppliersApi.getDetails(currentSupplier.id);
                      if (res.data.success) {
@@ -380,7 +388,7 @@ const SupplierDashboard: React.FC = () => {
 
     const handleAcceptRequest = async (requestId: string) => {
         const req = requests.find(r => r.id === requestId);
-        
+
         // If it's a REORDER request, redirect to upload page first
         if (req?.payload?.type === 'REORDER') {
             if (confirm("To accept this order, you must upload the fulfillment data (CSV). Proceed to Upload?")) {
@@ -408,9 +416,6 @@ const SupplierDashboard: React.FC = () => {
             alert("Failed to accept request: " + err.message);
         }
     };
-
-    // ... (rest of code) ...
-
 
     const handleRejectRequest = async (requestId: string) => {
         if (!confirm("Are you sure you want to reject this request?")) return;
@@ -677,14 +682,14 @@ const SupplierDashboard: React.FC = () => {
 
                                                             {(() => {
                                                                 const filteredRequests = requests.filter(req => {
-                                                                     // EXCLUDE reorders
-                                                                     if (req.payload?.type === 'REORDER') return false;
+                                                                    // EXCLUDE reorders
+                                                                    if (req.payload?.type === 'REORDER') return false;
 
-                                                                     if (!searchQuery) return true;
-                                                                     const q = searchQuery.toLowerCase();
-                                                                     const storeName = req.store?.name || "";
-                                                                     const msg = req.message || "";
-                                                                     return storeName.toLowerCase().includes(q) || msg.toLowerCase().includes(q) || req.id.toLowerCase().includes(q);
+                                                                    if (!searchQuery) return true;
+                                                                    const q = searchQuery.toLowerCase();
+                                                                    const storeName = req.store?.name || "";
+                                                                    const msg = req.message || "";
+                                                                    return storeName.toLowerCase().includes(q) || msg.toLowerCase().includes(q) || req.id.toLowerCase().includes(q);
                                                                 });
 
                                                                 if (filteredRequests.length === 0) {
@@ -798,9 +803,9 @@ const SupplierDashboard: React.FC = () => {
                                         <div className="flex gap-3">
                                             <div className="relative">
                                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="Search orders..." 
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search orders..."
                                                     value={searchQuery}
                                                     onChange={e => setSearchQuery(e.target.value)}
                                                     className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-64 shadow-sm"
@@ -816,8 +821,9 @@ const SupplierDashboard: React.FC = () => {
                                     <div className="space-y-6">
                                         {(() => {
                                             const filteredRequests = requests.filter(req => {
-                                                // Only show Reorders
+                                                // Only show Reorders AND Pending
                                                 if (req.payload?.type !== 'REORDER') return false;
+                                                if (req.status !== 'PENDING') return false;
 
                                                 if (!searchQuery) return true;
                                                 const q = searchQuery.toLowerCase();
@@ -828,21 +834,21 @@ const SupplierDashboard: React.FC = () => {
                                                     <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
                                                         <Package className="w-10 h-10 text-indigo-400" />
                                                     </div>
-                                                    <h3 className="text-xl font-bold text-slate-900">No Orders Found</h3>
-                                                    <p className="text-slate-500 mt-2">You haven't received any reorder requests yet.</p>
+                                                    <h3 className="text-xl font-bold text-slate-900">No Pending Orders</h3>
+                                                    <p className="text-slate-500 mt-2">You have no pending reorder requests.</p>
                                                 </div>
                                             ) : (
                                                 <div className="grid grid-cols-1 gap-6">
-                                                    {requests.filter(req => req.payload?.type === 'REORDER').map(req => {
+                                                    {filteredRequests.map(req => {
                                                         const isPending = req.status === 'PENDING';
                                                         const isAccepted = req.status === 'ACCEPTED';
-                                                        
+
                                                         return (
                                                             <div key={req.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 overflow-hidden group">
                                                                 {/* Order Header */}
                                                                 <div className="bg-white px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden">
-                                                                     <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500" />
-                                                                    
+                                                                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500" />
+
                                                                     <div className="flex items-center gap-4 relative z-10">
                                                                         <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold shadow-sm group-hover:scale-105 transition-transform">
                                                                             {req.store?.name?.[0] || "S"}
@@ -858,17 +864,16 @@ const SupplierDashboard: React.FC = () => {
                                                                     </div>
 
                                                                     <div className="flex items-center gap-3 relative z-10">
-                                                                         {/* Payment Badge */}
-                                                                         <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100 shadow-sm">
+                                                                        {/* Payment Badge */}
+                                                                        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100 shadow-sm">
                                                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                                                             CASH
                                                                         </div>
 
-                                                                        <div className={`px-4 py-1.5 rounded-full text-xs font-bold border flex items-center gap-2 shadow-sm ${
-                                                                            isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                        <div className={`px-4 py-1.5 rounded-full text-xs font-bold border flex items-center gap-2 shadow-sm ${isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                                             isAccepted ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                                            'bg-slate-100 text-slate-600 border-slate-200'
-                                                                        }`}>
+                                                                                'bg-slate-100 text-slate-600 border-slate-200'
+                                                                            }`}>
                                                                             {isPending && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}
                                                                             {isAccepted && <span className="w-2 h-2 rounded-full bg-blue-500" />}
                                                                             {req.status}
@@ -892,11 +897,11 @@ const SupplierDashboard: React.FC = () => {
                                                                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                                                                                 <Package className="w-4 h-4" /> Requested Items ({req.payload?.items?.length || 0})
                                                                             </h4>
-                                                                             <div className="md:hidden flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">
+                                                                            <div className="md:hidden flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">
                                                                                 CASH
                                                                             </div>
                                                                         </div>
-                                                                        
+
                                                                         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                                                                             <table className="w-full text-sm text-left">
                                                                                 <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
@@ -928,14 +933,14 @@ const SupplierDashboard: React.FC = () => {
                                                                     <div className="flex justify-end pt-2 gap-3">
                                                                         {isPending ? (
                                                                             <>
-                                                                                <Button 
-                                                                                    variant="secondary" 
+                                                                                <Button
+                                                                                    variant="secondary"
                                                                                     onClick={() => handleRejectRequest(req.id)}
                                                                                     className="bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-700 hover:border-red-200 shadow-sm transition-all"
                                                                                 >
                                                                                     Reject
                                                                                 </Button>
-                                                                                <Button 
+                                                                                <Button
                                                                                     onClick={() => handleAcceptRequest(req.id)}
                                                                                     className="bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-lg shadow-emerald-500/20 border-none px-6 transition-all transform hover:scale-105"
                                                                                 >
@@ -943,7 +948,7 @@ const SupplierDashboard: React.FC = () => {
                                                                                 </Button>
                                                                             </>
                                                                         ) : isAccepted ? (
-                                                                            <Button 
+                                                                            <Button
                                                                                 onClick={() => openFulfillModal(req)}
                                                                                 className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg shadow-blue-500/20 border-none px-6 gap-2 transition-all transform hover:scale-105"
                                                                             >
@@ -954,6 +959,125 @@ const SupplierDashboard: React.FC = () => {
                                                                                 {req.status === 'REJECTED' ? 'Rejected' : 'No actions available'}
                                                                             </div>
                                                                         )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {/* HISTORY TAB - All Order History */}
+                            {activeTab === "history" && (
+                                <motion.div
+                                    key="history"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="max-w-6xl mx-auto space-y-8"
+                                >
+                                    {/* Header */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-200">
+                                        <div>
+                                            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Order History</h2>
+                                            <p className="text-slate-500 mt-2 text-lg">View all past and current order requests.</p>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search history..."
+                                                    value={searchQuery}
+                                                    onChange={e => setSearchQuery(e.target.value)}
+                                                    className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none w-64 shadow-sm"
+                                                />
+                                            </div>
+                                            <Button variant="outline" onClick={fetchData} className="border-slate-200 bg-white">
+                                                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* History List */}
+                                    <div className="space-y-6">
+                                        {(() => {
+                                            const filteredRequests = requests.filter(req => {
+                                                if (req.payload?.type !== 'REORDER') return false;
+
+                                                if (!searchQuery) return true;
+                                                const q = searchQuery.toLowerCase();
+                                                return req.store?.name?.toLowerCase().includes(q) || req.id.toLowerCase().includes(q);
+                                            });
+                                            return filteredRequests.length === 0 ? (
+                                                <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center shadow-sm">
+                                                    <div className="w-20 h-20 bg-cyan-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                                                        <History className="w-10 h-10 text-cyan-400" />
+                                                    </div>
+                                                    <h3 className="text-xl font-bold text-slate-900">No Order History</h3>
+                                                    <p className="text-slate-500 mt-2">You have no order history yet.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 gap-6">
+                                                    {filteredRequests.map(req => {
+                                                        const isPending = req.status === 'PENDING';
+                                                        const isAccepted = req.status === 'ACCEPTED';
+
+                                                        return (
+                                                            <div key={req.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-cyan-500/10 transition-all duration-300 overflow-hidden group">
+                                                                {/* Order Header */}
+                                                                <div className="bg-white px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden">
+
+                                                                    <div className="flex items-center gap-4 relative z-10">
+                                                                        <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600 font-bold shadow-sm group-hover:scale-105 transition-transform">
+                                                                            {req.store?.name?.[0] || "S"}
+                                                                        </div>
+                                                                        <div>
+                                                                            <h3 className="font-bold text-slate-800 text-lg">{req.store?.name || "Unknown Store"}</h3>
+                                                                            <div className="flex items-center gap-3 text-xs text-slate-500 font-medium font-mono mt-1">
+                                                                                <span>Order #{req.id.slice(0, 8)}</span>
+                                                                                <span className="w-1 h-1 rounded-full bg-slate-300" />
+                                                                                <span>{new Date(req.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-3 relative z-10">
+                                                                        <div className={`px-4 py-1.5 rounded-full text-xs font-bold border flex items-center gap-2 shadow-sm ${isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                            isAccepted ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                                                'bg-slate-100 text-slate-600 border-slate-200'
+                                                                            }`}>
+                                                                            {isPending && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}
+                                                                            {isAccepted && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+                                                                            {req.status}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Order Body - Simplified for History */}
+                                                                <div className="p-6 bg-slate-50/30">
+                                                                    {req.payload?.items?.length} items requested.
+                                                                    {isAccepted ? (
+                                                                        <span className="text-emerald-600 font-medium ml-2 flex items-center gap-1 inline-flex"><CheckCircle className="w-3 h-3" /> Fulfilled/Accepted</span>
+                                                                    ) : isPending ? (
+                                                                        <span className="text-amber-600 font-medium ml-2">Pending Action</span>
+                                                                    ) : (
+                                                                        <span className="text-red-500 font-medium ml-2">Rejected</span>
+                                                                    )}
+
+                                                                    <div className="mt-4">
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            className="w-full sm:w-auto text-xs border-cyan-200 text-cyan-700 hover:bg-cyan-50"
+                                                                            onClick={() => setHistoryDetailRequest(req)}
+                                                                        >
+                                                                            View Details
+                                                                        </Button>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -1581,30 +1705,30 @@ const SupplierDashboard: React.FC = () => {
                                                 />
                                             </div>
                                             <div>
-                                                 <label className="block text-xs font-medium text-slate-500 mb-1">Cost Price (Optional)</label>
-                                                 <input
-                                                     type="number"
-                                                     value={item.purchasePrice}
-                                                     onChange={e => {
-                                                         const newItems = [...fulfillItems];
-                                                         newItems[idx].purchasePrice = parseFloat(e.target.value);
-                                                         setFulfillItems(newItems);
-                                                     }}
-                                                     className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
-                                                 />
+                                                <label className="block text-xs font-medium text-slate-500 mb-1">Cost Price (Optional)</label>
+                                                <input
+                                                    type="number"
+                                                    value={item.purchasePrice}
+                                                    onChange={e => {
+                                                        const newItems = [...fulfillItems];
+                                                        newItems[idx].purchasePrice = parseFloat(e.target.value);
+                                                        setFulfillItems(newItems);
+                                                    }}
+                                                    className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                                                />
                                             </div>
                                             <div>
-                                                 <label className="block text-xs font-medium text-slate-500 mb-1">MRP (Optional)</label>
-                                                 <input
-                                                     type="number"
-                                                     value={item.mrp}
-                                                     onChange={e => {
-                                                         const newItems = [...fulfillItems];
-                                                         newItems[idx].mrp = parseFloat(e.target.value);
-                                                         setFulfillItems(newItems);
-                                                     }}
-                                                     className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
-                                                 />
+                                                <label className="block text-xs font-medium text-slate-500 mb-1">MRP (Optional)</label>
+                                                <input
+                                                    type="number"
+                                                    value={item.mrp}
+                                                    onChange={e => {
+                                                        const newItems = [...fulfillItems];
+                                                        newItems[idx].mrp = parseFloat(e.target.value);
+                                                        setFulfillItems(newItems);
+                                                    }}
+                                                    className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -1615,6 +1739,106 @@ const SupplierDashboard: React.FC = () => {
                                 <Button variant="secondary" onClick={() => setFulfillModalOpen(false)}>Cancel</Button>
                                 <Button onClick={handleSubmitFulfillment} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
                                     <CheckCircle className="w-4 h-4" /> Confirm & Send
+                                </Button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Order History Details Modal */}
+                {historyDetailRequest && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 overflow-hidden max-h-[90vh] flex flex-col"
+                        >
+                            <div className="flex justify-between items-start mb-4 border-b border-slate-100 pb-4">
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Order Details</h3>
+                                    <p className="text-sm text-slate-500 font-mono">#{historyDetailRequest.id}</p>
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={() => setHistoryDetailRequest(null)}>
+                                    <XCircle className="w-6 h-6 text-slate-400 hover:text-slate-600" />
+                                </Button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+                                {/* Order Metadata Grid */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Store / Entity</p>
+                                        <p className="font-semibold text-slate-800">{historyDetailRequest.store?.name || "Unknown Store"}</p>
+                                    </div>
+                                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Date</p>
+                                        <p className="font-semibold text-slate-800">
+                                            {historyDetailRequest.createdAt
+                                                ? new Date(historyDetailRequest.createdAt).toLocaleString(undefined, {
+                                                    dateStyle: 'medium',
+                                                    timeStyle: 'short'
+                                                })
+                                                : "-"}
+                                        </p>
+                                    </div>
+                                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Status</p>
+                                        <div className="flex items-center gap-2">
+                                            <RequestBadge status={historyDetailRequest.status} />
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Total Items</p>
+                                        <p className="font-semibold text-slate-800">{historyDetailRequest.payload?.items?.length || 0}</p>
+                                    </div>
+                                </div>
+
+                                {/* Note */}
+                                {historyDetailRequest.payload?.note && (
+                                    <div className="bg-indigo-50 border border-indigo-100 text-indigo-800 p-4 rounded-xl text-sm italic">
+                                        <span className="font-bold not-italic block mb-1 text-xs uppercase">Note:</span>
+                                        "{historyDetailRequest.payload.note}"
+                                    </div>
+                                )}
+
+                                {/* Items Table */}
+                                <div>
+                                    <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                                        <Package className="w-4 h-4 text-slate-400" /> Requested Items
+                                    </h4>
+                                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-xs uppercase tracking-wider">Medicine Name</th>
+                                                    <th className="px-4 py-3 text-xs uppercase tracking-wider">Medicine ID</th>
+                                                    <th className="px-4 py-3 text-right text-xs uppercase tracking-wider">Quantity</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {historyDetailRequest.payload?.items?.map((item: any, idx: number) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/50">
+                                                        <td className="px-4 py-3 font-medium text-slate-800">
+                                                            {item.medicineName || "Unknown Item"}
+                                                        </td>
+                                                        <td className="px-4 py-3 font-mono text-slate-500 text-xs">
+                                                            {item.medicineId?.slice(0, 8)}...
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right font-bold text-slate-700">
+                                                            {item.quantity}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
+                                <Button onClick={() => setHistoryDetailRequest(null)} className="bg-slate-900 text-white">
+                                    Close Details
                                 </Button>
                             </div>
                         </motion.div>
@@ -1696,7 +1920,20 @@ const SupplierDashboard: React.FC = () => {
                     <DockItem onClick={() => setActiveTab("orders")}>
                         <DockLabel>Orders</DockLabel>
                         <DockIcon>
-                            <Package className={`w-8 h-8 transition-colors ${activeTab === 'orders' ? 'text-indigo-500 fill-indigo-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                            {/* Show dot if there are pending orders */}
+                            <div className="relative">
+                                <Package className={`w-8 h-8 transition-colors ${activeTab === 'orders' ? 'text-indigo-500 fill-indigo-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                                {requests.some(r => r.payload?.type === 'REORDER' && r.status === 'PENDING') && (
+                                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white" />
+                                )}
+                            </div>
+                        </DockIcon>
+                    </DockItem>
+
+                    <DockItem onClick={() => setActiveTab("history")}>
+                        <DockLabel>History</DockLabel>
+                        <DockIcon>
+                            <History className={`w-8 h-8 transition-colors ${activeTab === 'history' ? 'text-cyan-500 fill-cyan-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
                         </DockIcon>
                     </DockItem>
 
