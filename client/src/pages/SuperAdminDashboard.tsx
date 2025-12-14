@@ -1,14 +1,15 @@
 // src/pages/SuperAdminDashboard.tsx
 import React, { useEffect, useState } from "react";
+
 import { useRecoilValue, useSetRecoilState } from "recoil";
 import { authState, clearAuthState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Users, Store as StoreIcon, Activity, Search,
     Package, Truck, LogOut, Trash2,
-    PieChart as PieChartIcon, AlertTriangle,
-    Bell, Lock, X, ArrowRightLeft, Clock,
-    Send, Mail, MessageSquare, CheckCircle2, RefreshCw
+    PieChart as PieChartIcon,
+    Bell, Lock, X, ArrowRightLeft,
+    Send, Mail, MessageSquare, CheckCircle2, RefreshCw, ShoppingCart, Share2, Filter
 } from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { adminApi } from "../lib/api/endpoints";
@@ -16,11 +17,14 @@ import type { User, Store, Supplier } from "../lib/types";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { } from "react-icons/fa";
-import { MdNotificationsActive, MdOutlinePendingActions } from "react-icons/md";
+import { MdNotificationsActive } from "react-icons/md";
 import {
     AreaChart, Area, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
+import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, Position } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import * as dagre from 'dagre';
 
 // --- Types ---
 
@@ -61,10 +65,6 @@ interface AnalyticsData {
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 // const RADIAN = Math.PI / 180; 
 // Removed unused label renderer to keep UI clean
-
-// --- Components ---
-
-
 
 
 
@@ -141,6 +141,83 @@ const AnalyticsSkeleton = () => (
     </div>
 );
 
+// --- Components ---
+
+const FilterDropdown = ({ options, current, onChange, isOpen, setIsOpen, label }: any) => {
+    const hasFilter = current !== 'ALL';
+    // Close on click outside is handled by the fixed distinct div
+
+    return (
+        <div className="relative z-50">
+            {isOpen && <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />}
+            <div
+                className="w-12 h-12 flex items-center justify-center bg-transparent text-black cursor-pointer hover:scale-110 transition-transform"
+                onClick={() => setIsOpen(!isOpen)}
+                title={`Filter ${label}`}
+            >
+                <Filter className={`w-5 h-5 ${hasFilter ? 'fill-current' : ''}`} />
+            </div>
+            {isOpen && (
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className="absolute top-14 right-0 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden ring-1 ring-slate-900/5"
+                >
+                    <div className="p-2 space-y-1 bg-slate-50/50 backdrop-blur-xl">
+                        {options.map((opt: any) => (
+                            <div
+                                key={opt.value}
+                                onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                                className={`w-full text-left px-4 py-3 text-sm rounded-lg transition-all flex items-center justify-between cursor-pointer ${current === opt.value
+                                    ? 'bg-black text-white font-semibold shadow-md ring-1 ring-black'
+                                    : 'text-slate-600 hover:bg-white hover:shadow-sm hover:text-slate-900 border border-transparent hover:border-slate-200'
+                                    }`}
+                            >
+                                <span>{opt.label}</span>
+                                {current === opt.value && <CheckCircle2 className="w-4 h-4 text-white" />}
+                            </div>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+        </div>
+    );
+};
+
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+const getLayoutedElements = (nodes: any[], edges: any[], direction = 'TB') => {
+    const isHorizontal = direction === 'LR';
+    dagreGraph.setGraph({ rankdir: direction });
+
+    nodes.forEach((node) => {
+        dagreGraph.setNode(node.id, { width: 170, height: 80 });
+    });
+
+    edges.forEach((edge) => {
+        dagreGraph.setEdge(edge.source, edge.target);
+    });
+
+    dagre.layout(dagreGraph);
+
+    return {
+        nodes: nodes.map((node) => {
+            const nodeWithPosition = dagreGraph.node(node.id);
+            return {
+                ...node,
+                targetPosition: isHorizontal ? Position.Left : Position.Top,
+                sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
+                position: {
+                    x: nodeWithPosition.x - 170 / 2,
+                    y: nodeWithPosition.y - 80 / 2,
+                },
+            };
+        }),
+        edges,
+    };
+};
+
 const SuperAdminDashboard: React.FC = () => {
     const auth = useRecoilValue(authState);
     const setAuth = useSetRecoilState(authState);
@@ -148,13 +225,14 @@ const SuperAdminDashboard: React.FC = () => {
 
     const NAV_ITEMS = [
         { label: 'Analytics', icon: PieChartIcon, tab: 'analytics' },
+        { label: 'Network', icon: Share2, tab: 'network' },
         { label: 'Stores', icon: StoreIcon, tab: 'stores' },
         { label: 'Suppliers', icon: Truck, tab: 'suppliers' },
         { label: 'Users', icon: Users, tab: 'users' },
         { label: 'Notifications', icon: Bell, tab: 'notifications' },
     ];
 
-    const [activeTab, setActiveTab] = useState<"analytics" | "stores" | "suppliers" | "users" | "notifications">("analytics");
+    const [activeTab, setActiveTab] = useState<"analytics" | "stores" | "suppliers" | "users" | "notifications" | "network">("analytics");
 
     // Notification State
     const [notifyForm, setNotifyForm] = useState({
@@ -166,17 +244,35 @@ const SuperAdminDashboard: React.FC = () => {
     const [sending, setSending] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-    const [showPendingActions, setShowPendingActions] = useState(false);
 
     // Data State
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [stores, setStores] = useState<Store[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [graphData, setGraphData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+
+    // React Flow State
+    const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
+    const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
 
     // Search / Filter
     const [searchQuery, setSearchQuery] = useState("");
+
+    // Filters State
+    const [storeFilter, setStoreFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
+    const [showStoreFilterMenu, setShowStoreFilterMenu] = useState(false);
+
+    const [supplierFilter, setSupplierFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
+    const [showSupplierFilterMenu, setShowSupplierFilterMenu] = useState(false);
+
+    const [userFilter, setUserFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED' | 'SUPPLIER' | 'STORE_OWNER' | 'ADMIN'>('ALL');
+    const [showUserFilterMenu, setShowUserFilterMenu] = useState(false);
+
+    // Graph Filters
+    const [graphTimeRange, setGraphTimeRange] = useState<'7D' | '15D' | '30D'>('7D');
+    const [showGraphFilterMenu, setShowGraphFilterMenu] = useState(false);
 
     const [storeToDelete, setStoreToDelete] = useState<{ id: string; name: string } | null>(null);
     const [storeToToggle, setStoreToToggle] = useState<{ id: string; name: string; isActive: boolean } | null>(null);
@@ -187,13 +283,17 @@ const SuperAdminDashboard: React.FC = () => {
     const [userToToggle, setUserToToggle] = useState<{ id: string; name: string; isActive: boolean } | null>(null);
     const [isScrolled, setIsScrolled] = useState(false);
 
+    // Refs
     // Effects
     useEffect(() => {
         const handleScroll = () => {
             setIsScrolled(window.scrollY > 20);
         };
+
         window.addEventListener("scroll", handleScroll);
-        return () => window.removeEventListener("scroll", handleScroll);
+        return () => {
+            window.removeEventListener("scroll", handleScroll);
+        };
     }, []);
 
     useEffect(() => {
@@ -216,6 +316,50 @@ const SuperAdminDashboard: React.FC = () => {
             } else if (activeTab === "users") {
                 const res = await adminApi.getUsers({ q: searchQuery });
                 if (res.data.success) setUsers(res.data.data.users);
+            } else if (activeTab === "network") {
+                const res = await adminApi.getGraphData();
+                if (res.data.success) {
+                    const rawData = res.data.data;
+                    setGraphData(rawData);
+
+                    // Transform to React Flow format
+                    const initialNodes = rawData.nodes.map((node: any) => ({
+                        id: node.id,
+                        type: 'default',
+                        position: { x: 0, y: 0 }, // Initial position, will be calculated by dagre
+                        data: {
+                            label: (
+                                <div className="p-2">
+                                    <div className="font-bold text-sm">{node.label}</div>
+                                    <div className="text-xs text-slate-500 truncate max-w-[140px]" title={node.subLabel}>{node.subLabel}</div>
+                                    <div className="text-[10px] uppercase font-bold mt-1 tracking-wider text-slate-400">{node.type}</div>
+                                </div>
+                            )
+                        },
+                        style: {
+                            background: '#fff',
+                            border: `1px solid ${node.type === 'STORE' ? '#10b981' :
+                                node.type === 'SUPPLIER' ? '#ec4899' : // Pink matches previous edit
+                                    '#3b82f6'
+                                }`,
+                            borderRadius: '12px',
+                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                            width: 170,
+                        }
+                    }));
+
+                    const initialEdges = rawData.edges.map((edge: any, i: number) => ({
+                        id: `e-${i}`,
+                        source: edge.source,
+                        target: edge.target,
+                        animated: true,
+                        style: { stroke: '#94a3b8' },
+                    }));
+
+                    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
+                    setNodes(layoutedNodes);
+                    setEdges(layoutedEdges);
+                }
             }
         } catch (err) {
             console.error("Failed to fetch admin data", err);
@@ -380,17 +524,7 @@ const SuperAdminDashboard: React.FC = () => {
         }
     };
 
-    const togglePendingActions = async () => {
-        if (!showPendingActions && !analytics) {
-            try {
-                const res = await adminApi.getDashboardAnalytics();
-                if (res.data.success) setAnalytics(res.data.data);
-            } catch (err) {
-                console.error("Failed to fetch analytics for quick view", err);
-            }
-        }
-        setShowPendingActions(!showPendingActions);
-    };
+
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900">
@@ -399,15 +533,11 @@ const SuperAdminDashboard: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-6 py-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <motion.div
-                                initial={{ scale: 0.5, opacity: 0, rotate: -180 }}
-                                animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                                transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                                whileHover={{ scale: 1.1, rotate: 10, boxShadow: "0px 10px 25px rgba(79, 70, 229, 0.4)" }}
-                                className="w-14 h-14 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/10 cursor-pointer overflow-hidden border border-slate-100"
-                            >
-                                <img src="/admin-logo.jpg" alt="Admin Logo" className="w-full h-full object-cover" />
-                            </motion.div>
+                            <img
+                                src="/admin-shield-logo.jpg"
+                                alt="Admin Logo"
+                                className="w-12 h-12 object-contain"
+                            />
                             <div>
                                 <motion.h1
                                     initial={{ x: -20, opacity: 0 }}
@@ -429,108 +559,7 @@ const SuperAdminDashboard: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-4">
-                            <motion.div
-                                initial={{ y: -10, opacity: 0 }}
-                                animate={{ y: 0, opacity: 1 }}
-                                transition={{ delay: 0.4 }}
-                                whileHover={{ scale: 1.05, backgroundColor: "#f3f4f6" }}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg border border-slate-200/50 cursor-default"
-                            >
-                                <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                </span>
-                                <span className="text-xs font-semibold text-slate-600 tracking-wide">SYSTEM ONLINE</span>
-                            </motion.div>
 
-                            <motion.div
-                                initial={{ y: -10, opacity: 0 }}
-                                animate={{ y: 0, opacity: 1 }}
-                                transition={{ delay: 0.45 }}
-                                className="relative"
-                            >
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={`relative w-10 h-10 rounded-full transition-all ${showPendingActions ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                    onClick={togglePendingActions}
-                                    title="Pending Actions"
-                                >
-                                    <MdOutlinePendingActions className="w-5 h-5" />
-                                    {analytics && (analytics.overview.operations.pendingSupplierRequests + analytics.overview.operations.failedUploads + analytics.overview.operations.expiringBatchesNext30Days) > 0 && (
-                                        <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-[#F8FAFC]"></span>
-                                    )}
-                                </Button>
-
-                                <AnimatePresence>
-                                    {showPendingActions && (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="absolute right-0 top-12 w-80 bg-white/70 backdrop-blur-xl border border-white/60 shadow-2xl rounded-2xl p-4 z-50 overflow-hidden"
-                                        >
-                                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 to-purple-50/50 -z-10" />
-                                            <h3 className="text-sm font-bold text-slate-800 mb-3 px-1">Pending Actions</h3>
-
-                                            <div className="space-y-2">
-                                                <div
-                                                    onClick={() => { setActiveTab("suppliers"); setShowPendingActions(false); }}
-                                                    className="flex items-center justify-between p-3 bg-white/50 hover:bg-white rounded-xl border border-slate-100 cursor-pointer transition-all group"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="p-2 bg-amber-100 text-amber-600 rounded-lg group-hover:scale-110 transition-transform">
-                                                            <Truck className="w-4 h-4" />
-                                                        </div>
-                                                        <span className="text-sm text-slate-600 font-medium group-hover:text-slate-900">Supplier Requests</span>
-                                                    </div>
-                                                    <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                                                        {analytics?.overview.operations.pendingSupplierRequests || 0}
-                                                    </span>
-                                                </div>
-
-                                                <div
-                                                    onClick={() => { setActiveTab("stores"); setShowPendingActions(false); }}
-                                                    className="flex items-center justify-between p-3 bg-white/50 hover:bg-white rounded-xl border border-slate-100 cursor-pointer transition-all group"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="p-2 bg-red-100 text-red-600 rounded-lg group-hover:scale-110 transition-transform">
-                                                            <AlertTriangle className="w-4 h-4" />
-                                                        </div>
-                                                        <span className="text-sm text-slate-600 font-medium group-hover:text-slate-900">Failed Uploads</span>
-                                                    </div>
-                                                    <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                                                        {analytics?.overview.operations.failedUploads || 0}
-                                                    </span>
-                                                </div>
-
-                                                <div
-                                                    onClick={() => { setActiveTab("stores"); setShowPendingActions(false); }}
-                                                    className="flex items-center justify-between p-3 bg-white/50 hover:bg-white rounded-xl border border-slate-100 cursor-pointer transition-all group"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="p-2 bg-orange-100 text-orange-600 rounded-lg group-hover:scale-110 transition-transform">
-                                                            <Clock className="w-4 h-4" />
-                                                        </div>
-                                                        <span className="text-sm text-slate-600 font-medium group-hover:text-slate-900">Expiring Batches</span>
-                                                    </div>
-                                                    <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                                                        {analytics?.overview.operations.expiringBatchesNext30Days || 0}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </motion.div>
-
-                            <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 32, opacity: 1 }}
-                                transition={{ delay: 0.5 }}
-                                className="w-[1px] bg-slate-200"
-                            />
 
                             <motion.div
                                 initial={{ opacity: 0, x: 20 }}
@@ -573,285 +602,313 @@ const SuperAdminDashboard: React.FC = () => {
             <main className="max-w-7xl mx-auto px-6 py-8 pb-32">
                 <AnimatePresence mode="wait">
                     {activeTab === "analytics" && (
-                        (loading && !analytics) ? <AnalyticsSkeleton /> : analytics && (
-                            <motion.div
-                                key="analytics"
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                transition={{ duration: 0.2 }}
-                                className="space-y-8"
-                            >
-                                {/* 1. Ecosystem Overview Cards */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                                    <motion.div
-                                        whileHover={{ y: -5 }}
-                                        className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group"
-                                    >
-                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                                            <Users className="w-16 h-16 text-indigo-600" />
-                                        </div>
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                                                <Users className="w-5 h-5" />
+                        (loading && !analytics) ? <AnalyticsSkeleton /> : analytics && (() => {
+                            const getFilteredGraphData = () => {
+                                const data = analytics.trends.sales.map(s => ({ ...s, revenue: Number(s.revenue) }));
+                                // Assuming data is sorted by date ascending. If not, sort first.
+                                // Taking last N items based on range. Be careful if data length < range.
+                                const total = data.length;
+                                let count = 7;
+                                if (graphTimeRange === '15D') count = 15;
+                                if (graphTimeRange === '30D') count = 30;
+
+                                return data.slice(Math.max(0, total - count));
+                            };
+
+                            const filteredData = getFilteredGraphData();
+
+                            return (
+                                <motion.div
+                                    key="analytics"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="space-y-8"
+                                >
+                                    {/* 1. Key Metrics Strip */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        {/* Swapped: Store Performance (Previously Total Revenue was here) */}
+                                        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center gap-4">
+                                            <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                                                <StoreIcon className="w-6 h-6" />
                                             </div>
-                                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Total Users</span>
-                                        </div>
-                                        <div className="text-3xl font-extrabold text-slate-900 mb-1">{analytics.overview.users.total}</div>
-                                        <div className="text-xs font-medium text-emerald-600 bg-emerald-50 inline-block px-2 py-0.5 rounded-full">
-                                            {analytics.overview.users.verified} Verified
-                                        </div>
-                                    </motion.div>
-
-                                    <motion.div
-                                        whileHover={{ y: -5 }}
-                                        className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group"
-                                    >
-                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                                            <StoreIcon className="w-16 h-16 text-blue-600" />
-                                        </div>
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-                                                <StoreIcon className="w-5 h-5" />
-                                            </div>
-                                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Stores</span>
-                                        </div>
-                                        <div className="text-3xl font-extrabold text-slate-900 mb-1">{analytics.overview.stores.total}</div>
-                                        <div className="flex gap-2 text-xs">
-                                            <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{analytics.overview.stores.active} Active</span>
-                                            <span className="text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{analytics.overview.stores.inactive} Inactive</span>
-                                        </div>
-                                    </motion.div>
-
-                                    <motion.div
-                                        whileHover={{ y: -5 }}
-                                        className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group"
-                                    >
-                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                                            <Truck className="w-16 h-16 text-orange-600" />
-                                        </div>
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="p-2 bg-orange-50 rounded-lg text-orange-600">
-                                                <Truck className="w-5 h-5" />
-                                            </div>
-                                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Suppliers</span>
-                                        </div>
-                                        <div className="text-3xl font-extrabold text-slate-900 mb-1">{analytics.overview.suppliers.total}</div>
-                                        <div className="text-xs text-slate-400">Registered partners</div>
-                                    </motion.div>
-
-                                    <motion.div
-                                        whileHover={{ y: -5 }}
-                                        className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group"
-                                    >
-                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                                            <Package className="w-16 h-16 text-purple-600" />
-                                        </div>
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="p-2 bg-purple-50 rounded-lg text-purple-600">
-                                                <Package className="w-5 h-5" />
-                                            </div>
-                                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Medicines</span>
-                                        </div>
-                                        <div className="text-3xl font-extrabold text-slate-900 mb-1">{analytics.overview.medicines.total}</div>
-                                        <div className="text-xs text-slate-400">Total catalog items</div>
-                                    </motion.div>
-                                </div>
-
-                                {/* 2. Financials & Operational High-Level */}
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                    <div className="lg:col-span-3 bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl">
-                                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
-                                        <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -ml-16 -mb-16"></div>
-
-                                        <div className="relative z-10 flex flex-col md:flex-row justify-between gap-8">
                                             <div>
-                                                <p className="text-slate-400 text-sm font-medium uppercase tracking-widest mb-2">Total Revenue Generated</p>
-                                                <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white mb-4">
-                                                    ${Number(analytics.overview.financials.totalRevenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </h2>
-                                                <div className="flex items-center gap-4">
-                                                    <div className="px-3 py-1 bg-white/10 rounded-lg backdrop-blur-sm border border-white/10">
-                                                        <span className="text-xs text-slate-300">Sales Count:</span>
-                                                        <span className="ml-2 font-bold">{analytics.overview.financials.totalSalesCount}</span>
-                                                    </div>
-                                                    <div className="px-3 py-1 bg-white/10 rounded-lg backdrop-blur-sm border border-white/10">
-                                                        <span className="text-xs text-slate-300">Avg. Order:</span>
-                                                        <span className="ml-2 font-bold">
-                                                            ${(Number(analytics.overview.financials.totalRevenue) / Math.max(1, analytics.overview.financials.totalSalesCount)).toFixed(2)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex flex-col gap-4 min-w-[200px]">
-                                                <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-                                                    <div className="flex items-center gap-2 mb-1 text-emerald-400">
-                                                        <Package className="w-4 h-4" />
-                                                        <span className="text-xs font-bold uppercase">Inventory Value</span>
-                                                    </div>
-                                                    <div className="text-xl font-bold">
-                                                        ${Number(analytics.overview.financials.inventoryValue).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                                    </div>
-                                                </div>
-                                                <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-                                                    <div className="flex items-center gap-2 mb-1 text-orange-400">
-                                                        <AlertTriangle className="w-4 h-4" />
-                                                        <span className="text-xs font-bold uppercase">Expiring (30d)</span>
-                                                    </div>
-                                                    <div className="text-xl font-bold">
-                                                        {analytics.overview.operations.expiringBatchesNext30Days} <span className="text-sm font-normal text-slate-400">batches</span>
-                                                    </div>
-                                                </div>
+                                                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Store Performance</p>
+                                                <p className="text-xl font-black text-slate-800">
+                                                    {analytics.overview.stores.total}
+                                                </p>
                                             </div>
                                         </div>
-                                    </div>
 
-
-                                </div>
-
-                                {/* 3. Trends Section */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                                        <div className="flex items-center justify-between mb-6">
+                                        {/* Swapped: Active Supply Partners (Previously Inventory Value was here) */}
+                                        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center gap-4">
+                                            <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                                                <Truck className="w-6 h-6" />
+                                            </div>
                                             <div>
-                                                <h3 className="font-bold text-slate-800 text-lg">Sales Trend</h3>
-                                                <p className="text-sm text-slate-500">Revenue & Order count over date</p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                {/* Custom Legend/Toggle could go here */}
+                                                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Active Suppliers</p>
+                                                <p className="text-xl font-black text-slate-800">
+                                                    {analytics.overview.suppliers.total}
+                                                </p>
                                             </div>
                                         </div>
-                                        <div className="h-[300px] w-full">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <AreaChart
-                                                    data={analytics.trends.sales.map(s => ({ ...s, revenue: Number(s.revenue) }))}
-                                                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                                                >
-                                                    <defs>
-                                                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                                                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.1} />
-                                                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                                                        </linearGradient>
-                                                    </defs>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                                    <XAxis
-                                                        dataKey="date"
-                                                        stroke="#94A3B8"
-                                                        fontSize={12}
-                                                        tickLine={false}
-                                                        axisLine={false}
-                                                        tickFormatter={(str) => {
-                                                            const d = new Date(str);
-                                                            return `${d.getMonth() + 1}/${d.getDate()}`;
-                                                        }}
-                                                    />
-                                                    <YAxis
-                                                        yAxisId="left"
-                                                        stroke="#94A3B8"
-                                                        fontSize={12}
-                                                        tickLine={false}
-                                                        axisLine={false}
-                                                        tickFormatter={(value) => `$${value / 1000}k`}
-                                                    />
-                                                    <YAxis yAxisId="right" orientation="right" stroke="#CBD5E1" fontSize={12} tickLine={false} axisLine={false} />
-                                                    <Tooltip
-                                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                                        formatter={(value: any, name: string) => {
-                                                            if (name === 'revenue') return [`$${Number(value).toFixed(2)}`, 'Revenue'];
-                                                            return [value, 'Orders'];
-                                                        }}
-                                                        labelStyle={{ fontWeight: 'bold', color: '#1e293b' }}
-                                                    />
-                                                    <Area
-                                                        yAxisId="left"
-                                                        type="monotone"
-                                                        dataKey="revenue"
-                                                        stroke="#8b5cf6"
-                                                        strokeWidth={3}
-                                                        fillOpacity={1}
-                                                        fill="url(#colorRevenue)"
-                                                    />
-                                                </AreaChart>
-                                            </ResponsiveContainer>
+
+                                        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center gap-4">
+                                            <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                                                <ShoppingCart className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total Sales</p>
+                                                <p className="text-xl font-black text-slate-800">
+                                                    {Number(analytics.overview.financials.totalSalesCount).toLocaleString('en-IN')}
+                                                </p>
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
 
-                                {/* 4. Distributions */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col">
-                                        <h3 className="font-bold text-slate-800 mb-2">Payment Methods</h3>
-                                        <p className="text-sm text-slate-500 mb-6">Distribution by transaction count</p>
-
-                                        <div className="h-[250px] relative">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie
-                                                        data={analytics.distributions.paymentMethods}
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        labelLine={false}
-                                                        outerRadius={80}
-                                                        fill="#8884d8"
-                                                        dataKey="count"
-                                                        nameKey="method"
-                                                    >
-                                                        {analytics.distributions.paymentMethods.map((_, index) => (
-                                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                        ))}
-                                                    </Pie>
-                                                    <Tooltip
-                                                        formatter={(value: any, name: any, props: any) => [
-                                                            `${value} txns ($${Number(props.payload.revenue).toLocaleString()})`,
-                                                            name
-                                                        ]}
-                                                        contentStyle={{ borderRadius: '12px', borderColor: '#e2e8f0' }}
-                                                    />
-                                                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                                                </PieChart>
-                                            </ResponsiveContainer>
+                                        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center gap-4">
+                                            <div className="p-3 bg-orange-50 rounded-xl text-orange-600">
+                                                <Users className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total Users</p>
+                                                <p className="text-xl font-black text-slate-800">
+                                                    {analytics.overview.users.total} <span className="text-sm font-normal text-slate-400">({analytics.overview.users.verified} Verified)</span>
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                                        <h3 className="font-bold text-slate-800 mb-2">User Roles</h3>
-                                        <p className="text-sm text-slate-500 mb-6">Distribution of user types</p>
-
-                                        <div className="h-[250px] relative">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie
-                                                        data={analytics.distributions.userRoles}
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        innerRadius={60}
-                                                        outerRadius={80}
-                                                        fill="#8884d8"
-                                                        paddingAngle={5}
-                                                        dataKey="count"
-                                                        nameKey="role"
+                                    {/* 2. Main Graph Area & Side Stats */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[400px]">
+                                        {/* Big Graph */}
+                                        <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col h-full">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div>
+                                                    <h3 className="font-bold text-slate-800 text-lg">Sales Trend</h3>
+                                                    <p className="text-sm text-slate-500">Revenue & Order count over date</p>
+                                                </div>
+                                                <div className="relative z-30">
+                                                    <div
+                                                        role="button"
+                                                        onClick={() => setShowGraphFilterMenu(!showGraphFilterMenu)}
+                                                        className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-700 !bg-white rounded-full border border-slate-200 shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer select-none"
+                                                        style={{ backgroundColor: '#ffffff' }}
                                                     >
-                                                        {analytics.distributions.userRoles.map((_, index) => (
-                                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length + 2]} />
-                                                        ))}
-                                                    </Pie>
-                                                    <Tooltip contentStyle={{ borderRadius: '12px', borderColor: '#e2e8f0' }} />
-                                                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                                                </PieChart>
-                                            </ResponsiveContainer>
-                                            {/* Center Text */}
-                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8">
-                                                <div className="text-center">
-                                                    <span className="text-2xl font-bold text-slate-800">{analytics.overview.users.total}</span>
-                                                    <span className="block text-xs text-slate-500">Users</span>
+                                                        {graphTimeRange === '7D' ? 'Last 7 Days' : graphTimeRange === '15D' ? 'Last 15 Days' : 'Last 30 Days'}
+                                                        <span className="text-slate-400 text-[10px] ml-1">▼</span>
+                                                    </div>
+                                                    {showGraphFilterMenu && (
+                                                        <>
+                                                            <div className="fixed inset-0 z-20" onClick={() => setShowGraphFilterMenu(false)} />
+                                                            <div className="absolute top-full right-0 mt-3 w-48 !bg-white border border-slate-100 rounded-2xl shadow-xl z-30 overflow-hidden p-1.5 ring-1 ring-slate-900/5">
+                                                                {['7D', '15D', '30D'].map((range: any) => (
+                                                                    <div
+                                                                        key={range}
+                                                                        role="button"
+                                                                        onClick={() => { setGraphTimeRange(range); setShowGraphFilterMenu(false); }}
+                                                                        className={`w-full text-left px-4 py-3 text-sm rounded-xl flex items-center justify-between transition-all cursor-pointer select-none ${graphTimeRange === range
+                                                                            ? 'text-violet-600 font-bold !bg-white shadow-sm ring-1 ring-slate-100'
+                                                                            : 'text-slate-600 !bg-white hover:bg-gray-50'
+                                                                            }`}
+                                                                        style={{ backgroundColor: '#ffffff' }}
+                                                                    >
+                                                                        {range === '7D' ? 'Last 7 Days' : range === '15D' ? 'Last 15 Days' : 'Last 30 Days'}
+                                                                        {graphTimeRange === range && <CheckCircle2 className="w-4 h-4 text-violet-600" />}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex-1 w-full min-h-0">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <AreaChart data={getFilteredGraphData()} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                                        <defs>
+                                                            <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.1} />
+                                                                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                                        <XAxis dataKey="date" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(str) => { const d = new Date(str); return `${d.getMonth() + 1}/${d.getDate()}`; }} />
+                                                        <YAxis yAxisId="left" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value / 1000}k`} />
+                                                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }} />
+                                                        <Area yAxisId="left" type="monotone" dataKey="revenue" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+
+                                        {/* Side Stats - Operations & Inventory */}
+                                        {/* Side Stats - Swapped Financials & Inventory into view */}
+                                        <div className="space-y-6 flex flex-col h-full">
+                                            {/* Swapped: Total Revenue (Previously Store Performance) */}
+                                            <div className="bg-indigo-900 rounded-2xl p-6 text-white relative overflow-hidden flex-1 flex flex-col justify-center">
+                                                <div className="absolute top-0 right-0 p-4 opacity-10">
+                                                    <Activity className="w-24 h-24 text-white" />
+                                                </div>
+                                                <div className="relative z-10">
+                                                    <p className="text-indigo-200 uppercase tracking-widest text-xs font-bold mb-1">Total Revenue</p>
+                                                    <div className="text-4xl font-black mb-1">
+                                                        ₹{Number(analytics.overview.financials.totalRevenue).toLocaleString('en-IN', { maximumFractionDigits: 0, compactDisplay: "short" })}
+                                                    </div>
+                                                    <p className="text-sm text-indigo-300">Generated across ecosystem</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Swapped: Inventory Value (Previously Active Suppliers) */}
+                                            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col justify-center">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="p-2 bg-purple-50 rounded-lg text-purple-600"><Package className="w-5 h-5" /></div>
+                                                    <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">Assets</span>
+                                                </div>
+                                                <div className="text-2xl font-bold text-slate-800">
+                                                    ₹{Number(analytics.overview.financials.inventoryValue).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                                </div>
+                                                <p className="text-xs text-slate-500">Total Inventory Value</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+
+
+                                    {/* 4. Distributions */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+                                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col">
+                                            <h3 className="font-bold text-slate-800 mb-2">Payment Methods</h3>
+                                            <p className="text-sm text-slate-500 mb-6">Distribution by transaction count</p>
+
+                                            <div className="h-[250px] relative">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <PieChart>
+                                                        <Pie
+                                                            data={analytics.distributions.paymentMethods}
+                                                            cx="50%"
+                                                            cy="50%"
+                                                            labelLine={false}
+                                                            outerRadius={80}
+                                                            fill="#8884d8"
+                                                            dataKey="count"
+                                                            nameKey="method"
+                                                        >
+                                                            {analytics.distributions.paymentMethods.map((_, index) => (
+                                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                            ))}
+                                                        </Pie>
+                                                        <Tooltip
+                                                            formatter={(value: any, name: any, props: any) => [
+                                                                `${value} txns (₹${Number(props.payload.revenue).toLocaleString()})`,
+                                                                name
+                                                            ]}
+                                                            contentStyle={{ borderRadius: '12px', borderColor: '#e2e8f0' }}
+                                                        />
+                                                        <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                                            <h3 className="font-bold text-slate-800 mb-2">User Roles</h3>
+                                            <p className="text-sm text-slate-500 mb-6">Distribution of user types</p>
+
+                                            <div className="h-[250px] relative">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <PieChart>
+                                                        <Pie
+                                                            data={analytics.distributions.userRoles}
+                                                            cx="50%"
+                                                            cy="50%"
+                                                            innerRadius={60}
+                                                            outerRadius={80}
+                                                            fill="#8884d8"
+                                                            paddingAngle={5}
+                                                            dataKey="count"
+                                                            nameKey="role"
+                                                        >
+                                                            {analytics.distributions.userRoles.map((_, index) => (
+                                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length + 2]} />
+                                                            ))}
+                                                        </Pie>
+                                                        <Tooltip contentStyle={{ borderRadius: '12px', borderColor: '#e2e8f0' }} />
+                                                        <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                                {/* Center Text */}
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8">
+                                                    <div className="text-center">
+                                                        <span className="text-2xl font-bold text-slate-800">{analytics.overview.users.total}</span>
+                                                        <span className="block text-xs text-slate-500">Users</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
+                                </motion.div>
+                            )
+                        })()
+                    )}
+
+                    {activeTab === "network" && (
+                        <motion.div
+                            key="network"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.4 }}
+                            className="rounded-3xl overflow-hidden shadow-2xl relative h-[700px] border border-slate-200 bg-white"
+                        >
+                            <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]"></div>
+
+                            <div className="absolute top-6 left-6 z-10 bg-white/80 backdrop-blur-md p-4 rounded-2xl border border-slate-100 shadow-sm">
+                                <h2 className="text-2xl font-bold text-slate-900 mb-1">Ecosystem Network</h2>
+                                <p className="text-slate-500 text-sm">Interactive visualization of users, stores, and suppliers.</p>
+                                <div className="mt-4 flex gap-2">
+                                    <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 rounded-full border border-blue-100">
+                                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                        <span className="text-xs text-blue-700 font-medium">User</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                        <span className="text-xs text-emerald-700 font-medium">Store</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 px-3 py-1 bg-pink-50 rounded-full border border-pink-100">
+                                        <span className="w-2 h-2 rounded-full bg-[#ff0071]"></span>
+                                        <span className="text-xs text-pink-700 font-medium">Supplier</span>
+                                    </div>
                                 </div>
-                            </motion.div>
-                        )
+                            </div>
+
+                            {loading && !graphData ? (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
+                                </div>
+                            ) : (
+                                <ReactFlow
+                                    nodes={nodes}
+                                    edges={edges}
+                                    onNodesChange={onNodesChange}
+                                    onEdgesChange={onEdgesChange}
+                                    fitView
+                                >
+                                    <Background color="#94a3b8" gap={16} size={1} />
+                                    <Controls className="bg-white border text-slate-500 fill-slate-500" />
+                                    <MiniMap
+                                        nodeColor={(node) => {
+                                            // Extract color from the node style border we set earlier
+                                            const border = node.style?.border as string;
+                                            if (border && border.includes('#10b981')) return '#10b981';
+                                            if (border && border.includes('#ec4899')) return '#ec4899';
+                                            return '#3b82f6';
+                                        }}
+                                        style={{ backgroundColor: '#f8fafc' }}
+                                    />
+                                </ReactFlow>
+                            )}
+                        </motion.div>
                     )}
 
                     {activeTab === "stores" && (
@@ -861,7 +918,7 @@ const SuperAdminDashboard: React.FC = () => {
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.2 }}
-                            className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+                            className="bg-white rounded-2xl border border-slate-200 shadow-sm"
                         >
                             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between gap-4">
                                 <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -869,6 +926,18 @@ const SuperAdminDashboard: React.FC = () => {
                                     Registered Stores
                                 </h2>
                                 <div className="flex gap-2 items-center">
+                                    <FilterDropdown
+                                        options={[
+                                            { value: 'ALL', label: 'All Stores' },
+                                            { value: 'ACTIVE', label: 'Active' },
+                                            { value: 'SUSPENDED', label: 'Suspended' }
+                                        ]}
+                                        current={storeFilter}
+                                        onChange={setStoreFilter}
+                                        isOpen={showStoreFilterMenu}
+                                        setIsOpen={setShowStoreFilterMenu}
+                                        label="Stores"
+                                    />
                                     <Button
                                         size="icon"
                                         className="w-12 h-12 !bg-transparent !text-black hover:!bg-slate-100 rounded-lg transition-all"
@@ -928,7 +997,13 @@ const SuperAdminDashboard: React.FC = () => {
                                                 </motion.tr>
                                             ) : (
                                                 <>
-                                                    {stores.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((store, index) => (
+                                                    {stores.filter(s => {
+                                                        const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase());
+                                                        if (!matchesSearch) return false;
+                                                        if (storeFilter === 'ACTIVE') return s.isActive;
+                                                        if (storeFilter === 'SUSPENDED') return !s.isActive;
+                                                        return true;
+                                                    }).map((store, index) => (
                                                         <motion.tr
                                                             key={store.id}
                                                             initial={{ opacity: 0, y: 20 }}
@@ -1002,7 +1077,7 @@ const SuperAdminDashboard: React.FC = () => {
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.2 }}
-                            className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+                            className="bg-white rounded-2xl border border-slate-200 shadow-sm"
                         >
                             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between gap-4">
                                 <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -1010,6 +1085,18 @@ const SuperAdminDashboard: React.FC = () => {
                                     Global Suppliers
                                 </h2>
                                 <div className="flex gap-2 items-center">
+                                    <FilterDropdown
+                                        options={[
+                                            { value: 'ALL', label: 'All Suppliers' },
+                                            { value: 'ACTIVE', label: 'Active' },
+                                            { value: 'SUSPENDED', label: 'Suspended' }
+                                        ]}
+                                        current={supplierFilter}
+                                        onChange={setSupplierFilter}
+                                        isOpen={showSupplierFilterMenu}
+                                        setIsOpen={setShowSupplierFilterMenu}
+                                        label="Suppliers"
+                                    />
                                     <Button
                                         size="icon"
                                         className="w-12 h-12 !bg-transparent !text-black hover:!bg-slate-100 rounded-lg transition-all"
@@ -1069,7 +1156,13 @@ const SuperAdminDashboard: React.FC = () => {
                                                 </motion.tr>
                                             ) : (
                                                 <>
-                                                    {suppliers.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((supplier, index) => (
+                                                    {suppliers.filter(s => {
+                                                        const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase());
+                                                        if (!matchesSearch) return false;
+                                                        if (supplierFilter === 'ACTIVE') return s.isActive;
+                                                        if (supplierFilter === 'SUSPENDED') return !s.isActive;
+                                                        return true;
+                                                    }).map((supplier, index) => (
                                                         <motion.tr
                                                             key={supplier.id}
                                                             initial={{ opacity: 0, y: 20 }}
@@ -1133,7 +1226,7 @@ const SuperAdminDashboard: React.FC = () => {
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.2 }}
-                            className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+                            className="bg-white rounded-2xl border border-slate-200 shadow-sm"
                         >
                             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between gap-4">
                                 <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -1141,6 +1234,21 @@ const SuperAdminDashboard: React.FC = () => {
                                     User Management
                                 </h2>
                                 <div className="flex gap-2 items-center">
+                                    <FilterDropdown
+                                        options={[
+                                            { value: 'ALL', label: 'All Users' },
+                                            { value: 'ACTIVE', label: 'Active' },
+                                            { value: 'SUSPENDED', label: 'Suspended' },
+                                            { value: 'SUPPLIER', label: 'Suppliers' },
+                                            { value: 'STORE_OWNER', label: 'Store Owners' },
+                                            { value: 'ADMIN', label: 'Admins' }
+                                        ]}
+                                        current={userFilter}
+                                        onChange={setUserFilter}
+                                        isOpen={showUserFilterMenu}
+                                        setIsOpen={setShowUserFilterMenu}
+                                        label="Users"
+                                    />
                                     <Button
                                         size="icon"
                                         className="w-12 h-12 !bg-transparent !text-black hover:!bg-slate-100 rounded-lg transition-all"
@@ -1200,10 +1308,20 @@ const SuperAdminDashboard: React.FC = () => {
                                                 </motion.tr>
                                             ) : (
                                                 <>
-                                                    {users.filter(u =>
-                                                        u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                                        u.email.toLowerCase().includes(searchQuery.toLowerCase())
-                                                    ).map((user, index) => (
+
+                                                    {users.filter(u => {
+                                                        const matchesSearch = u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                                            u.email.toLowerCase().includes(searchQuery.toLowerCase());
+                                                        if (!matchesSearch) return false;
+
+                                                        if (userFilter === 'ACTIVE') return u.isActive;
+                                                        if (userFilter === 'SUSPENDED') return !u.isActive;
+                                                        if (userFilter === 'SUPPLIER') return u.globalRole === 'SUPPLIER';
+                                                        if (userFilter === 'STORE_OWNER') return u.globalRole === 'STORE_OWNER';
+                                                        if (userFilter === 'ADMIN') return u.globalRole === 'ADMIN' || u.globalRole === 'SUPERADMIN';
+
+                                                        return true;
+                                                    }).map((user, index) => (
                                                         <motion.tr
                                                             key={user.id}
                                                             initial={{ opacity: 0, y: 20 }}
@@ -1284,650 +1402,632 @@ const SuperAdminDashboard: React.FC = () => {
                     )}
 
                     {activeTab === "notifications" && (
-                        <motion.div
-                            key="notifications"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            transition={{ duration: 0.4, type: "spring", bounce: 0.3 }}
-                            className="max-w-4xl mx-auto"
-                        >
-                            <div className="bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/60 overflow-hidden relative">
-                                {/* Decorative background elements */}
-                                <div className="absolute top-0 right-0 w-96 h-96 bg-slate-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                        <div className="max-w-6xl mx-auto space-y-6">
+                            <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden relative">
+                                {/* Decorative elements */}
+                                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-slate-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
                                 <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-500/10 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none" />
 
-                                <div className="p-8 md:p-10 relative z-10">
-                                    <div className="flex items-center gap-4 mb-8">
-                                        <motion.div
-                                            initial={{ scale: 0.8, opacity: 0 }}
-                                            animate={{ scale: 1, opacity: 1 }}
-                                            transition={{ delay: 0.1 }}
-                                            className="w-12 h-12 bg-transparent rounded-xl flex items-center justify-center border-2 border-slate-200"
-                                        >
-                                            <MdNotificationsActive className="w-6 h-6 text-black" />
-                                        </motion.div>
-                                        <div>
-                                            <motion.h2
-                                                initial={{ x: -20, opacity: 0 }}
-                                                animate={{ x: 0, opacity: 1 }}
-                                                transition={{ delay: 0.2 }}
-                                                className="text-2xl font-bold text-slate-900 tracking-tight"
-                                            >
-                                                Broadcast Center
-                                            </motion.h2>
-                                            <motion.p
-                                                initial={{ x: -20, opacity: 0 }}
-                                                animate={{ x: 0, opacity: 1 }}
-                                                transition={{ delay: 0.3 }}
-                                                className="text-slate-500 text-sm"
-                                            >
-                                                Send important updates and announcements to your network.
-                                            </motion.p>
+                                <div className="p-8 relative z-10">
+                                    <div className="flex items-center justify-between mb-10 pb-6 border-b border-slate-100">
+                                        <div className="flex items-center gap-5">
+                                            <div className="w-14 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-200">
+                                                <MdNotificationsActive className="w-7 h-7" />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Broadcast Center</h2>
+                                                <p className="text-slate-500 text-sm font-medium mt-1">Send important updates and announcements</p>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <form onSubmit={handleSendNotification} className="space-y-8">
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    <form onSubmit={handleSendNotification} className="flex gap-6 items-stretch h-[500px]">
+                                        <div className="w-5/12 space-y-6 flex flex-col">
                                             {/* Target Audience */}
-                                            <motion.div
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: 0.4 }}
-                                                className="space-y-4"
-                                            >
-                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Target Audience</label>
-                                                <div className="grid grid-cols-1 gap-3">
+                                            <div className="space-y-3">
+                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-1">Target Audience</label>
+                                                <div className="grid grid-cols-1 gap-2">
                                                     {[
-                                                        { value: 'ALL', label: 'All Users', icon: Users },
-                                                        { value: 'SUPPLIER', label: 'Suppliers Only', icon: Truck },
-                                                        { value: 'STORE_OWNER', label: 'Store Owners', icon: StoreIcon },
+                                                        { value: 'ALL', label: 'All Users', desc: 'Everyone', icon: Users },
+                                                        { value: 'SUPPLIER', label: 'Suppliers', desc: 'Partners', icon: Truck },
+                                                        { value: 'STORE_OWNER', label: 'Store Owners', desc: 'Merchants', icon: StoreIcon },
                                                     ].map((opt) => (
                                                         <div
                                                             key={opt.value}
                                                             onClick={() => setNotifyForm({ ...notifyForm, targetRole: opt.value })}
-                                                            className={`group flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 relative overflow-hidden ${notifyForm.targetRole === opt.value
-                                                                ? 'border-black bg-slate-50 shadow-sm'
+                                                            className={`group relative flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200 ${notifyForm.targetRole === opt.value
+                                                                ? 'border-black bg-slate-50'
                                                                 : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50'
                                                                 }`}
                                                         >
-                                                            <div className={`p-2 rounded-lg transition-colors duration-200 ${notifyForm.targetRole === opt.value ? 'bg-black text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-slate-700'}`}>
+                                                            <div className={`p-2 rounded-lg transition-colors ${notifyForm.targetRole === opt.value ? 'bg-black text-white' : 'bg-white border border-slate-200 text-slate-500 group-hover:bg-slate-100'}`}>
                                                                 <opt.icon className="w-4 h-4" />
                                                             </div>
-                                                            <span className={`text-sm font-bold transition-colors ${notifyForm.targetRole === opt.value ? 'text-black' : 'text-slate-600'}`}>{opt.label}</span>
+                                                            <div>
+                                                                <span className={`block text-sm font-bold ${notifyForm.targetRole === opt.value ? 'text-black' : 'text-slate-700'}`}>{opt.label}</span>
+                                                            </div>
                                                             {notifyForm.targetRole === opt.value && (
-                                                                <motion.div layoutId="audience-check" className="absolute right-3 text-black">
-                                                                    <CheckCircle2 className="w-5 h-5" />
-                                                                </motion.div>
+                                                                <div className="absolute right-3 text-black">
+                                                                    <CheckCircle2 className="w-4 h-4" />
+                                                                </div>
                                                             )}
                                                         </div>
                                                     ))}
                                                 </div>
-                                            </motion.div>
+                                            </div>
 
                                             {/* Delivery Method */}
-                                            <motion.div
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: 0.5 }}
-                                                className="space-y-4"
-                                            >
-                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Delivery Method</label>
-                                                <div className="grid grid-cols-1 gap-3">
+                                            <div className="space-y-3">
+                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-1">Delivery Method</label>
+                                                <div className="grid grid-cols-1 gap-2">
                                                     {[
-                                                        { value: 'SYSTEM', label: 'In-App Notification', icon: Bell },
-                                                        { value: 'EMAIL', label: 'Email Only', icon: Mail },
-                                                        { value: 'BOTH', label: 'Both Channels', icon: Send },
+                                                        { value: 'SYSTEM', label: 'In-App', desc: 'Dashboard', icon: Bell },
+                                                        { value: 'EMAIL', label: 'Email', desc: 'Direct Mail', icon: Mail },
+                                                        { value: 'BOTH', label: 'All Channels', desc: 'Maximum Reach', icon: Send },
                                                     ].map((opt) => (
                                                         <div
                                                             key={opt.value}
                                                             onClick={() => setNotifyForm({ ...notifyForm, type: opt.value as any })}
-                                                            className={`group flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 relative overflow-hidden ${notifyForm.type === opt.value
-                                                                ? 'border-black bg-slate-50 shadow-sm'
+                                                            className={`group relative flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200 ${notifyForm.type === opt.value
+                                                                ? 'border-black bg-slate-50'
                                                                 : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50'
                                                                 }`}
                                                         >
-                                                            <div className={`p-2 rounded-lg transition-colors duration-200 ${notifyForm.type === opt.value ? 'bg-black text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-slate-700'}`}>
+                                                            <div className={`p-2 rounded-lg transition-colors ${notifyForm.type === opt.value ? 'bg-black text-white' : 'bg-white border border-slate-200 text-slate-500 group-hover:bg-slate-100'}`}>
                                                                 <opt.icon className="w-4 h-4" />
                                                             </div>
-                                                            <span className={`text-sm font-bold transition-colors ${notifyForm.type === opt.value ? 'text-black' : 'text-slate-600'}`}>{opt.label}</span>
+                                                            <div>
+                                                                <span className={`block text-sm font-bold ${notifyForm.type === opt.value ? 'text-black' : 'text-slate-700'}`}>{opt.label}</span>
+                                                            </div>
                                                             {notifyForm.type === opt.value && (
-                                                                <motion.div layoutId="method-check" className="absolute right-3 text-black">
-                                                                    <CheckCircle2 className="w-5 h-5" />
-                                                                </motion.div>
+                                                                <div className="absolute right-3 text-black">
+                                                                    <CheckCircle2 className="w-4 h-4" />
+                                                                </div>
                                                             )}
                                                         </div>
                                                     ))}
                                                 </div>
-                                            </motion.div>
+                                            </div>
                                         </div>
 
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ delay: 0.6 }}
-                                            className="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-100"
-                                        >
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Subject Line</label>
-                                                <div className="relative group">
-                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-black transition-colors">
-                                                        <MessageSquare className="w-5 h-5" />
-                                                    </span>
+                                        <div className="w-7/12 bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col">
+                                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
+                                                <MessageSquare className="w-5 h-5 text-black" />
+                                                Compose Message
+                                            </h3>
+                                            <div className="flex-1 space-y-5 flex flex-col">
+                                                <div className="space-y-2">
+                                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Subject Line</label>
                                                     <input
                                                         required
                                                         type="text"
-                                                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-xl focus:bg-white focus:border-black focus:ring-4 focus:ring-black/5 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300"
-                                                        placeholder="e.g., Scheduled Maintenance"
+                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg focus:border-black focus:ring-4 focus:ring-black/5 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300 text-sm"
+                                                        placeholder="e.g., Important Maintenance Update"
                                                         value={notifyForm.subject}
                                                         onChange={e => setNotifyForm({ ...notifyForm, subject: e.target.value })}
                                                     />
                                                 </div>
-                                            </div>
 
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Message Body</label>
-                                                <textarea
-                                                    required
-                                                    rows={6}
-                                                    className="w-full px-6 py-4 bg-white border border-slate-200 rounded-xl focus:bg-white focus:border-black focus:ring-4 focus:ring-black/5 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300 resize-none leading-relaxed"
-                                                    placeholder="Type your important announcement here..."
-                                                    value={notifyForm.message}
-                                                    onChange={e => setNotifyForm({ ...notifyForm, message: e.target.value })}
-                                                />
-                                                <div className="flex justify-between items-center text-xs text-slate-400 px-1">
-                                                    <span>HTML formatting supported for emails</span>
-                                                    <span>{notifyForm.message.length} characters</span>
+                                                <div className="space-y-2 flex-1 flex flex-col">
+                                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Message Content</label>
+                                                    <textarea
+                                                        required
+                                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg focus:border-black focus:ring-4 focus:ring-black/5 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300 resize-none leading-relaxed text-sm flex-1"
+                                                        placeholder="Write your announcement here..."
+                                                        value={notifyForm.message}
+                                                        onChange={e => setNotifyForm({ ...notifyForm, message: e.target.value })}
+                                                    />
+                                                    <div className="flex justify-between items-center text-xs text-slate-400 px-1 pt-1">
+                                                        <span>Supports basic HTML tags</span>
+                                                        <span>{notifyForm.message.length} chars</span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </motion.div>
-
-                                        <div className="flex justify-end pt-4">
-                                            <button
-                                                type="submit"
-                                                disabled={sending}
-                                                className={`relative overflow-hidden h-10 px-8 rounded-lg !text-white font-bold shadow-lg transition-all duration-300 flex items-center justify-center ${sending ? '!bg-black opacity-80 cursor-wait' : '!bg-black hover:!bg-slate-800 hover:scale-[1.02] hover:shadow-slate-900/20'
-                                                    }`}
-                                            >
-                                                <span className="relative z-10 flex items-center gap-3">
-                                                    {sending ? "Dispatching..." : "Send Broadcast"}
-                                                    {!sending && <Send className="w-5 h-5" />}
-                                                </span>
-                                            </button>
+                                            <div className="flex justify-end pt-6">
+                                                <button
+                                                    type="submit"
+                                                    disabled={sending}
+                                                    className={`relative overflow-hidden h-11 px-8 rounded-lg !text-white font-bold shadow-lg shadow-black/10 transition-all duration-300 flex items-center justify-center ${sending ? '!bg-black opacity-80 cursor-wait' : '!bg-black hover:!bg-slate-800 hover:scale-[1.02] hover:shadow-black/20'
+                                                        }`}
+                                                >
+                                                    <span className="relative z-10 flex items-center gap-3">
+                                                        {sending ? "Dispatching..." : "Send Broadcast"}
+                                                        {!sending && <Send className="w-5 h-5" />}
+                                                    </span>
+                                                </button>
+                                            </div>
                                         </div>
                                     </form>
                                 </div>
                             </div>
-                        </motion.div>
+                        </div>
                     )}
                 </AnimatePresence>
             </main>
 
             {/* Notification Success Modal */}
             <AnimatePresence>
-                {showSuccessModal && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setShowSuccessModal(false)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-2">
-                                    <CheckCircle2 className="w-8 h-8 text-emerald-500 translate-x-0.5" />
+                {
+                    showSuccessModal && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                onClick={() => setShowSuccessModal(false)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center gap-4">
+                                    <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-2">
+                                        <CheckCircle2 className="w-8 h-8 text-emerald-500 translate-x-0.5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">Success!</h3>
+                                        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                            Your broadcast message has been queued for delivery to all selected recipients.
+                                        </p>
+                                    </div>
+                                    <div className="w-full mt-4">
+                                        <Button
+                                            className="w-full h-12 rounded-xl !bg-black hover:!bg-slate-800 text-white border-none shadow-lg shadow-slate-900/20 font-semibold"
+                                            onClick={() => setShowSuccessModal(false)}
+                                        >
+                                            Done
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">Success!</h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Your broadcast message has been queued for delivery to all selected recipients.
-                                    </p>
-                                </div>
-                                <div className="w-full mt-4">
-                                    <Button
-                                        className="w-full h-12 rounded-xl !bg-black hover:!bg-slate-800 text-white border-none shadow-lg shadow-slate-900/20 font-semibold"
-                                        onClick={() => setShowSuccessModal(false)}
-                                    >
-                                        Done
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* Logout Confirmation Modal */}
             <AnimatePresence>
-                {showLogoutConfirm && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setShowLogoutConfirm(false)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
-                                    <LogOut className="w-8 h-8 text-red-500 translate-x-0.5" />
+                {
+                    showLogoutConfirm && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                onClick={() => setShowLogoutConfirm(false)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center gap-4">
+                                    <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
+                                        <LogOut className="w-8 h-8 text-red-500 translate-x-0.5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">Sign Out</h3>
+                                        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                            Are you sure you want to end your session? You'll need to sign in again.
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                        <Button
+                                            variant="outline"
+                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            onClick={() => setShowLogoutConfirm(false)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                            onClick={performLogout}
+                                        >
+                                            Yes, Sign Out
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">Sign Out</h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to end your session? You'll need to sign in again.
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
-                                        onClick={() => setShowLogoutConfirm(false)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
-                                        onClick={performLogout}
-                                    >
-                                        Yes, Sign Out
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* Delete Store Confirmation Modal */}
             <AnimatePresence>
-                {storeToDelete && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setStoreToDelete(null)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
-                                    <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
+                {
+                    storeToDelete && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                onClick={() => setStoreToDelete(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center gap-4">
+                                    <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
+                                        <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">Delete Store?</h3>
+                                        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                            Are you sure you want to permanently delete <span className="font-semibold text-slate-900">"{storeToDelete.name}"</span>?
+                                            <br />
+                                            <span className="text-xs text-red-500 mt-1 block">This action cannot be undone.</span>
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                        <Button
+                                            variant="outline"
+                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            onClick={() => setStoreToDelete(null)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                            onClick={performDeleteStore}
+                                        >
+                                            Yes, Delete
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">Delete Store?</h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to permanently delete <span className="font-semibold text-slate-900">"{storeToDelete.name}"</span>?
-                                        <br />
-                                        <span className="text-xs text-red-500 mt-1 block">This action cannot be undone.</span>
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
-                                        onClick={() => setStoreToDelete(null)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
-                                        onClick={performDeleteStore}
-                                    >
-                                        Yes, Delete
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* Suspend/Activate Store Confirmation Modal */}
             <AnimatePresence>
-                {storeToToggle && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setStoreToToggle(null)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${storeToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
-                                    {storeToToggle.isActive ? (
-                                        <Lock className="w-8 h-8 text-amber-500" />
-                                    ) : (
-                                        <Activity className="w-8 h-8 text-emerald-500" />
-                                    )}
+                {
+                    storeToToggle && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                onClick={() => setStoreToToggle(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center gap-4">
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${storeToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
+                                        {storeToToggle.isActive ? (
+                                            <Lock className="w-8 h-8 text-amber-500" />
+                                        ) : (
+                                            <Activity className="w-8 h-8 text-emerald-500" />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">
+                                            {storeToToggle.isActive ? "Suspend Store?" : "Activate Store?"}
+                                        </h3>
+                                        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                            Are you sure you want to {storeToToggle.isActive ? "suspend" : "activate"} access for <span className="font-semibold text-slate-900">"{storeToToggle.name}"</span>?
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                        <Button
+                                            variant="outline"
+                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            onClick={() => setStoreToToggle(null)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${storeToToggle.isActive
+                                                ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
+                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
+                                                }`}
+                                            onClick={performToggleStore}
+                                        >
+                                            Confirm
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">
-                                        {storeToToggle.isActive ? "Suspend Store?" : "Activate Store?"}
-                                    </h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to {storeToToggle.isActive ? "suspend" : "activate"} access for <span className="font-semibold text-slate-900">"{storeToToggle.name}"</span>?
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
-                                        onClick={() => setStoreToToggle(null)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${storeToToggle.isActive
-                                            ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
-                                            : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
-                                            }`}
-                                        onClick={performToggleStore}
-                                    >
-                                        Confirm
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* Delete Supplier Confirmation Modal */}
             <AnimatePresence>
-                {supplierToDelete && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setSupplierToDelete(null)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
-                                    <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
+                {
+                    supplierToDelete && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                onClick={() => setSupplierToDelete(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center gap-4">
+                                    <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
+                                        <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">Delete Supplier?</h3>
+                                        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                            Are you sure you want to permanently delete <span className="font-semibold text-slate-900">"{supplierToDelete.name}"</span>?
+                                            <br />
+                                            <span className="text-xs text-red-500 mt-1 block">This action cannot be undone.</span>
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                        <Button
+                                            variant="outline"
+                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            onClick={() => setSupplierToDelete(null)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                            onClick={performDeleteSupplier}
+                                        >
+                                            Yes, Delete
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">Delete Supplier?</h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to permanently delete <span className="font-semibold text-slate-900">"{supplierToDelete.name}"</span>?
-                                        <br />
-                                        <span className="text-xs text-red-500 mt-1 block">This action cannot be undone.</span>
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
-                                        onClick={() => setSupplierToDelete(null)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
-                                        onClick={performDeleteSupplier}
-                                    >
-                                        Yes, Delete
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* Suspend/Activate Supplier Confirmation Modal */}
             <AnimatePresence>
-                {supplierToToggle && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setSupplierToToggle(null)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${supplierToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
-                                    {supplierToToggle.isActive ? (
-                                        <Lock className="w-8 h-8 text-amber-500" />
-                                    ) : (
-                                        <Activity className="w-8 h-8 text-emerald-500" />
-                                    )}
+                {
+                    supplierToToggle && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                onClick={() => setSupplierToToggle(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center gap-4">
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${supplierToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
+                                        {supplierToToggle.isActive ? (
+                                            <Lock className="w-8 h-8 text-amber-500" />
+                                        ) : (
+                                            <Activity className="w-8 h-8 text-emerald-500" />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">
+                                            {supplierToToggle.isActive ? "Suspend Supplier?" : "Activate Supplier?"}
+                                        </h3>
+                                        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                            Are you sure you want to {supplierToToggle.isActive ? "suspend" : "activate"} access for <span className="font-semibold text-slate-900">"{supplierToToggle.name}"</span>?
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                        <Button
+                                            variant="outline"
+                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            onClick={() => setSupplierToToggle(null)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${supplierToToggle.isActive
+                                                ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
+                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
+                                                }`}
+                                            onClick={performToggleSupplier}
+                                        >
+                                            Confirm
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">
-                                        {supplierToToggle.isActive ? "Suspend Supplier?" : "Activate Supplier?"}
-                                    </h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to {supplierToToggle.isActive ? "suspend" : "activate"} access for <span className="font-semibold text-slate-900">"{supplierToToggle.name}"</span>?
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
-                                        onClick={() => setSupplierToToggle(null)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${supplierToToggle.isActive
-                                            ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
-                                            : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
-                                            }`}
-                                        onClick={performToggleSupplier}
-                                    >
-                                        Confirm
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* Delete User Confirmation Modal */}
             <AnimatePresence>
-                {userToDelete && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setUserToDelete(null)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
-                                    <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
+                {
+                    userToDelete && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                onClick={() => setUserToDelete(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center gap-4">
+                                    <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
+                                        <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">Delete User?</h3>
+                                        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                            Are you sure you want to permanently delete <span className="font-semibold text-slate-900">"{userToDelete.name}"</span>?
+                                            <br />
+                                            <span className="text-xs text-red-500 mt-1 block">This action cannot be undone.</span>
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                        <Button
+                                            variant="outline"
+                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            onClick={() => setUserToDelete(null)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                            onClick={performDeleteUser}
+                                        >
+                                            Yes, Delete
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">Delete User?</h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to permanently delete <span className="font-semibold text-slate-900">"{userToDelete.name}"</span>?
-                                        <br />
-                                        <span className="text-xs text-red-500 mt-1 block">This action cannot be undone.</span>
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
-                                        onClick={() => setUserToDelete(null)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
-                                        onClick={performDeleteUser}
-                                    >
-                                        Yes, Delete
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* Convert User to Supplier Confirmation Modal */}
             <AnimatePresence>
-                {userToConvert && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setUserToConvert(null)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-2">
-                                    <ArrowRightLeft className="w-8 h-8 text-indigo-500" />
+                {
+                    userToConvert && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                onClick={() => setUserToConvert(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center gap-4">
+                                    <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-2">
+                                        <ArrowRightLeft className="w-8 h-8 text-indigo-500" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">Convert to Supplier?</h3>
+                                        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                            Are you sure you want to upgrade <span className="font-semibold text-slate-900">"{userToConvert.name}"</span> to a Supplier account?
+                                            <br />
+                                            <span className="text-xs text-indigo-500 mt-1 block">They will gain access to supplier features.</span>
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                        <Button
+                                            variant="outline"
+                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            onClick={() => setUserToConvert(null)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className="h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-lg shadow-indigo-500/20 font-semibold"
+                                            onClick={performConvertUser}
+                                        >
+                                            Confirm
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">Convert to Supplier?</h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to upgrade <span className="font-semibold text-slate-900">"{userToConvert.name}"</span> to a Supplier account?
-                                        <br />
-                                        <span className="text-xs text-indigo-500 mt-1 block">They will gain access to supplier features.</span>
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
-                                        onClick={() => setUserToConvert(null)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className="h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-lg shadow-indigo-500/20 font-semibold"
-                                        onClick={performConvertUser}
-                                    >
-                                        Confirm
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
             {/* Suspend/Activate User Confirmation Modal */}
             <AnimatePresence>
-                {userToToggle && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setUserToToggle(null)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${userToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
-                                    {userToToggle.isActive ? (
-                                        <Lock className="w-8 h-8 text-amber-500" />
-                                    ) : (
-                                        <Activity className="w-8 h-8 text-emerald-500" />
-                                    )}
+                {
+                    userToToggle && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                                onClick={() => setUserToToggle(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center gap-4">
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${userToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
+                                        {userToToggle.isActive ? (
+                                            <Lock className="w-8 h-8 text-amber-500" />
+                                        ) : (
+                                            <Activity className="w-8 h-8 text-emerald-500" />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">
+                                            {userToToggle.isActive ? "Suspend User?" : "Activate User?"}
+                                        </h3>
+                                        <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                            Are you sure you want to {userToToggle.isActive ? "suspend" : "activate"} access for <span className="font-semibold text-slate-900">"{userToToggle.name}"</span>?
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                        <Button
+                                            variant="outline"
+                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            onClick={() => setUserToToggle(null)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${userToToggle.isActive
+                                                ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
+                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
+                                                }`}
+                                            onClick={performToggleUser}
+                                        >
+                                            Confirm
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">
-                                        {userToToggle.isActive ? "Suspend User?" : "Activate User?"}
-                                    </h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to {userToToggle.isActive ? "suspend" : "activate"} access for <span className="font-semibold text-slate-900">"{userToToggle.name}"</span>?
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
-                                        onClick={() => setUserToToggle(null)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${userToToggle.isActive
-                                            ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
-                                            : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
-                                            }`}
-                                        onClick={performToggleUser}
-                                    >
-                                        Confirm
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
 
 
             {/* Dock Navigation */}
-            <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center pointer-events-none">
+            < div className="fixed left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col justify-center pointer-events-none" >
                 <div className="pointer-events-auto">
-                    <Dock className="bg-white/80 backdrop-blur-xl border border-slate-200/50 shadow-2xl rounded-2xl dark:bg-white/80 dark:border-slate-200/50">
+                    <Dock direction="vertical" panelHeight={60} magnification={70} className="bg-white/80 backdrop-blur-xl shadow-2xl rounded-2xl dark:bg-white/80">
                         {NAV_ITEMS.map((item) => (
                             <DockItem key={item.tab} onClick={() => setActiveTab(item.tab as any)}>
                                 <DockLabel>{item.label}</DockLabel>
@@ -1938,7 +2038,7 @@ const SuperAdminDashboard: React.FC = () => {
                         ))}
                     </Dock>
                 </div>
-            </div>
+            </div >
         </div >
     );
 };

@@ -76,4 +76,6 @@ export const adminApi = {
 
     sendNotification: (data: { targetRole?: string; targetUserIds?: string[]; type: "SYSTEM" | "EMAIL" | "BOTH"; subject: string; message: string }) =>
         client.post<{ success: boolean; message: string }>("api/v1/admin/notifications/send", data),
+
+    getGraphData: () => client.get<{ success: boolean; data: any }>("api/v1/admin/graph"),
 };
