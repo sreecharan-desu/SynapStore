@@ -2,21 +2,25 @@
 import React, { useEffect, useState } from "react";
 import { useRecoilValue, useSetRecoilState } from "recoil";
 import { authState, clearAuthState } from "../state/auth";
-import { motion, AnimatePresence, animate } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
     Users, Store as StoreIcon, Activity, Search,
     Package, Truck, LogOut, Trash2,
-    PieChart, AlertTriangle, Wallet,
-    BarChart3, Bell, Lock, UserPlus, Settings, X, ArrowRightLeft,
+    PieChart as PieChartIcon, AlertTriangle,
+    Bell, Lock, X, ArrowRightLeft, Clock,
     Send, Mail, MessageSquare, CheckCircle2, RefreshCw
 } from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { adminApi } from "../lib/api/endpoints";
-import type { User, Store, Supplier, AdminStats } from "../lib/types";
+import type { User, Store, Supplier } from "../lib/types";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { } from "react-icons/fa";
-import { MdNotificationsActive } from "react-icons/md";
+import { MdNotificationsActive, MdOutlinePendingActions } from "react-icons/md";
+import {
+    AreaChart, Area, PieChart, Pie, Cell,
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
 
 // --- Types ---
 
@@ -27,8 +31,8 @@ interface AnalyticsData {
         suppliers: { total: number };
         medicines: { total: number };
         financials: {
-            totalRevenue: number;
-            inventoryValue: number;
+            totalRevenue: number | string;
+            inventoryValue: number | string;
             totalSalesCount: number;
         };
         operations: {
@@ -39,10 +43,10 @@ interface AnalyticsData {
     };
     trends: {
         users: Array<{ date: string; count: number }>;
-        sales: Array<{ date: string; count: number; revenue: number }>;
+        sales: Array<{ date: string; count: number; revenue: number | string }>;
     };
     distributions: {
-        paymentMethods: Array<{ method: string; count: number; revenue: number }>;
+        paymentMethods: Array<{ method: string; count: number; revenue: number | string }>;
         userRoles: Array<{ role: string; count: number }>;
     };
     recentCriticalActivity: Array<{
@@ -54,104 +58,17 @@ interface AnalyticsData {
     }>;
 }
 
+const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+// const RADIAN = Math.PI / 180; 
+// Removed unused label renderer to keep UI clean
+
 // --- Components ---
 
-const Counter = ({ value }: { value: number }) => {
-    const nodeRef = React.useRef<HTMLSpanElement>(null);
 
-    useEffect(() => {
-        const node = nodeRef.current;
-        if (!node) return;
 
-        const controls = animate(0, value, {
-            duration: 2,
-            ease: "easeOut",
-            onUpdate(val) {
-                node.textContent = Math.round(val).toLocaleString();
-            },
-        });
 
-        return () => controls.stop();
-    }, [value]);
 
-    return <span ref={nodeRef} />;
-};
 
-const StatCard = ({ icon: Icon, label, value, color, delay }: any) => (
-    <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay, type: "spring", stiffness: 300, damping: 30 }}
-        whileHover={{ y: -5, boxShadow: "0 20px 40px -15px rgba(0,0,0,0.1)" }}
-        className="relative overflow-hidden bg-white/70 backdrop-blur-2xl border border-white/60 rounded-[2rem] p-6 shadow-sm group cursor-default"
-    >
-        {/* Background gradient blob */}
-        <div className={`absolute -right-6 -top-6 w-32 h-32 bg-gradient-to-br ${color} opacity-[0.05] blur-2xl rounded-full group-hover:opacity-[0.1] transition-opacity duration-500`} />
-
-        <div className="flex items-center justify-between relative z-10">
-            <div className={`p-4 bg-gradient-to-br ${color} rounded-2xl shadow-lg transform group-hover:scale-110 transition-transform duration-300 ease-out`}>
-                <Icon className="w-6 h-6 text-white" />
-            </div>
-            <div className="text-right">
-                <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: delay + 0.2 }}
-                >
-                    <h3 className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
-                        {typeof value === 'number' ? <Counter value={value} /> : value}
-                    </h3>
-                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-1.5">{label}</p>
-                </motion.div>
-            </div>
-        </div>
-
-        {/* Bottom shine line */}
-        <div className={`absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r ${color} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-    </motion.div>
-);
-
-const getActivityIcon = (action: string) => {
-    const act = action.toUpperCase();
-    if (act.includes("LOGIN")) return { icon: Lock, color: "text-emerald-500", bg: "bg-emerald-50" };
-    if (act.includes("REGISTER") || act.includes("USER")) return { icon: UserPlus, color: "text-blue-500", bg: "bg-blue-50" };
-    if (act.includes("STORE")) return { icon: StoreIcon, color: "text-purple-500", bg: "bg-purple-50" };
-    if (act.includes("DELETE")) return { icon: Trash2, color: "text-red-500", bg: "bg-red-50" };
-    if (act.includes("UPDATE")) return { icon: Settings, color: "text-orange-500", bg: "bg-orange-50" };
-    return { icon: Activity, color: "text-slate-500", bg: "bg-slate-50" };
-};
-
-const ActivityItem = ({ activity, index }: { activity: any; index: number }) => {
-    const { icon: Icon, color, bg } = getActivityIcon(activity.action);
-    return (
-        <motion.div
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.05 + 0.3 }}
-            className="flex items-start gap-4 p-4 hover:bg-slate-50/80 rounded-xl transition-all border-b border-slate-100 last:border-0 group cursor-default"
-        >
-            <div className={`w-10 h-10 rounded-full ${bg} flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-sm`}>
-                <Icon className={`w-5 h-5 ${color}`} />
-            </div>
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-800 truncate group-hover:text-black transition-colors">
-                    {activity.action}
-                </p>
-                <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-                    {activity.user && (
-                        <span className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-medium">
-                            {activity.user.username}
-                        </span>
-                    )}
-                    {activity.resource && <span className="truncate text-slate-400">on {activity.resource}</span>}
-                </div>
-            </div>
-            <div className="text-xs font-mono text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-1 rounded">
-                {new Date(activity.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </div>
-        </motion.div>
-    );
-};
 
 const StatusBadge = ({ isActive }: { isActive: boolean }) => (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isActive
@@ -161,22 +78,6 @@ const StatusBadge = ({ isActive }: { isActive: boolean }) => (
         {isActive ? "Active" : "Suspended"}
     </span>
 );
-
-const SimpleBarChart = ({ data, color, height = 40 }: { data: number[], color: string, height?: number }) => {
-    const max = Math.max(...data, 1);
-    return (
-        <div className="flex items-end gap-1 h-full w-full" style={{ height }}>
-            {data.map((val, i) => (
-                <div
-                    key={i}
-                    className={`flex-1 rounded-t-sm ${color} opacity-80 hover:opacity-100 transition-opacity`}
-                    style={{ height: `${(val / max) * 100}%` }}
-                    title={val.toString()}
-                />
-            ))}
-        </div>
-    );
-};
 
 const TableSkeleton = () => (
     <>
@@ -246,15 +147,14 @@ const SuperAdminDashboard: React.FC = () => {
     const navigate = useNavigate();
 
     const NAV_ITEMS = [
-        { label: 'Overview', icon: BarChart3, tab: 'overview' },
-        { label: 'Analytics', icon: PieChart, tab: 'analytics' },
+        { label: 'Analytics', icon: PieChartIcon, tab: 'analytics' },
         { label: 'Stores', icon: StoreIcon, tab: 'stores' },
         { label: 'Suppliers', icon: Truck, tab: 'suppliers' },
         { label: 'Users', icon: Users, tab: 'users' },
         { label: 'Notifications', icon: Bell, tab: 'notifications' },
     ];
 
-    const [activeTab, setActiveTab] = useState<"overview" | "analytics" | "stores" | "suppliers" | "users" | "notifications">("overview");
+    const [activeTab, setActiveTab] = useState<"analytics" | "stores" | "suppliers" | "users" | "notifications">("analytics");
 
     // Notification State
     const [notifyForm, setNotifyForm] = useState({
@@ -266,9 +166,9 @@ const SuperAdminDashboard: React.FC = () => {
     const [sending, setSending] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+    const [showPendingActions, setShowPendingActions] = useState(false);
 
     // Data State
-    const [stats, setStats] = useState<AdminStats | null>(null);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [stores, setStores] = useState<Store[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -304,10 +204,7 @@ const SuperAdminDashboard: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            if (activeTab === "overview") {
-                const res = await adminApi.getStats();
-                if (res.data.success) setStats(res.data.data);
-            } else if (activeTab === "analytics") {
+            if (activeTab === "analytics") {
                 const res = await adminApi.getDashboardAnalytics();
                 if (res.data.success) setAnalytics(res.data.data);
             } else if (activeTab === "stores") {
@@ -483,6 +380,18 @@ const SuperAdminDashboard: React.FC = () => {
         }
     };
 
+    const togglePendingActions = async () => {
+        if (!showPendingActions && !analytics) {
+            try {
+                const res = await adminApi.getDashboardAnalytics();
+                if (res.data.success) setAnalytics(res.data.data);
+            } catch (err) {
+                console.error("Failed to fetch analytics for quick view", err);
+            }
+        }
+        setShowPendingActions(!showPendingActions);
+    };
+
     return (
         <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900">
             {/* Header */}
@@ -535,6 +444,88 @@ const SuperAdminDashboard: React.FC = () => {
                             </motion.div>
 
                             <motion.div
+                                initial={{ y: -10, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.45 }}
+                                className="relative"
+                            >
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`relative w-10 h-10 rounded-full transition-all ${showPendingActions ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                    onClick={togglePendingActions}
+                                    title="Pending Actions"
+                                >
+                                    <MdOutlinePendingActions className="w-5 h-5" />
+                                    {analytics && (analytics.overview.operations.pendingSupplierRequests + analytics.overview.operations.failedUploads + analytics.overview.operations.expiringBatchesNext30Days) > 0 && (
+                                        <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-[#F8FAFC]"></span>
+                                    )}
+                                </Button>
+
+                                <AnimatePresence>
+                                    {showPendingActions && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            transition={{ duration: 0.2 }}
+                                            className="absolute right-0 top-12 w-80 bg-white/70 backdrop-blur-xl border border-white/60 shadow-2xl rounded-2xl p-4 z-50 overflow-hidden"
+                                        >
+                                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 to-purple-50/50 -z-10" />
+                                            <h3 className="text-sm font-bold text-slate-800 mb-3 px-1">Pending Actions</h3>
+
+                                            <div className="space-y-2">
+                                                <div
+                                                    onClick={() => { setActiveTab("suppliers"); setShowPendingActions(false); }}
+                                                    className="flex items-center justify-between p-3 bg-white/50 hover:bg-white rounded-xl border border-slate-100 cursor-pointer transition-all group"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-amber-100 text-amber-600 rounded-lg group-hover:scale-110 transition-transform">
+                                                            <Truck className="w-4 h-4" />
+                                                        </div>
+                                                        <span className="text-sm text-slate-600 font-medium group-hover:text-slate-900">Supplier Requests</span>
+                                                    </div>
+                                                    <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                                                        {analytics?.overview.operations.pendingSupplierRequests || 0}
+                                                    </span>
+                                                </div>
+
+                                                <div
+                                                    onClick={() => { setActiveTab("stores"); setShowPendingActions(false); }}
+                                                    className="flex items-center justify-between p-3 bg-white/50 hover:bg-white rounded-xl border border-slate-100 cursor-pointer transition-all group"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-red-100 text-red-600 rounded-lg group-hover:scale-110 transition-transform">
+                                                            <AlertTriangle className="w-4 h-4" />
+                                                        </div>
+                                                        <span className="text-sm text-slate-600 font-medium group-hover:text-slate-900">Failed Uploads</span>
+                                                    </div>
+                                                    <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                                                        {analytics?.overview.operations.failedUploads || 0}
+                                                    </span>
+                                                </div>
+
+                                                <div
+                                                    onClick={() => { setActiveTab("stores"); setShowPendingActions(false); }}
+                                                    className="flex items-center justify-between p-3 bg-white/50 hover:bg-white rounded-xl border border-slate-100 cursor-pointer transition-all group"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-orange-100 text-orange-600 rounded-lg group-hover:scale-110 transition-transform">
+                                                            <Clock className="w-4 h-4" />
+                                                        </div>
+                                                        <span className="text-sm text-slate-600 font-medium group-hover:text-slate-900">Expiring Batches</span>
+                                                    </div>
+                                                    <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                                                        {analytics?.overview.operations.expiringBatchesNext30Days || 0}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </motion.div>
+
+                            <motion.div
                                 initial={{ height: 0, opacity: 0 }}
                                 animate={{ height: 32, opacity: 1 }}
                                 transition={{ delay: 0.5 }}
@@ -581,99 +572,6 @@ const SuperAdminDashboard: React.FC = () => {
             {/* Main Content Area */}
             <main className="max-w-7xl mx-auto px-6 py-8 pb-32">
                 <AnimatePresence mode="wait">
-                    {activeTab === "overview" && (
-                        <motion.div
-                            key="overview"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2 }}
-                        >
-                            {/* Stats Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                                <StatCard
-                                    icon={StoreIcon}
-                                    label="Total Stores"
-                                    value={loading ? "..." : stats?.counts.stores ?? 0}
-                                    color="from-blue-500 to-cyan-500"
-                                    delay={0}
-                                />
-                                <StatCard
-                                    icon={Users}
-                                    label="Total Users"
-                                    value={loading ? "..." : stats?.counts.users ?? 0}
-                                    color="from-emerald-500 to-teal-500"
-                                    delay={0.1}
-                                />
-                                <StatCard
-                                    icon={Truck}
-                                    label="Active Batches"
-                                    value={loading ? "..." : stats?.counts.batches ?? 0}
-                                    color="from-orange-500 to-amber-500"
-                                    delay={0.2}
-                                />
-                                <StatCard
-                                    icon={Package}
-                                    label="Items Listed"
-                                    value={loading ? "..." : stats?.counts.medicines ?? 0}
-                                    color="from-purple-500 to-pink-500"
-                                    delay={0.3}
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                {/* Recent Activity */}
-                                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                                    <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                            <Activity className="w-5 h-5 text-indigo-500" />
-                                            Recent System Activity
-                                        </h3>
-                                    </div>
-                                    <div className="max-h-[400px] overflow-y-auto">
-                                        {loading ? (
-                                            <div className="p-8 text-center text-slate-400">Loading activity...</div>
-                                        ) : stats?.recentActivity.length === 0 ? (
-                                            <div className="p-8 text-center text-slate-400">No recent activity</div>
-                                        ) : (
-                                            stats?.recentActivity.map((act, idx) => (
-                                                <ActivityItem key={act.id} activity={act} index={idx} />
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Quick Actions Panel */}
-                                <div className="space-y-6">
-                                    <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200">
-                                        <h3 className="text-lg font-bold mb-2">System Health</h3>
-                                        <p className="text-indigo-100 text-sm mb-6">
-                                            All systems are operational. Database latency is normal.
-                                        </p>
-                                        <div className="flex items-center gap-2 text-xs font-mono bg-white/10 p-3 rounded-lg">
-                                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                                            STATUS: OPTIMAL
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                                        <h3 className="font-bold text-slate-800 mb-4">Quick Navigation</h3>
-                                        <div className="space-y-3">
-                                            <Button variant="outline" className="w-full justify-start gap-2" onClick={() => setActiveTab("stores")}>
-                                                <StoreIcon className="w-4 h-4 text-slate-500" />
-                                                Manage Stores
-                                            </Button>
-                                            <Button variant="outline" className="w-full justify-start gap-2" onClick={() => setActiveTab("suppliers")}>
-                                                <Truck className="w-4 h-4 text-slate-500" />
-                                                Manage Suppliers
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </motion.div>
-                    )}
-
                     {activeTab === "analytics" && (
                         (loading && !analytics) ? <AnalyticsSkeleton /> : analytics && (
                             <motion.div
@@ -682,117 +580,274 @@ const SuperAdminDashboard: React.FC = () => {
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -10 }}
                                 transition={{ duration: 0.2 }}
-                                className="space-y-6"
+                                className="space-y-8"
                             >
-                                {/* Top Level Financials */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-6 text-white shadow-xl shadow-indigo-200">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div>
-                                                <p className="text-indigo-200 text-sm font-medium mb-1">Total Revenue</p>
-                                                <h3 className="text-3xl font-bold">${analytics.overview.financials.totalRevenue.toLocaleString()}</h3>
-                                            </div>
-                                            <div className="p-2 bg-white/20 rounded-lg">
-                                                <Wallet className="w-6 h-6 text-white" />
-                                            </div>
+                                {/* 1. Ecosystem Overview Cards */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                    <motion.div
+                                        whileHover={{ y: -5 }}
+                                        className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group"
+                                    >
+                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                            <Users className="w-16 h-16 text-indigo-600" />
                                         </div>
-                                        <p className="text-xs text-indigo-200">Across {analytics.overview.financials.totalSalesCount} sales</p>
-                                    </div>
-                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div>
-                                                <p className="text-slate-500 text-sm font-medium mb-1">Inventory Value</p>
-                                                <h3 className="text-3xl font-bold text-slate-800">${analytics.overview.financials.inventoryValue.toLocaleString()}</h3>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                                                <Users className="w-5 h-5" />
                                             </div>
-                                            <div className="p-2 bg-emerald-100 rounded-lg">
-                                                <Package className="w-6 h-6 text-emerald-600" />
-                                            </div>
+                                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Total Users</span>
                                         </div>
-                                        <p className="text-xs text-slate-400">Estimated value</p>
-                                    </div>
-                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div>
-                                                <p className="text-slate-500 text-sm font-medium mb-1">Expiring Batches (30d)</p>
-                                                <h3 className="text-3xl font-bold text-slate-800">{analytics.overview.operations.expiringBatchesNext30Days}</h3>
-                                            </div>
-                                            <div className="p-2 bg-orange-100 rounded-lg">
-                                                <AlertTriangle className="w-6 h-6 text-orange-600" />
-                                            </div>
+                                        <div className="text-3xl font-extrabold text-slate-900 mb-1">{analytics.overview.users.total}</div>
+                                        <div className="text-xs font-medium text-emerald-600 bg-emerald-50 inline-block px-2 py-0.5 rounded-full">
+                                            {analytics.overview.users.verified} Verified
                                         </div>
-                                        <p className="text-xs text-slate-400">Requiring attention</p>
-                                    </div>
+                                    </motion.div>
+
+                                    <motion.div
+                                        whileHover={{ y: -5 }}
+                                        className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group"
+                                    >
+                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                            <StoreIcon className="w-16 h-16 text-blue-600" />
+                                        </div>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                                                <StoreIcon className="w-5 h-5" />
+                                            </div>
+                                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Stores</span>
+                                        </div>
+                                        <div className="text-3xl font-extrabold text-slate-900 mb-1">{analytics.overview.stores.total}</div>
+                                        <div className="flex gap-2 text-xs">
+                                            <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{analytics.overview.stores.active} Active</span>
+                                            <span className="text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{analytics.overview.stores.inactive} Inactive</span>
+                                        </div>
+                                    </motion.div>
+
+                                    <motion.div
+                                        whileHover={{ y: -5 }}
+                                        className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group"
+                                    >
+                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                            <Truck className="w-16 h-16 text-orange-600" />
+                                        </div>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="p-2 bg-orange-50 rounded-lg text-orange-600">
+                                                <Truck className="w-5 h-5" />
+                                            </div>
+                                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Suppliers</span>
+                                        </div>
+                                        <div className="text-3xl font-extrabold text-slate-900 mb-1">{analytics.overview.suppliers.total}</div>
+                                        <div className="text-xs text-slate-400">Registered partners</div>
+                                    </motion.div>
+
+                                    <motion.div
+                                        whileHover={{ y: -5 }}
+                                        className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group"
+                                    >
+                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                            <Package className="w-16 h-16 text-purple-600" />
+                                        </div>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="p-2 bg-purple-50 rounded-lg text-purple-600">
+                                                <Package className="w-5 h-5" />
+                                            </div>
+                                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Medicines</span>
+                                        </div>
+                                        <div className="text-3xl font-extrabold text-slate-900 mb-1">{analytics.overview.medicines.total}</div>
+                                        <div className="text-xs text-slate-400">Total catalog items</div>
+                                    </motion.div>
                                 </div>
 
+                                {/* 2. Financials & Operational High-Level */}
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    <div className="lg:col-span-3 bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl">
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                                        <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -ml-16 -mb-16"></div>
+
+                                        <div className="relative z-10 flex flex-col md:flex-row justify-between gap-8">
+                                            <div>
+                                                <p className="text-slate-400 text-sm font-medium uppercase tracking-widest mb-2">Total Revenue Generated</p>
+                                                <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white mb-4">
+                                                    ${Number(analytics.overview.financials.totalRevenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </h2>
+                                                <div className="flex items-center gap-4">
+                                                    <div className="px-3 py-1 bg-white/10 rounded-lg backdrop-blur-sm border border-white/10">
+                                                        <span className="text-xs text-slate-300">Sales Count:</span>
+                                                        <span className="ml-2 font-bold">{analytics.overview.financials.totalSalesCount}</span>
+                                                    </div>
+                                                    <div className="px-3 py-1 bg-white/10 rounded-lg backdrop-blur-sm border border-white/10">
+                                                        <span className="text-xs text-slate-300">Avg. Order:</span>
+                                                        <span className="ml-2 font-bold">
+                                                            ${(Number(analytics.overview.financials.totalRevenue) / Math.max(1, analytics.overview.financials.totalSalesCount)).toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col gap-4 min-w-[200px]">
+                                                <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
+                                                    <div className="flex items-center gap-2 mb-1 text-emerald-400">
+                                                        <Package className="w-4 h-4" />
+                                                        <span className="text-xs font-bold uppercase">Inventory Value</span>
+                                                    </div>
+                                                    <div className="text-xl font-bold">
+                                                        ${Number(analytics.overview.financials.inventoryValue).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    </div>
+                                                </div>
+                                                <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
+                                                    <div className="flex items-center gap-2 mb-1 text-orange-400">
+                                                        <AlertTriangle className="w-4 h-4" />
+                                                        <span className="text-xs font-bold uppercase">Expiring (30d)</span>
+                                                    </div>
+                                                    <div className="text-xl font-bold">
+                                                        {analytics.overview.operations.expiringBatchesNext30Days} <span className="text-sm font-normal text-slate-400">batches</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                </div>
+
+                                {/* 3. Trends Section */}
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    {/* Distributions */}
-                                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                                        <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                            <PieChart className="w-5 h-5 text-indigo-500" />
-                                            User Distribution
-                                        </h3>
-                                        <div className="space-y-4">
-                                            {analytics.distributions.userRoles.map((role) => (
-                                                <div key={role.role}>
-                                                    <div className="flex justify-between text-sm mb-1">
-                                                        <span className="font-medium text-slate-700">{role.role}</span>
-                                                        <span className="text-slate-500">{role.count} users</span>
-                                                    </div>
-                                                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-indigo-500 rounded-full"
-                                                            style={{ width: `${(role.count / analytics.overview.users.total) * 100}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            ))}
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                                        <div className="flex items-center justify-between mb-6">
+                                            <div>
+                                                <h3 className="font-bold text-slate-800 text-lg">Sales Trend</h3>
+                                                <p className="text-sm text-slate-500">Revenue & Order count over date</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                {/* Custom Legend/Toggle could go here */}
+                                            </div>
                                         </div>
-                                    </div>
-
-                                    {/* Operational Health */}
-                                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                                        <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                            <Activity className="w-5 h-5 text-indigo-500" />
-                                            Operational Health
-                                        </h3>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="p-4 rounded-xl bg-orange-50 border border-orange-100">
-                                                <p className="text-orange-600 text-sm font-medium">Pending Requests</p>
-                                                <p className="text-2xl font-bold text-orange-800">{analytics.overview.operations.pendingSupplierRequests}</p>
-                                            </div>
-                                            <div className="p-4 rounded-xl bg-red-50 border border-red-100">
-                                                <p className="text-red-600 text-sm font-medium">Failed Uploads</p>
-                                                <p className="text-2xl font-bold text-red-800">{analytics.overview.operations.failedUploads}</p>
-                                            </div>
-                                            <div className="col-span-2 p-4 rounded-xl bg-slate-50 border border-slate-100">
-                                                <div className="flex justify-between items-end mb-2">
-                                                    <p className="text-slate-600 text-sm font-medium">Sales Trend (Last 30 Days)</p>
-                                                    <p className="text-xs text-slate-400">Daily Revenue</p>
-                                                </div>
-                                                <SimpleBarChart
-                                                    data={analytics.trends.sales.map(s => s.revenue)}
-                                                    color="bg-emerald-500"
-                                                    height={60}
-                                                />
-                                            </div>
+                                        <div className="h-[300px] w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <AreaChart
+                                                    data={analytics.trends.sales.map(s => ({ ...s, revenue: Number(s.revenue) }))}
+                                                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                                                >
+                                                    <defs>
+                                                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.1} />
+                                                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                                    <XAxis
+                                                        dataKey="date"
+                                                        stroke="#94A3B8"
+                                                        fontSize={12}
+                                                        tickLine={false}
+                                                        axisLine={false}
+                                                        tickFormatter={(str) => {
+                                                            const d = new Date(str);
+                                                            return `${d.getMonth() + 1}/${d.getDate()}`;
+                                                        }}
+                                                    />
+                                                    <YAxis
+                                                        yAxisId="left"
+                                                        stroke="#94A3B8"
+                                                        fontSize={12}
+                                                        tickLine={false}
+                                                        axisLine={false}
+                                                        tickFormatter={(value) => `$${value / 1000}k`}
+                                                    />
+                                                    <YAxis yAxisId="right" orientation="right" stroke="#CBD5E1" fontSize={12} tickLine={false} axisLine={false} />
+                                                    <Tooltip
+                                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                        formatter={(value: any, name: string) => {
+                                                            if (name === 'revenue') return [`$${Number(value).toFixed(2)}`, 'Revenue'];
+                                                            return [value, 'Orders'];
+                                                        }}
+                                                        labelStyle={{ fontWeight: 'bold', color: '#1e293b' }}
+                                                    />
+                                                    <Area
+                                                        yAxisId="left"
+                                                        type="monotone"
+                                                        dataKey="revenue"
+                                                        stroke="#8b5cf6"
+                                                        strokeWidth={3}
+                                                        fillOpacity={1}
+                                                        fill="url(#colorRevenue)"
+                                                    />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Critical Activity */}
-                                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                                    <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                        <AlertTriangle className="w-5 h-5 text-red-500" />
-                                        Recent Critical Actions
-                                    </h3>
-                                    <div className="space-y-1">
-                                        {analytics.recentCriticalActivity.length === 0 ? (
-                                            <p className="text-slate-400 text-center py-4">No critical actions recorded recently.</p>
-                                        ) : (
-                                            analytics.recentCriticalActivity.map((act, idx) => (
-                                                <ActivityItem key={act.id} activity={act} index={idx} />
-                                            ))
-                                        )}
+                                {/* 4. Distributions */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col">
+                                        <h3 className="font-bold text-slate-800 mb-2">Payment Methods</h3>
+                                        <p className="text-sm text-slate-500 mb-6">Distribution by transaction count</p>
+
+                                        <div className="h-[250px] relative">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={analytics.distributions.paymentMethods}
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        labelLine={false}
+                                                        outerRadius={80}
+                                                        fill="#8884d8"
+                                                        dataKey="count"
+                                                        nameKey="method"
+                                                    >
+                                                        {analytics.distributions.paymentMethods.map((_, index) => (
+                                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip
+                                                        formatter={(value: any, name: any, props: any) => [
+                                                            `${value} txns ($${Number(props.payload.revenue).toLocaleString()})`,
+                                                            name
+                                                        ]}
+                                                        contentStyle={{ borderRadius: '12px', borderColor: '#e2e8f0' }}
+                                                    />
+                                                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                                        <h3 className="font-bold text-slate-800 mb-2">User Roles</h3>
+                                        <p className="text-sm text-slate-500 mb-6">Distribution of user types</p>
+
+                                        <div className="h-[250px] relative">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={analytics.distributions.userRoles}
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={60}
+                                                        outerRadius={80}
+                                                        fill="#8884d8"
+                                                        paddingAngle={5}
+                                                        dataKey="count"
+                                                        nameKey="role"
+                                                    >
+                                                        {analytics.distributions.userRoles.map((_, index) => (
+                                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length + 2]} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip contentStyle={{ borderRadius: '12px', borderColor: '#e2e8f0' }} />
+                                                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                            {/* Center Text */}
+                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8">
+                                                <div className="text-center">
+                                                    <span className="text-2xl font-bold text-slate-800">{analytics.overview.users.total}</span>
+                                                    <span className="block text-xs text-slate-500">Users</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </motion.div>
