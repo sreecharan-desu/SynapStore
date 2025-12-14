@@ -1,7 +1,7 @@
 // src/pages/SuperAdminDashboard.tsx
 import React, { useEffect, useState } from "react";
 
-import { useRecoilValue, useSetRecoilState } from "recoil";
+import { useSetRecoilState } from "recoil";
 import { authState, clearAuthState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -219,17 +219,16 @@ const getLayoutedElements = (nodes: any[], edges: any[], direction = 'TB') => {
 };
 
 const SuperAdminDashboard: React.FC = () => {
-    const auth = useRecoilValue(authState);
     const setAuth = useSetRecoilState(authState);
     const navigate = useNavigate();
 
     const NAV_ITEMS = [
-        { label: 'Analytics', icon: PieChartIcon, tab: 'analytics' },
-        { label: 'Network', icon: Share2, tab: 'network' },
-        { label: 'Stores', icon: StoreIcon, tab: 'stores' },
-        { label: 'Suppliers', icon: Truck, tab: 'suppliers' },
-        { label: 'Users', icon: Users, tab: 'users' },
-        { label: 'Notifications', icon: Bell, tab: 'notifications' },
+        { label: 'Analytics', icon: PieChartIcon, tab: 'analytics', color: 'text-indigo-500' },
+        { label: 'Network', icon: Share2, tab: 'network', color: 'text-cyan-500' },
+        { label: 'Stores', icon: StoreIcon, tab: 'stores', color: 'text-blue-500' },
+        { label: 'Suppliers', icon: Truck, tab: 'suppliers', color: 'text-emerald-500' },
+        { label: 'Users', icon: Users, tab: 'users', color: 'text-pink-500' },
+        { label: 'Notifications', icon: Bell, tab: 'notifications', color: 'text-amber-500' },
     ];
 
     const [activeTab, setActiveTab] = useState<"analytics" | "stores" | "suppliers" | "users" | "notifications" | "network">("analytics");
@@ -567,30 +566,18 @@ const SuperAdminDashboard: React.FC = () => {
                                 transition={{ delay: 0.6, type: "spring" }}
                                 className="flex items-center gap-3"
                             >
-                                <div className="text-right hidden sm:block">
-                                    <p className="text-sm font-semibold text-slate-800">{auth.user?.username}</p>
-                                    <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{auth.user?.globalRole}</p>
-                                </div>
-                                <motion.div
-                                    whileHover={{ scale: 1.1, rotate: 5 }}
-                                    className="w-9 h-9 bg-slate-900 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md cursor-pointer border-2 border-slate-900"
-                                >
-                                    {auth.user?.username?.charAt(0).toUpperCase()}
-                                </motion.div>
+
                                 <motion.div
                                     whileHover={{ scale: 1.05 }}
                                     whileTap={{ scale: 0.95 }}
                                 >
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
+                                    <i
                                         onClick={handleLogout}
-                                        className="ml-2 !bg-red-600 !text-white hover:!bg-red-700 border !border-red-600 px-6 gap-2 transition-all duration-300 shadow-md shadow-red-500/30"
-                                        title="Logout"
+                                        className="w-10 h-10 flex items-center justify-center rounded-full bg-transparent text-slate-500 border border-slate-200 shadow-sm hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all ml-3"
+                                        title="Sign Out"
                                     >
-                                        <LogOut className="w-4 h-4" />
-                                        <span className="font-semibold">Sign Out</span>
-                                    </Button>
+                                        <LogOut className="w-5 h-5" />
+                                    </i>
                                 </motion.div>
                             </motion.div>
                         </div>
@@ -2031,7 +2018,7 @@ const SuperAdminDashboard: React.FC = () => {
                             <DockItem key={item.tab} onClick={() => setActiveTab(item.tab as any)}>
                                 <DockLabel>{item.label}</DockLabel>
                                 <DockIcon>
-                                    <item.icon className={`w-6 h-6 ${activeTab === item.tab ? 'text-black' : 'text-slate-500'}`} />
+                                    <item.icon className={`w-6 h-6 transition-colors duration-300 ${activeTab === item.tab ? item.color : 'text-slate-400'}`} />
                                 </DockIcon>
                             </DockItem>
                         ))}
