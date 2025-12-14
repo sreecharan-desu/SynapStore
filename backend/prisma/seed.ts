@@ -95,7 +95,7 @@ async function main() {
 
     // --- Medicines ---
     const existingMedsCount = await prisma.medicine.count({ where: { storeId: store.id } });
-    const targetMeds = 50;
+    const targetMeds = 200;
     const medsToCreate = targetMeds - existingMedsCount;
     
     if (medsToCreate > 0) {
@@ -138,7 +138,7 @@ async function main() {
         // Check if batches exist
         const batchCount = await prisma.inventoryBatch.count({ where: { medicineId: med.id } });
         if (batchCount === 0 || Math.random() < 0.3) { // Create if missing OR 30% chance to add more
-             const numBatches = getRandomInt(1, 3);
+             const numBatches = getRandomInt(2, 5);
              for (let j = 0; j < numBatches; j++) {
                   const isExpired = Math.random() < 0.15; // 15% chance
                   const lowStock = Math.random() < 0.2; // 20% chance
@@ -178,15 +178,15 @@ async function main() {
     // --- Historical Sales ---
     // Generate sales if low count
     const salesCount = await prisma.sale.count({ where: { storeId: store.id } });
-    if (salesCount < 50 && storeBatches.length > 0) {
+    if (salesCount < 10000 && storeBatches.length > 0) {
          console.log(`   💰 Generating historical sales...`);
-         const salesToCreate = 150 - salesCount; 
+         const salesToCreate = 10000 - salesCount; 
          const PAYMENT_METHODS: any[] = ["CASH", "CARD", "UPI"];
          
          const salePromises = [];
          
          for(let i=0; i<salesToCreate; i++) {
-            const saleDate = subDays(new Date(), getRandomInt(0, 60)); 
+            const saleDate = subDays(new Date(), getRandomInt(0, 365)); // Increased range to last year
             
             // Build items
             const numItems = getRandomInt(1, 5);
@@ -232,7 +232,7 @@ async function main() {
          }
          
          // Batch execute
-         const chunkSize = 10;
+         const chunkSize = 100;
          for (let i = 0; i < salePromises.length; i += chunkSize) {
             await Promise.all(salePromises.slice(i, i + chunkSize));
          }

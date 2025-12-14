@@ -115,72 +115,72 @@ router.get("/stats", requireRole("SUPERADMIN"), async (_req: any, res) => {
    Admin - POST /v1/admin/users/:userId/impersonate
 */
 
-/**
- * POST /v1/admin/users/:userId/impersonate
- * Description: Generates a JWT token to impersonate a specific user.
- * Headers: 
- *  - Authorization: Bearer <token> (Role: SUPERADMIN)
- * Body: None
- * Responses:
- *  - 200: { success: true, data: { token, user: { ... } } }
- *  - 403: User disabled or other permission error
- *  - 404: User not found
- *  - 500: Internal server error
- */
-router.post(
-  "/users/:userId/impersonate",
-  requireRole("SUPERADMIN"),
-  async (req: any, res) => {
-    try {
-      const targetUserId = String(req.params.userId);
+// /**
+//  * POST /v1/admin/users/:userId/impersonate
+//  * Description: Generates a JWT token to impersonate a specific user.
+//  * Headers: 
+//  *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+//  * Body: None
+//  * Responses:
+//  *  - 200: { success: true, data: { token, user: { ... } } }
+//  *  - 403: User disabled or other permission error
+//  *  - 404: User not found
+//  *  - 500: Internal server error
+//  */
+// router.post(
+//   "/users/:userId/impersonate",
+//   requireRole("SUPERADMIN"),
+//   async (req: any, res) => {
+//     try {
+//       const targetUserId = String(req.params.userId);
 
-      const user = await prisma.user.findUnique({
-        where: { id: targetUserId },
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          globalRole: true,
-          isActive: true,
-        },
-      });
+//       const user = await prisma.user.findUnique({
+//         where: { id: targetUserId },
+//         select: {
+//           id: true,
+//           username: true,
+//           email: true,
+//           globalRole: true,
+//           isActive: true,
+//         },
+//       });
 
-      if (!user) return sendError(res, "User not found", 404);
-      if (!user.isActive) return sendError(res, "User is disabled or suspended", 403, { code: "user_disabled" });
+//       if (!user) return sendError(res, "User not found", 404);
+//       if (!user.isActive) return sendError(res, "User is disabled or suspended", 403, { code: "user_disabled" });
 
-      // sign a token for the user - include an "impersonator" claim for audit
-      const token = signJwt({
-        sub: user.id,
-        email: user.email,
-        impersonatedBy: req.user?.id ?? null,
-      });
+//       // sign a token for the user - include an "impersonator" claim for audit
+//       const token = signJwt({
+//         sub: user.id,
+//         email: user.email,
+//         impersonatedBy: req.user?.id ?? null,
+//       });
 
-      // write audit log
-      await prisma.auditLog.create({
-        data: {
-          actorId: req.user?.id ?? null,
-          actorType: "SUPERADMIN",
-          action: "IMPERSONATE_USER",
-          resource: "User",
-          resourceId: user.id,
-          payload: { impersonatedBy: req.user?.id ?? null },
-        },
-      });
+//       // write audit log
+//       await prisma.auditLog.create({
+//         data: {
+//           actorId: req.user?.id ?? null,
+//           actorType: "SUPERADMIN",
+//           action: "IMPERSONATE_USER",
+//           resource: "User",
+//           resourceId: user.id,
+//           payload: { impersonatedBy: req.user?.id ?? null },
+//         },
+//       });
 
-      return sendSuccess(res, "Impersonation successful", {
-        token,
-        user: decryptUser({
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          globalRole: user.globalRole,
-        }),
-      });
-    } catch (err) {
-      return sendInternalError(res, err, "Failed to impersonate user");
-    }
-  }
-);
+//       return sendSuccess(res, "Impersonation successful", {
+//         token,
+//         user: decryptUser({
+//           id: user.id,
+//           username: user.username,
+//           email: user.email,
+//           globalRole: user.globalRole,
+//         }),
+//       });
+//     } catch (err) {
+//       return sendInternalError(res, err, "Failed to impersonate user");
+//     }
+//   }
+// );
 
 /* -----------------------
    Admin - GET /v1/admin/stores

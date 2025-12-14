@@ -3,10 +3,12 @@ dotenv.config();
 
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import v1Router from "./routes/v1";
 
 const app = express();
 
+app.use(compression());
 app.use(express.json({ limit: "10mb" }));
 
 app.use(

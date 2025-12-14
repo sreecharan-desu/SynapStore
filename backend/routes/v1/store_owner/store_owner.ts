@@ -12,6 +12,7 @@ import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getSt
 import { sendSuccess, sendError, handlePrismaError, sendInternalError, handleZodError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
 import { z } from "zod";
+import PDFDocument from "pdfkit";
 
 type RoleEnum = Role;
 
@@ -177,7 +178,7 @@ dashboardRouter.get(
       const [
         totalMedicines,
         totalBatches,
-        recentSalesCount, // We can get this from aggregate
+        // recentSalesCount removed (duplicate of salesStats._count)
         recentRevenueAgg,
         inventorySums,
         lowStockBatches,
@@ -198,9 +199,7 @@ dashboardRouter.get(
       ] = await Promise.all([
         prisma.medicine.count({ where: { storeId } }),
         prisma.inventoryBatch.count({ where: { storeId } }),
-        prisma.sale.count({
-          where: { storeId, createdAt: { gte: salesWindowStart } },
-        }),
+        // prisma.sale.count removed
         prisma.sale.aggregate({
           where: {
             storeId,
@@ -293,7 +292,7 @@ dashboardRouter.get(
         
         // --- NEW AGGREGATIONS ---
         
-        // AVG Order Value & Total Items (approx)
+        // AVG Order Value & Total Items (approx) & Count (replacing standalone count)
         prisma.sale.aggregate({
             where: { storeId, createdAt: { gte: salesWindowStart } },
             _avg: { totalValue: true },
@@ -371,7 +370,12 @@ dashboardRouter.get(
         `
       ]);
 
+      // Cache for 30s
+      res.setHeader('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
+
       // --- Processing ---
+      
+      const recentSalesCount = salesStats._count ?? 0;
 
       const recentRevenue = Number(recentRevenueAgg._sum?.totalValue ?? 0);
       const inventoryTotals = {
@@ -1403,4 +1407,256 @@ dashboardRouter.get(
     }
 );
 
+
+
+
+
+/**
+ * GET /v1/dashboard/medicines/search
+ * Search medicines by brandName, genericName, or SKU.
+ */
+dashboardRouter.get(
+  "/medicines/search",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const q = req.query.q as string;
+      if (!q || q.length < 1) {
+         return sendSuccess(res, "Search query empty", { medicines: [] });
+      }
+      
+      const medicines = await prisma.medicine.findMany({
+        where: {
+          storeId: req.store.id,
+          isActive: true,
+          OR: [
+            { brandName: { contains: q, mode: 'insensitive' } },
+            { genericName: { contains: q, mode: 'insensitive' } },
+            { sku: { contains: q, mode: 'insensitive' } },
+          ]
+        },
+        include: {
+          inventory: {
+            where: { qtyAvailable: { gt: 0 } },
+            select: { id: true, qtyAvailable: true, batchNumber: true, expiryDate: true }
+          }
+        },
+        take: 50
+      });
+      
+      return sendSuccess(res, "Medicines found", { medicines });
+    } catch (error) {
+       handlePrismaError(res, error);
+    }
+  }
+);
+
+/**
+ * POST /v1/dashboard/sales/checkout
+ * Create a new sale, deduct inventory, generate receipt, and return PDF.
+ */
+dashboardRouter.post(
+  "/sales/checkout",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { items } = req.body; // Expect items: { medicineId, qty }[]
+      
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return sendError(res, "Invalid items", 400);
+      }
+
+      await prisma.$transaction(async (tx) => {
+        let totalValue = 0;
+        let subtotal = 0;
+        const saleItemsCreate = [];
+
+        // 1. Process Items & Inventory
+        for (const item of items) {
+          const medicine = await tx.medicine.findUnique({
+            where: { id: item.medicineId },
+            include: { inventory: { orderBy: { expiryDate: 'asc' } } }
+          });
+
+          if (!medicine) throw new Error(`Medicine ${item.medicineId} not found`);
+
+          // Calculate Price (Assuming price is on Medicine or latest batch? Schema has price on backend/types but lets check schema)
+          // Schema: InventoryBatch has purchasePrice, mrp. Medicine has no price field in schema! 
+          // Wait, types.ts had price? type Medicine has price?: number in frontend types.
+          // Schema verification: Medicine model has NO price. InventoryBatch has mrp.
+          // We should use MRP from batch or a default.
+          // Let's grab the MRP from the first available batch or default to 0.
+          
+          let qtyToDeduct = item.qty;
+          let itemTotal = 0;
+          let currentUnitPrice = 0;
+
+          // FIFO Deduction
+          // We need to track which batches we took from to calculate exact cost/price if needed, 
+          // but for SaleItem usually we pick one unit price (e.g. MRP).
+          // Simplification: Use MRP of the first batch found, or 0.
+          
+          const availableBatches = medicine.inventory.filter(b => b.qtyAvailable > 0);
+          const totalStock = availableBatches.reduce((acc, b) => acc + b.qtyAvailable, 0);
+          
+          if (totalStock < item.qty) {
+             throw new Error(`Insufficient stock for ${medicine.brandName}. Requested: ${item.qty}, Available: ${totalStock}`);
+          }
+
+          // Use MRP of the first batch as the selling price for this line item (approximated)
+          // Ideally we might split lines if prices differ, but let's prevent complexity.
+          const sellingPrice = Number(availableBatches[0]?.mrp) || 0; 
+          currentUnitPrice = sellingPrice;
+
+          for (const batch of availableBatches) {
+            if (qtyToDeduct <= 0) break;
+            
+            const deduct = Math.min(batch.qtyAvailable, qtyToDeduct);
+            
+            // Deduct
+            await tx.inventoryBatch.update({
+              where: { id: batch.id },
+              data: { qtyAvailable: { decrement: deduct } }
+            });
+            
+            // Log Movement (Optional but good)
+            await tx.stockMovement.create({
+              data: {
+                storeId: req.store.id,
+                inventoryId: batch.id,
+                medicineId: medicine.id,
+                delta: -deduct,
+                reason: "SALE",
+                performedById: req.user?.id
+              }
+            });
+
+            qtyToDeduct -= deduct;
+          }
+          
+          itemTotal = sellingPrice * item.qty;
+          subtotal += itemTotal;
+          
+          saleItemsCreate.push({
+            medicineId: medicine.id,
+            qty: item.qty,
+            unitPrice: sellingPrice,
+            lineTotal: itemTotal
+          });
+        }
+
+        totalValue = subtotal; // Apply tax/discount logic if needed later
+
+        // 2. Create Sale
+        const sale = await tx.sale.create({
+          data: {
+            storeId: req.store.id,
+            createdById: req.user?.id,
+            paymentMethod: "CASH",
+            paymentStatus: "PAID",
+            subtotal,
+            totalValue,
+            items: {
+              create: saleItemsCreate
+            }
+          },
+          include: {
+            items: { include: { medicine: true } },
+            createdBy: true,
+            store: true
+          }
+        });
+
+        // 3. Create Receipt Record via Transaction
+        const receiptData = {
+          storeName: req.store.name,
+          date: sale.createdAt,
+          saleId: sale.id,
+          total: sale.totalValue,
+          items: sale.items.map(i => ({ name: i.medicine.brandName, qty: i.qty, price: i.unitPrice, total: i.lineTotal }))
+        };
+        // @ts-ignore
+        await tx.receipt.create({
+          data: {
+            saleId: sale.id,
+            data: receiptData as any,
+             // Generate a simple receipt number if needed, e.g., using timestamp
+            receiptNo: `REC-${Date.now()}`
+          }
+        });
+
+        return sale;
+      }).then(async (sale) => {
+          // 4. Generate & Stream PDF (Outside transaction to keep it fast)
+          // We can't easily stream FROM inside the transaction block if we want to return response.
+          // So we return 'sale' from transaction and do PDF here.
+          
+          const doc = new PDFDocument({ margin: 50 });
+          
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename=receipt-${sale.id}.pdf`);
+          
+          doc.pipe(res);
+          
+          // --- PDF Content ---
+          doc.ref({ include: true }); 
+          
+          // Store Name
+          doc.fontSize(20).text(req.store.name, { align: 'center' });
+          doc.moveDown();
+          
+          doc.fontSize(12).text(`Receipt #${sale.id.slice(0, 8).toUpperCase()}`, { align: 'center' });
+          doc.text(`Date: ${new Date(sale.createdAt).toLocaleString()}`, { align: 'center' });
+          doc.text(`Cashier: ${sale.createdBy?.username || 'Staff'}`, { align: 'center' });
+          doc.moveDown();
+          
+          // Table Header
+          const tableTop = 200;
+          const itemX = 50;
+          const qtyX = 250;
+          const priceX = 350;
+          const totalX = 450;
+          
+          doc.font('Helvetica-Bold');
+          doc.text('Item', itemX, tableTop);
+          doc.text('Qty', qtyX, tableTop);
+          doc.text('Price', priceX, tableTop);
+          doc.text('Total', totalX, tableTop);
+          
+          doc.font('Helvetica');
+          let y = tableTop + 25;
+          
+          sale.items.forEach(item => {
+             doc.text(item.medicine.brandName.substring(0, 30), itemX, y);
+             doc.text(item.qty.toString(), qtyX, y);
+             doc.text(Number(item.unitPrice).toFixed(2), priceX, y);
+             doc.text(Number(item.lineTotal).toFixed(2), totalX, y);
+             y += 20;
+          });
+          
+          // Footer / Totals
+          doc.moveTo(itemX, y).lineTo(550, y).stroke();
+          y += 10;
+          
+          doc.font('Helvetica-Bold');
+          doc.text('Total:', priceX, y);
+          doc.text(Number(sale.totalValue).toFixed(2), totalX, y);
+          
+          doc.fontSize(10).text('Thank you for your business!', 50, y + 50, { align: 'center', width: 500 });
+          
+          doc.end();
+
+      }).catch(err => {
+         // If transaction fails
+         console.error("Checkout validation failed:", err);
+         if (!res.headersSent) {
+            return sendError(res, err.message || "Checkout failed", 400);
+         }
+      });
+
+    } catch (error) {
+       if (!res.headersSent) handlePrismaError(res, error);
+    }
+  }
+);
+
 export default dashboardRouter;
+
