@@ -289,7 +289,25 @@ const SupplierDashboard: React.FC = () => {
         navigate("/login");
     };
 
+    const [pendingAcceptRequestId, setPendingAcceptRequestId] = useState<string | null>(null);
+
     const handleAcceptRequest = async (requestId: string) => {
+        const req = requests.find(r => r.id === requestId);
+        
+        // If it's a REORDER request, redirect to upload page first
+        if (req?.payload?.type === 'REORDER') {
+            if (confirm("To accept this order, you must upload the fulfillment data (CSV). Proceed to Upload?")) {
+                setPendingAcceptRequestId(requestId);
+                const storeToSelect = req.store || connectedStores.find(s => s.id === req.storeId);
+                if (storeToSelect) {
+                    setSelectedStore(storeToSelect);
+                }
+                setActiveTab("upload");
+            }
+            return;
+        }
+
+        // Standard Connection Request Accept
         try {
             const res = await suppliersApi.acceptRequest(requestId);
             if (res.data.success) {
@@ -303,6 +321,9 @@ const SupplierDashboard: React.FC = () => {
             alert("Failed to accept request: " + err.message);
         }
     };
+
+    // ... (rest of code) ...
+
 
     const handleRejectRequest = async (requestId: string) => {
         if (!confirm("Are you sure you want to reject this request?")) return;
@@ -1264,12 +1285,31 @@ const SupplierDashboard: React.FC = () => {
                                                                 }
                                                                 try {
                                                                     setLoading(true);
-                                                                    const res = await SupplierService.uploadFile({
+                                                                    const uploadRes = await SupplierService.uploadFile({
                                                                         storeSlug: selectedStore.slug,
                                                                         supplierId: currentSupplier.id,
                                                                         file
                                                                     });
-                                                                    alert(`Upload successful! ID: ${res.upload_id}`);
+
+                                                                    // IF this upload was to accept a pending order
+                                                                    if (pendingAcceptRequestId) {
+                                                                        try {
+                                                                            const acceptRes = await suppliersApi.acceptRequest(pendingAcceptRequestId);
+                                                                            if (acceptRes.data.success) {
+                                                                                alert(`Order Accepted Successfully! Data Uploaded (ID: ${uploadRes.upload_id})`);
+                                                                                setPendingAcceptRequestId(null);
+                                                                                setActiveTab("orders"); // Return to orders
+                                                                                fetchData();
+                                                                            } else {
+                                                                                alert(`Data Uploaded (ID: ${uploadRes.upload_id}), but failed to update order status.`);
+                                                                            }
+                                                                        } catch (acceptErr: any) {
+                                                                            console.error(acceptErr);
+                                                                            alert(`Data Uploaded (ID: ${uploadRes.upload_id}), but failed to accept order: ${acceptErr.message}`);
+                                                                        }
+                                                                    } else {
+                                                                        alert(`Upload successful! ID: ${uploadRes.upload_id}`);
+                                                                    }
                                                                 } catch (err: any) {
                                                                     console.error(err);
                                                                     alert("Upload failed: " + (err.message || "Unknown error"));
@@ -1288,8 +1328,13 @@ const SupplierDashboard: React.FC = () => {
                                                                 <Upload className="w-16 h-16" />
                                                             </div>
                                                             <h3 className={`text-3xl font-extrabold mb-4 transition-colors ${selectedStore ? 'text-slate-800 group-hover:text-indigo-600' : 'text-slate-400'}`}>
-                                                                {selectedStore ? "Drop CSV File Here" : "Select Store First"}
+                                                                {pendingAcceptRequestId ? "Upload Order Data to Accept" : (selectedStore ? "Drop CSV File Here" : "Select Store First")}
                                                             </h3>
+                                                            {pendingAcceptRequestId && (
+                                                                <div className="mb-4 inline-block px-4 py-1.5 rounded-full bg-amber-50 text-amber-700 text-sm font-bold border border-amber-200 animate-pulse">
+                                                                    ⚠️ Action Required for Order #{pendingAcceptRequestId.slice(0, 8)}
+                                                                </div>
+                                                            )}
                                                             <p className="text-lg text-slate-500 max-w-sm mx-auto">
                                                                 {selectedStore
                                                                     ? "Drag and drop your spreadsheet, or click anywhere in this area to browse."
