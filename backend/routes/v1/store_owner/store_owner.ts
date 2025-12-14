@@ -560,7 +560,6 @@ dashboardRouter.get(
  *  - 200: { success: true, data: [...] }
  *  - 500: Internal server error
  */
-// Existing GET
 dashboardRouter.get(
   "/supplier-requests",
   authenticate,

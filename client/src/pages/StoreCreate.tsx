@@ -140,6 +140,8 @@ const StoreCreate = () => {
 
       setAuth({
         ...auth,
+        globalRole: "STORE_OWNER", // Explicitly set top-level role
+        user: auth.user ? { ...auth.user, globalRole: "STORE_OWNER" } : null,
         effectiveStore: body.effectiveStore,
         needsStoreSetup: false,
       });

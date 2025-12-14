@@ -67,6 +67,7 @@ const SupplierDashboard: React.FC = () => {
 
     const [activeTab, setActiveTab] = useState<"dashboard" | "marketplace" | "requests" | "orders" | "my-stores" | "profile" | "upload">("dashboard");
     const [loading, setLoading] = useState(false);
+    const [uploadStatusMessage, setUploadStatusMessage] = useState<string>("");
 
     // Data
     const [stores, setStores] = useState<Store[]>([]);
@@ -159,28 +160,35 @@ const SupplierDashboard: React.FC = () => {
             if (activeTab === "marketplace") {
                 const res = await suppliersApi.getDiscoveryStores();
                 if (res.data.success) setStores(res.data.data.stores);
-            } else if (activeTab === "requests" || activeTab === "orders") {
-                const res = await suppliersApi.getDetails(currentSupplier?.id);
-                if (res.data.success) setRequests(res.data.data.requests);
-            } else if (activeTab === "my-stores" || activeTab === "upload") {
-                const res = await suppliersApi.getDetails(currentSupplier?.id);
-                if (res.data.success) {
-                    setConnectedStores(res.data.data.supplier?.supplierStores?.map(s => s.store) || []);
-                }
-            } else if (activeTab === "profile") {
+            } else {
+                // For requests, orders, my-stores, upload, profile - we need supplier details
+                // We should always fetch full details to keep state consistent
                 if (currentSupplier?.id) {
-                    const res = await suppliersApi.getDetails(currentSupplier.id);
-                    if (res.data.success && res.data.data.supplier) {
-                        const s = res.data.data.supplier;
-                        setProfileForm({
-                            name: s.name || "",
-                            contactName: s.contactName || "",
-                            phone: s.phone || "",
-                            address: s.address || "",
-                            defaultLeadTime: s.defaultLeadTime || 0,
-                            defaultMOQ: s.defaultMOQ || 0
-                        });
-                    }
+                     const res = await suppliersApi.getDetails(currentSupplier.id);
+                     if (res.data.success) {
+                         const supData = res.data.data.supplier;
+                         const requestsData = res.data.data.requests;
+
+                         // Always update requests if available
+                         if (requestsData) setRequests(requestsData);
+
+                         // Always update connected stores if available
+                         if (supData?.supplierStores) {
+                             setConnectedStores(supData.supplierStores.map((s: any) => s.store));
+                         }
+
+                         // Update profile form if on profile tab
+                         if (activeTab === "profile" && supData) {
+                             setProfileForm({
+                                 name: supData.name || "",
+                                 contactName: supData.contactName || "",
+                                 phone: supData.phone || "",
+                                 address: supData.address || "",
+                                 defaultLeadTime: supData.defaultLeadTime || 0,
+                                 defaultMOQ: supData.defaultMOQ || 0
+                             });
+                         }
+                     }
                 }
             }
         } catch (err) {
@@ -189,6 +197,85 @@ const SupplierDashboard: React.FC = () => {
             setLoading(false);
         }
     };
+
+    // ... (rest of code) ...
+
+                                                        <input
+                                                            type="file"
+                                                            accept=".csv, .xlsx, .xls"
+                                                            disabled={!selectedStore}
+                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-50"
+                                                            onChange={async (e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (!file) return;
+                                                                if (!currentSupplier) {
+                                                                    alert("Please create a supplier profile first.");
+                                                                    return;
+                                                                }
+                                                                if (!selectedStore) {
+                                                                    alert("Please select a target store first.");
+                                                                    return;
+                                                                }
+                                                                try {
+                                                                    setLoading(true);
+                                                                    // 1. Upload File
+                                                                    const uploadRes = await SupplierService.uploadFile({
+                                                                        storeSlug: selectedStore.slug,
+                                                                        supplierId: currentSupplier.id,
+                                                                        file
+                                                                    });
+                                                                    
+                                                                    const uploadId = (uploadRes as any).upload_id;
+                                                                    if (!uploadId) throw new Error("No upload ID returned");
+
+                                                                    // 2. Poll for Status
+                                                                    // We will poll every 2 seconds for a max of 2 minutes (60 attempts)
+                                                                    let status = "PENDING";
+                                                                    let attempts = 0;
+                                                                    const maxAttempts = 60;
+
+                                                                    // Simple inline polling
+                                                                    while (status !== "APPLIED" && status !== "FAILED" && attempts < maxAttempts) {
+                                                                        await new Promise(r => setTimeout(r, 2000)); // Wait 2s
+                                                                        status = await SupplierService.getUploadStatus(uploadId);
+                                                                        console.log(`Upload ${uploadId} status: ${status}`);
+                                                                        attempts++;
+                                                                    }
+
+                                                                    if (status !== 'APPLIED') {
+                                                                        throw new Error(`Upload processing failed or timed out. Final Status: ${status}`);
+                                                                    }
+
+                                                                    // 3. Success -> Proceed
+                                                                    // IF this upload was to accept a pending order
+                                                                     if (pendingAcceptRequestId) {
+                                                                         try {
+                                                                             const acceptRes = await suppliersApi.acceptRequest(pendingAcceptRequestId);
+                                                                             if (acceptRes.data.success) {
+                                                                                 alert(`Order Fulfilled & Accepted! Inventory Updated (ID: ${uploadId})`);
+                                                                                 setPendingAcceptRequestId(null);
+                                                                                 setActiveTab("orders"); 
+                                                                                 fetchData();
+                                                                             } else {
+                                                                                 alert("Inventory Uploaded & Applied, but failed to update order status in local DB.");
+                                                                             }
+                                                                         } catch (acceptErr: any) {
+                                                                             console.error(acceptErr);
+                                                                             alert(`Inventory Uploaded & Applied, but failed to accept order: ${acceptErr.message}`);
+                                                                         }
+                                                                     } else {
+                                                                         alert(`Upload successful and applied! ID: ${uploadId}`);
+                                                                     }
+
+                                                                } catch (err: any) {
+                                                                    console.error(err);
+                                                                    alert("Upload processing failed: " + (err.message || "Unknown error"));
+                                                                } finally {
+                                                                    setLoading(false);
+                                                                    e.target.value = "";
+                                                                }
+                                                            }}
+                                                        />
 
     const handleDisconnectStore = async (storeId: string) => {
         if (!confirm("Are you sure you want to disconnect from this store?")) return;
@@ -1269,8 +1356,8 @@ const SupplierDashboard: React.FC = () => {
 
                                                         <input
                                                             type="file"
-                                                            accept=".csv"
-                                                            disabled={!selectedStore}
+                                                            accept=".csv, .xlsx, .xls"
+                                                            disabled={!selectedStore || loading}
                                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-50"
                                                             onChange={async (e) => {
                                                                 const file = e.target.files?.[0];
@@ -1283,38 +1370,115 @@ const SupplierDashboard: React.FC = () => {
                                                                     alert("Please select a target store first.");
                                                                     return;
                                                                 }
+                                                                
+                                                                // Use a local variable to track if we should stop
+                                                                let isMounted = true;
+
                                                                 try {
                                                                     setLoading(true);
+                                                                    setUploadStatusMessage("Initiating upload...");
+                                                                    
+                                                                    // 1. Upload File
                                                                     const uploadRes = await SupplierService.uploadFile({
                                                                         storeSlug: selectedStore.slug,
                                                                         supplierId: currentSupplier.id,
                                                                         file
                                                                     });
+                                                                    
+                                                                    const uploadId = (uploadRes as any).upload_id;
+                                                                    console.log("Upload Initiated, ID:", uploadId);
+                                                                    
+                                                                    if (!uploadId) throw new Error("No upload ID returned");
 
-                                                                    // IF this upload was to accept a pending order
-                                                                    if (pendingAcceptRequestId) {
+                                                                    // 2. Poll for Status
+                                                                    // We will poll every 2 seconds for a max of 2 minutes (60 attempts)
+                                                                    let status = "PENDING";
+                                                                    let attempts = 0;
+                                                                    const maxAttempts = 60;
+
+                                                                    while (status !== "APPLIED" && status !== "FAILED" && attempts < maxAttempts) {
+                                                                        if (!isMounted) break;
+                                                                        
+                                                                        // UI update is handled after fetching new status below
+                                                                        
+                                                                        await new Promise(r => setTimeout(r, 2000)); // Wait 2s
+                                                                        
                                                                         try {
-                                                                            const acceptRes = await suppliersApi.acceptRequest(pendingAcceptRequestId);
-                                                                            if (acceptRes.data.success) {
-                                                                                alert(`Order Accepted Successfully! Data Uploaded (ID: ${uploadRes.upload_id})`);
-                                                                                setPendingAcceptRequestId(null);
-                                                                                setActiveTab("orders"); // Return to orders
-                                                                                fetchData();
+                                                                            const statusRes = await SupplierService.getUploadStatus(uploadId);
+                                                                            console.log(`Polling Upload ${uploadId}:`, statusRes);
+
+                                                                            // Handle object response
+                                                                            if (typeof statusRes === 'object' && statusRes !== null) {
+                                                                                status = statusRes.status || "UNKNOWN";
+                                                                                const processed = statusRes.processedRows || 0;
+                                                                                const total = statusRes.totalRows || 0;
+                                                                                const percent = statusRes.progressPercent || 0;
+                                                                                
+                                                                                if (status === 'APPLIED') {
+                                                                                    setUploadStatusMessage("Upload applied successfully!");
+                                                                                    break; // Stop polling immediately
+                                                                                } else if (status === 'FAILED') {
+                                                                                    setUploadStatusMessage("Upload failed.");
+                                                                                    break; // Stop polling immediately
+                                                                                } else if (status === 'PROCESSING') {
+                                                                                     setUploadStatusMessage(`Processing: ${percent}% (${processed}/${total} rows)...`);
+                                                                                } else {
+                                                                                     setUploadStatusMessage(`Status: ${status} (Attempt ${attempts + 1})`);
+                                                                                }
                                                                             } else {
-                                                                                alert(`Data Uploaded (ID: ${uploadRes.upload_id}), but failed to update order status.`);
+                                                                                // Fallback for string response if any
+                                                                                status = String(statusRes);
+                                                                                if (status === 'APPLIED') {
+                                                                                    setUploadStatusMessage("Upload applied successfully!");
+                                                                                    break;
+                                                                                }
+                                                                                setUploadStatusMessage(`Status: ${status}...`);
                                                                             }
-                                                                        } catch (acceptErr: any) {
-                                                                            console.error(acceptErr);
-                                                                            alert(`Data Uploaded (ID: ${uploadRes.upload_id}), but failed to accept order: ${acceptErr.message}`);
+
+                                                                        } catch(pollErr) {
+                                                                            console.warn("Poll request failed, retrying...", pollErr);
                                                                         }
-                                                                    } else {
-                                                                        alert(`Upload successful! ID: ${uploadRes.upload_id}`);
+                                                                        
+                                                                        attempts++;
                                                                     }
+
+                                                                    if (status !== 'APPLIED') {
+                                                                        throw new Error(`Upload processing failed or timed out. Final Status: ${status}`);
+                                                                    }
+
+                                                                    setUploadStatusMessage("Upload applied! Finalizing...");
+
+                                                                    // 3. Success -> Proceed
+                                                                    // IF this upload was to accept a pending order
+                                                                     if (pendingAcceptRequestId) {
+                                                                         try {
+                                                                             const acceptRes = await suppliersApi.acceptRequest(pendingAcceptRequestId);
+                                                                             if (acceptRes.data.success) {
+                                                                                 setUploadStatusMessage("Order Accepted!");
+                                                                                 await new Promise(r => setTimeout(r, 1000)); // Show success message briefly
+                                                                                 alert(`Order Fulfilled & Accepted! Inventory Updated (ID: ${uploadId})`);
+                                                                                 setPendingAcceptRequestId(null);
+                                                                                 setActiveTab("orders"); 
+                                                                                 fetchData();
+                                                                             } else {
+                                                                                 alert("Inventory Uploaded & Applied, but failed to update order status in local DB.");
+                                                                             }
+                                                                         } catch (acceptErr: any) {
+                                                                             console.error(acceptErr);
+                                                                             alert(`Inventory Uploaded & Applied, but failed to accept order: ${acceptErr.message}`);
+                                                                         }
+                                                                     } else {
+                                                                         setUploadStatusMessage("Done!");
+                                                                         await new Promise(r => setTimeout(r, 500));
+                                                                         alert(`Upload successful and applied! ID: ${uploadId}`);
+                                                                     }
+
                                                                 } catch (err: any) {
                                                                     console.error(err);
-                                                                    alert("Upload failed: " + (err.message || "Unknown error"));
+                                                                    alert("Upload processing failed: " + (err.message || "Unknown error"));
                                                                 } finally {
                                                                     setLoading(false);
+                                                                    setUploadStatusMessage("");
                                                                     e.target.value = "";
                                                                 }
                                                             }}
@@ -1328,7 +1492,7 @@ const SupplierDashboard: React.FC = () => {
                                                                 <Upload className="w-16 h-16" />
                                                             </div>
                                                             <h3 className={`text-3xl font-extrabold mb-4 transition-colors ${selectedStore ? 'text-slate-800 group-hover:text-indigo-600' : 'text-slate-400'}`}>
-                                                                {pendingAcceptRequestId ? "Upload Order Data to Accept" : (selectedStore ? "Drop CSV File Here" : "Select Store First")}
+                                                                {pendingAcceptRequestId ? "Upload Order Data to Accept" : (selectedStore ? "Drop Spreadsheet File Here" : "Select Store First")}
                                                             </h3>
                                                             {pendingAcceptRequestId && (
                                                                 <div className="mb-4 inline-block px-4 py-1.5 rounded-full bg-amber-50 text-amber-700 text-sm font-bold border border-amber-200 animate-pulse">
@@ -1337,7 +1501,7 @@ const SupplierDashboard: React.FC = () => {
                                                             )}
                                                             <p className="text-lg text-slate-500 max-w-sm mx-auto">
                                                                 {selectedStore
-                                                                    ? "Drag and drop your spreadsheet, or click anywhere in this area to browse."
+                                                                    ? "Drag and drop your spreadsheet (CSV, Excel), or click anywhere in this area to browse."
                                                                     : "You must select a target store from the left before you can upload data."}
                                                             </p>
                                                         </div>
@@ -1346,6 +1510,15 @@ const SupplierDashboard: React.FC = () => {
                                                         <div className={`absolute bottom-0 right-0 p-12 transition-opacity duration-300 pointer-events-none select-none ${selectedStore ? 'opacity-5 group-hover:opacity-10 text-indigo-900' : 'opacity-5 text-slate-400'}`}>
                                                             <div className="text-[14rem] font-black leading-none -mb-16 -mr-16">3</div>
                                                         </div>
+                                                        
+                                                        {/* Loading Overlay */}
+                                                        {loading && (
+                                                            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center animate-in fade-in duration-300">
+                                                                <RefreshCw className="w-16 h-16 text-indigo-600 animate-spin mb-4" />
+                                                                <h3 className="text-2xl font-bold text-slate-800 mb-2">Processing Data</h3>
+                                                                <p className="text-slate-500 font-medium">{uploadStatusMessage || "Please wait..."}</p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1449,7 +1622,8 @@ const SupplierDashboard: React.FC = () => {
                 )}
 
                 {/* Connection Request Modal */}
-                {selectedStore && (
+                {/* Connection Request Modal - Only show if not in upload mode/tab */}
+                {selectedStore && activeTab !== 'upload' && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}

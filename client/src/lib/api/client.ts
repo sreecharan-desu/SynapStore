@@ -32,14 +32,26 @@ client.interceptors.request.use(
 );
 
 // Response interceptor for global error handling
+// Response interceptor for global error handling
 client.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Token expired or invalid
-            // We could dispatch a custom event or clear storage
-            // For now, let the UI handle the 401 or AuthContext will catch it on reload
-            // window.location.href = "/login"; // drastic, maybe just let it fail
+            // Token expired or invalid - Immediately logout
+            console.warn("401 Unauthorized detected. Logging out...");
+            
+            // Clear local storage
+            window.localStorage.removeItem("synapstore:auth");
+            
+            // Clear cookies (simple reset)
+            document.cookie.split(";").forEach((c) => {
+                document.cookie = c
+                    .replace(/^ +/, "")
+                    .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+            });
+
+            // Redirect to login
+            window.location.href = "/login";
         }
         return Promise.reject(error);
     }
