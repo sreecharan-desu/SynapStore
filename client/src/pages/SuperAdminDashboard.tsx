@@ -615,7 +615,6 @@ const SuperAdminDashboard: React.FC = () => {
                                 return data.slice(Math.max(0, total - count));
                             };
 
-                            const filteredData = getFilteredGraphData();
 
                             return (
                                 <motion.div
