@@ -248,8 +248,7 @@ emailRouter.post("/supplier-delivery-failed", async (req, res) => {
 
     // 2. Generate HTML Content
     const logo_url =
-      "https://res.cloudinary.com/dzunpdnje/image/upload/" +
-      "v1765706205/WhatsApp_Image_2025-12-14_at_15.23.36_sdfrsk.jpg";
+      "https://res.cloudinary.com/dzunpdnje/image/upload/v1765706720/SynapStore_Logo_g2tlah.png";
 
     const timestamp = new Date().toUTCString();
 
