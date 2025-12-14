@@ -10,6 +10,7 @@ import { FcGoogle } from "react-icons/fc";
 import { Mail, Lock, ArrowRight, Loader2, RefreshCw, Eye, EyeOff, ChevronLeft } from "lucide-react";
 // Animation
 import { motion, AnimatePresence } from "framer-motion";
+import Login3DCharacter from "../components/Login3DCharacter";
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
@@ -106,7 +107,7 @@ const GoogleSignInButton: React.FC<{
               type: "standard",
               shape: "pill",
               text: "continue_with",
-              width: "400"
+              width: "240"
             });
             setRendered(true);
           }
@@ -158,7 +159,7 @@ const GoogleSignInButton: React.FC<{
         <button
           onClick={manualSignIn}
           type="button"
-          className="w-full flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 py-3 rounded-full font-medium hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm hover:shadow-md active:scale-[0.98]"
+          className="w-[240px] flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 py-3 rounded-full font-medium hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm hover:shadow-md active:scale-[0.98]"
         >
           <FcGoogle className="w-5 h-5" />
           <span className="text-sm cursor-pointer">Continue with Google</span>
@@ -188,6 +189,10 @@ const Login: React.FC = () => {
 
   // loading
   const [loading, setLoading] = useState(false);
+
+  // 3D Character Interaction State
+  const [focusedField, setFocusedField] = useState<"email" | "password" | null>(null);
+  const [keyTrigger, setKeyTrigger] = useState(0);
 
   const googleClientId = getGoogleClientId();
 
@@ -409,227 +414,247 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center overflow-hidden  from-emerald-50 via-white to-emerald-100">
+    <div className="min-h-screen relative grid grid-cols-1 lg:grid-cols-2 overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-emerald-100">
+
       {/* Desktop Back Navigation */}
-      <p
+      <div className="absolute top-8 left-8 z-50">
+        <p
+          onClick={() => navigate("/")}
+          className="p-2 text-gray-400 hover:text-emerald-600 transition-colors rounded-full hover:bg-white/50"
+          aria-label="Back to landing page"
+        >
+          <ChevronLeft className="w-8 h-8" />
+        </p>
+      </div>
 
-        className="hidden md:block absolute top-8 left-8 z-50 p-2 cursor-pointer 
-             bg-transparent border-none outline-none 
-             text-gray-400 hover:text-gray-600 transition-colors"
-        aria-label="Back to landing page"
-      >
-        <ChevronLeft className="w-8 h-8" onClick={() => navigate("/")} />
-      </p>
+      {/* LEFT SIDE - 3D Character (Desktop Only) */}
+      <div className="hidden lg:flex relative items-center justify-center bg-emerald-50/30">
+        {/* Background Blobs for Left Side */}
+        <motion.div
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.3, 0.5, 0.3],
+            rotate: [0, 90, 0],
+          }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[20%] left-[20%] w-[400px] h-[400px] bg-emerald-300/20 rounded-full blur-[80px] pointer-events-none"
+        />
 
-      {/* Dynamic Background Elements */}
-      <motion.div
-        animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.3, 0.5, 0.3],
-          x: [0, 50, 0],
-          y: [0, -30, 0],
-        }}
-        transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-emerald-300/20 rounded-full blur-[100px] pointer-events-none"
-      />
-      <motion.div
-        animate={{
-          scale: [1, 1.1, 1],
-          opacity: [0.3, 0.4, 0.3],
-          x: [0, -30, 0],
-          y: [0, 50, 0],
-        }}
-        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-teal-300/20 rounded-full blur-[100px] pointer-events-none"
-      />
+        {/* The 3D Component */}
+        <div className="w-full h-full absolute inset-0">
+          <Login3DCharacter focusedField={focusedField} keyTrigger={keyTrigger} />
+        </div>
+      </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-lg p-6"
-      >
-        <div className="relative bg-white/80 backdrop-blur-xl border border-white/50 rounded-3xl shadow-2xl overflow-hidden p-8 md:p-10">
+      {/* RIGHT SIDE - Login Form */}
+      <div className="flex flex-col items-center justify-center p-6 lg:p-12 overflow-y-auto relative">
 
-          {/* Header */}
-          <div className="text-center mb-8">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
-            >
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">
-                SynapStore
-              </h1>
-              <p className="text-slate-500 mt-2 text-sm">
-                Empowering your business with intelligence
-              </p>
-            </motion.div>
+        {/* Mobile Background Blob */}
+        <motion.div
+          animate={{
+            scale: [1, 1.1, 1],
+            opacity: [0.3, 0.4, 0.3],
+          }}
+          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-teal-300/20 rounded-full blur-[100px] pointer-events-none lg:hidden"
+        />
+
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="relative z-10 w-full max-w-md"
+        >
+          <div className="relative bg-white/80 backdrop-blur-xl border border-emerald-100/50 rounded-3xl shadow-xl p-8 md:p-10">
+
+            {/* Header */}
+            <div className="text-center mb-10">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.2, duration: 0.5 }}
+              >
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">
+                  SynapStore
+                </h1>
+                <p className="text-slate-500 mt-2 text-sm">
+                  Empowering your business with intelligence
+                </p>
+              </motion.div>
+            </div>
+
+            <AnimatePresence mode="wait">
+              {showOtp ? (
+                <motion.div
+                  key="otp-view"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Mail className="w-8 h-8" />
+                    </div>
+                    <h2 className="text-xl font-semibold text-gray-800">Check your inbox</h2>
+                    <p className="text-sm text-gray-500 mt-2">
+                      We sent a verification code to <br />
+                      <span className="font-medium text-gray-900">{email}</span>
+                    </p>
+                  </div>
+
+                  <div className="flex justify-center gap-3 my-6">
+                    {otp.map((d, i) => (
+                      <motion.input
+                        key={i}
+                        id={`otp-${i}`}
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: i * 0.05 }}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={1}
+                        value={d}
+                        onChange={(e) => handleOtpChange(i, e.target.value)}
+                        onKeyDown={(e) => handleOtpKeyDown(e, i)}
+                        onPaste={handleOtpPaste}
+                        className="w-12 h-14 bg-gray-50 border border-gray-200 rounded-xl text-center text-xl font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all shadow-sm"
+                        disabled={loading}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={verifyOtp}
+                      disabled={loading}
+                      className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 rounded-xl font-medium hover:shadow-lg hover:shadow-emerald-500/30 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+                    >
+                      {loading ? <Loader2 className="animate-spin w-5 h-5" /> : "Verify"}
+                    </button>
+                    <button
+                      onClick={resendOtp}
+                      disabled={timer > 0 || loading}
+                      className="px-6 py-3 rounded-xl font-medium border border-gray-200 hover:bg-gray-50 text-gray-600 transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {timer > 0 ? (
+                        <span className="text-xs font-mono">{timer}s</span>
+                      ) : (
+                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="auth-form"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="space-y-4">
+                      {/* EMAIL INPUT */}
+                      <div className="relative group">
+                        <Mail className={`absolute left-3 top-3.5 w-5 h-5 transition-colors ${focusedField === 'email' ? 'text-emerald-500' : 'text-gray-400'}`} />
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          onFocus={() => setFocusedField("email")}
+                          onBlur={() => setFocusedField(null)}
+                          onKeyDown={() => setKeyTrigger(prev => prev + 1)}
+                          required
+                          placeholder="Email address"
+                          className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                          disabled={loading}
+                        />
+                      </div>
+
+                      {/* PASSWORD INPUT */}
+                      <div className="relative group">
+                        <Lock className={`absolute left-3 top-3.5 w-5 h-5 transition-colors ${focusedField === 'password' ? 'text-emerald-500' : 'text-gray-400'}`} />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          onFocus={() => setFocusedField("password")}
+                          onBlur={() => setFocusedField(null)}
+                          required
+                          placeholder="Password"
+                          className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                          disabled={loading}
+                        />
+                        <i
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2 top-2 p-2 rounded-lg text-gray-400  transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="w-5 h-5" />
+                          ) : (
+                            <Eye className="w-5 h-5" />
+                          )}
+                        </i>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-3.5 rounded-xl font-medium text-lg shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 group"
+                    >
+                      {loading ? (
+                        <Loader2 className="animate-spin w-5 h-5" />
+                      ) : (
+                        <>
+                          {isSignup ? "Create Account" : "Sign In"}
+                          <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+
+                  <div className="my-6 flex items-center gap-4">
+                    <div className="h-px bg-gray-200 flex-1" />
+                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Or continue with</span>
+                    <div className="h-px bg-gray-200 flex-1" />
+                  </div>
+
+                  <GoogleSignInButton
+                    googleClientId={googleClientId}
+                    onCredential={(cred) => handleGoogleCredential(cred).catch(() => { })}
+                    onError={(msg) => toast.error(msg)}
+                  />
+
+                  <div className="mt-8 text-center">
+                    <p className="text-sm text-gray-500">
+                      {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
+                      <b
+                        onClick={() => {
+                          setIsSignup(!isSignup);
+                        }}
+                        className="font-semibold cursor-pointer text-emerald-600 hover:text-emerald-700 hover:underline transition-all ml-1"
+                      >
+                        {isSignup ? "Log in" : "Sign up"}
+                      </b>
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          <AnimatePresence mode="wait">
-            {showOtp ? (
-              <motion.div
-                key="otp-view"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-6"
-              >
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Mail className="w-8 h-8" />
-                  </div>
-                  <h2 className="text-xl font-semibold text-gray-800">Check your inbox</h2>
-                  <p className="text-sm text-gray-500 mt-2">
-                    We sent a verification code to <br />
-                    <span className="font-medium text-gray-900">{email}</span>
-                  </p>
-                </div>
-
-                <div className="flex justify-center gap-3 my-6">
-                  {otp.map((d, i) => (
-                    <motion.input
-                      key={i}
-                      id={`otp-${i}`}
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: i * 0.05 }}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={1}
-                      value={d}
-                      onChange={(e) => handleOtpChange(i, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(e, i)}
-                      onPaste={handleOtpPaste}
-                      className="w-12 h-14 bg-gray-50 border border-gray-200 rounded-xl text-center text-xl font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all shadow-sm"
-                      disabled={loading}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={verifyOtp}
-                    disabled={loading}
-                    className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 rounded-xl font-medium hover:shadow-lg hover:shadow-emerald-500/30 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2"
-                  >
-                    {loading ? <Loader2 className="animate-spin w-5 h-5" /> : "Verify"}
-                  </button>
-                  <button
-                    onClick={resendOtp}
-                    disabled={timer > 0 || loading}
-                    className="px-6 py-3 rounded-xl font-medium border border-gray-200 hover:bg-gray-50 text-gray-600 transition-all disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {timer > 0 ? (
-                      <span className="text-xs font-mono">{timer}s</span>
-                    ) : (
-                      <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                    )}
-                  </button>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="auth-form"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.3 }}
-              >
-                <form onSubmit={handleSubmit} className="space-y-5">
-
-
-                  <div className="space-y-4">
-                    <div className="relative group">
-                      <Mail className="absolute left-3 top-3.5 w-5 h-5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        placeholder="Email address"
-                        className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                        disabled={loading}
-                      />
-                    </div>
-
-                    <div className="relative group">
-                      <Lock className="absolute left-3 top-3.5 w-5 h-5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        placeholder="Password"
-                        className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                        disabled={loading}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-3.5 text-gray-400 hover:text-emerald-600 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="w-3 h-3 flex-shrink-0" /> : <Eye className="w-3 h-3 flex-shrink-0" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-3.5 rounded-xl font-medium text-lg shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 group"
-                  >
-                    {loading ? (
-                      <Loader2 className="animate-spin w-5 h-5" />
-                    ) : (
-                      <>
-                        {isSignup ? "Create Account" : "Sign In"}
-                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                      </>
-                    )}
-                  </button>
-                </form>
-
-                <div className="my-6 flex items-center gap-4">
-                  <div className="h-px bg-gray-200 flex-1" />
-                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Or continue with</span>
-                  <div className="h-px bg-gray-200 flex-1" />
-                </div>
-
-                <GoogleSignInButton
-                  googleClientId={googleClientId}
-                  onCredential={(cred) => handleGoogleCredential(cred).catch(() => { })}
-                  onError={(msg) => toast.error(msg)}
-                />
-
-                <div className="mt-8 text-center">
-                  <p className="text-sm text-gray-500">
-                    {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
-                    <b
-                      onClick={() => {
-                        setIsSignup(!isSignup);
-                      }}
-                      className="font-semibold cursor-pointer text-emerald-600 hover:text-emerald-700 hover:underline transition-all ml-1"
-                    >
-                      {isSignup ? "Log in" : "Sign up"}
-                    </b>
-                  </p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Footer simple copy */}
-        <div className="mt-6 text-center">
-          <p className="text-xs text-slate-400">
-            &copy; {new Date().getFullYear()} SynapStore. All rights reserved.
-          </p>
-        </div>
-      </motion.div>
+          <div className="mt-6 text-center">
+            <p className="text-xs text-slate-400">
+              &copy; {new Date().getFullYear()} SynapStore. All rights reserved.
+            </p>
+          </div>
+        </motion.div>
+      </div>
     </div>
   );
 };
