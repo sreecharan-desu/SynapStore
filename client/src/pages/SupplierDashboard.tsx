@@ -472,6 +472,10 @@ const SupplierDashboard: React.FC = () => {
     const pendingCount = requests.filter(r => r.status === "PENDING").length;
     const connectedCount = requests.filter(r => r.status === "ACCEPTED").length;
 
+    const filteredMarketplaceStores = stores.filter(store => 
+        !requests.some(r => r.storeId === store.id && r.status === "PENDING")
+    );
+
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col relative">
 
@@ -606,7 +610,7 @@ const SupplierDashboard: React.FC = () => {
                                         <div className="text-center py-12 text-slate-400">Loading marketplace...</div>
                                     ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                            {stores.map(store => (
+                                            {filteredMarketplaceStores.map(store => (
                                                 <div key={store.id} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
                                                     <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:opacity-100 transition-opacity">
                                                         <StoreIcon className="w-12 h-12 text-slate-100 group-hover:text-emerald-50 group-hover:scale-110 transition-transform duration-500" />
@@ -630,7 +634,7 @@ const SupplierDashboard: React.FC = () => {
                                                     </div>
                                                 </div>
                                             ))}
-                                            {stores.length === 0 && (
+                                            {filteredMarketplaceStores.length === 0 && (
                                                 <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
                                                     No active stores found for discovery.
                                                 </div>

@@ -1,3 +1,4 @@
+
 // src/routes/v1/dashboard.ts
 import { Router, Request, Response, NextFunction } from "express";
 import { storeContext, requireStore, RequestWithUser } from "../../../middleware/store";
@@ -13,6 +14,7 @@ import { sendSuccess, sendError, handlePrismaError, sendInternalError, handleZod
 import { notificationQueue } from "../../../lib/queue";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
+import { generateReceiptPDF } from "../../../utils/receipt_generator";
 
 type RoleEnum = Role;
 
@@ -1458,7 +1460,7 @@ dashboardRouter.post(
   "/sales/checkout",
   async (req: AuthRequest, res: Response) => {
     try {
-      const { items } = req.body; // Expect items: { medicineId, qty }[]
+      const { items, paymentMethod } = req.body; // Expect items: { medicineId, qty }[], paymentMethod?
       
       if (!items || !Array.isArray(items) || items.length === 0) {
         return sendError(res, "Invalid items", 400);
@@ -1470,7 +1472,7 @@ dashboardRouter.post(
         const saleItemsCreate = [];
 
         // 1. Process Items & Inventory
-        for (const item of items) {
+        for (const item of items as any) {
           const medicine = await tx.medicine.findUnique({
             where: { id: item.medicineId },
             include: { inventory: { orderBy: { expiryDate: 'asc' } } }
@@ -1550,7 +1552,7 @@ dashboardRouter.post(
           data: {
             storeId: req.store.id,
             createdById: req.user?.id,
-            paymentMethod: "CASH",
+            paymentMethod: (paymentMethod || "CASH") as any,
             paymentStatus: "PAID",
             subtotal,
             totalValue,
@@ -1571,7 +1573,8 @@ dashboardRouter.post(
           date: sale.createdAt,
           saleId: sale.id,
           total: sale.totalValue,
-          items: sale.items.map(i => ({ name: i.medicine.brandName, qty: i.qty, price: i.unitPrice, total: i.lineTotal }))
+          // @ts-ignore
+          items: sale.items.map((i:any) => ({ name: i.medicine.brandName, qty: i.qty, price: i.unitPrice, total: i.lineTotal }))
         };
         // @ts-ignore
         await tx.receipt.create({
@@ -1583,67 +1586,21 @@ dashboardRouter.post(
           }
         });
 
-        return sale;
-      }).then(async (sale) => {
+        return { sale, receiptNo: `REC-${Date.now()}` };
+      }).then(async ({ sale, receiptNo }) => {
           // 4. Generate & Stream PDF (Outside transaction to keep it fast)
-          // We can't easily stream FROM inside the transaction block if we want to return response.
-          // So we return 'sale' from transaction and do PDF here.
+          // We use the shared helper for consistent "Clean & Neat" design + Decryption
           
           const doc = new PDFDocument({ margin: 50 });
           
+          res.setHeader('x-sale-id', sale.id);
           res.setHeader('Content-Type', 'application/pdf');
           res.setHeader('Content-Disposition', `attachment; filename=receipt-${sale.id}.pdf`);
           
           doc.pipe(res);
           
-          // --- PDF Content ---
-          doc.ref({ include: true }); 
+          await generateReceiptPDF(doc, sale, receiptNo, req.store, res);
           
-          // Store Name
-          doc.fontSize(20).text(req.store.name, { align: 'center' });
-          doc.moveDown();
-          
-          doc.fontSize(12).text(`Receipt #${sale.id.slice(0, 8).toUpperCase()}`, { align: 'center' });
-          doc.text(`Date: ${new Date(sale.createdAt).toLocaleString()}`, { align: 'center' });
-          doc.text(`Cashier: ${sale.createdBy?.username || 'Staff'}`, { align: 'center' });
-          doc.moveDown();
-          
-          // Table Header
-          const tableTop = 200;
-          const itemX = 50;
-          const qtyX = 250;
-          const priceX = 350;
-          const totalX = 450;
-          
-          doc.font('Helvetica-Bold');
-          doc.text('Item', itemX, tableTop);
-          doc.text('Qty', qtyX, tableTop);
-          doc.text('Price', priceX, tableTop);
-          doc.text('Total', totalX, tableTop);
-          
-          doc.font('Helvetica');
-          let y = tableTop + 25;
-          
-          sale.items.forEach(item => {
-             doc.text(item.medicine.brandName.substring(0, 30), itemX, y);
-             doc.text(item.qty.toString(), qtyX, y);
-             doc.text(Number(item.unitPrice).toFixed(2), priceX, y);
-             doc.text(Number(item.lineTotal).toFixed(2), totalX, y);
-             y += 20;
-          });
-          
-          // Footer / Totals
-          doc.moveTo(itemX, y).lineTo(550, y).stroke();
-          y += 10;
-          
-          doc.font('Helvetica-Bold');
-          doc.text('Total:', priceX, y);
-          doc.text(Number(sale.totalValue).toFixed(2), totalX, y);
-          
-          doc.fontSize(10).text('Thank you for your business!', 50, y + 50, { align: 'center', width: 500 });
-          
-          doc.end();
-
       }).catch(err => {
          // If transaction fails
          console.error("Checkout validation failed:", err);
@@ -1658,5 +1615,106 @@ dashboardRouter.post(
   }
 );
 
-export default dashboardRouter;
+/* -----------------------
+   Dashboard - POST /v1/dashboard/receipts
+*/
+/*
+ * GET /v1/dashboard/receipts
+ * Description: Retrieves all receipts for the store.
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: STORE_OWNER, Store Context)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { receipts: [...] } }
+ *  - 500: Internal server error
+*/
+dashboardRouter.get("/receipts", requireRole("STORE_OWNER"), async (req: any, res) => {
+    try {
+        const receipts = await prisma.receipt.findMany({
+            where: {
+                sale: {
+                    storeId: req.store.id
+                }
+            },
+            orderBy: {
+                createdAt: "desc"
+            },
+            include: {
+                sale: {
+                    select: {
+                        totalValue: true,
+                        createdAt: true,
+                        items: {
+                          include: {
+                             medicine: true
+                          }
+                        }
+                    }
+                }
+            }
+        });
 
+        // Map data if necessary to match frontend expectations, or send raw
+        return sendSuccess(res, "Receipts retrieved", { receipts });
+    } catch (err) {
+        return sendInternalError(res, err, "Failed to retrieve receipts");
+    }
+});
+
+/* -----------------------
+   Dashboard - GET /v1/dashboard/receipts/:id/pdf
+*/
+dashboardRouter.get("/receipts/:id/pdf", requireRole("STORE_OWNER"), async (req: any, res) => {
+    try {
+        const { id } = req.params;
+
+        const receipt = await prisma.receipt.findFirst({
+            where: {
+                id,
+                sale: {
+                    storeId: req.store.id
+                }
+            },
+            include: {
+                sale: {
+                    include: {
+                        items: {
+                            include: {
+                                medicine: true
+                            }
+                        },
+                        createdBy: true,
+                        store: true
+                    }
+                }
+            }
+        });
+
+        if (!receipt) {
+            return sendError(res, "Receipt not found", 404);
+        }
+
+        const sale = receipt.sale;
+        if (!sale) {
+             return sendError(res, "Associated sale data missing", 404);
+        }
+
+        const doc = new PDFDocument({ margin: 50 });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename=receipt-${receipt.receiptNo || id}.pdf`);
+
+        doc.pipe(res);
+
+
+        await generateReceiptPDF(doc, sale, receipt.receiptNo || sale.id.slice(0, 8), sale.store, res);
+
+    } catch (err) {
+        return sendInternalError(res, err, "Failed to generate receipt PDF");
+    }
+});
+
+
+
+
+export default dashboardRouter;

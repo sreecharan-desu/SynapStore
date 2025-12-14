@@ -597,8 +597,134 @@ router.post(
 );
 
 /* -----------------------
-   Admin - DELETE /v1/admin/users/:id
+   Admin - GET /v1/admin/graph
 */
+
+/**
+ * GET /v1/admin/graph
+ * Description: Returns a graph representation of the system (Users, Stores, Suppliers and their relations).
+ * Headers: 
+ *  - Authorization: Bearer <token> (Role: SUPERADMIN)
+ * Body: None
+ * Responses:
+ *  - 200: { success: true, data: { nodes: [...], edges: [...] } }
+ *  - 500: Internal server error
+ */
+router.get("/graph", requireRole("SUPERADMIN"), async (req: any, res) => {
+  try {
+    // Fetch all entities in parallel
+    const [
+      users,
+      stores,
+      suppliers,
+      userStoreRoles,
+      supplierStores,
+      supplierRequests
+    ] = await Promise.all([
+      prisma.user.findMany({
+        select: { id: true, username: true, email: true, globalRole: true }
+      }),
+      prisma.store.findMany({
+        select: { id: true, name: true, isActive: true }
+      }),
+      prisma.supplier.findMany({
+        select: { id: true, name: true, userId: true }
+      }),
+      prisma.userStoreRole.findMany({
+        select: { userId: true, storeId: true, role: true }
+      }),
+      prisma.supplierStore.findMany({
+        select: { supplierId: true, storeId: true }
+      }),
+      prisma.supplierRequest.findMany({
+          where: { status: "PENDING" },
+          select: { supplierId: true, storeId: true, createdById: true }
+      })
+    ]);
+
+    const nodes: any[] = [];
+    const edges: any[] = [];
+
+    // 1. User Nodes
+    users.forEach(u => {
+      const decrypted = decryptUser(u);
+      nodes.push({
+        id: `u_${u.id}`,
+        type: "USER",
+        label: decrypted?.username || "Unknown",
+        subLabel: decrypted?.email || "",
+        data: { role: u.globalRole }
+      });
+    });
+
+    // 2. Store Nodes
+    stores.forEach(s => {
+      nodes.push({
+        id: `s_${s.id}`,
+        type: "STORE",
+        label: s.name,
+        data: { isActive: s.isActive }
+      });
+    });
+
+    // 3. Supplier Nodes
+    suppliers.forEach(sup => {
+      nodes.push({
+        id: `sup_${sup.id}`,
+        type: "SUPPLIER",
+        label: sup.name,
+      });
+
+      // Edge: User -> Supplier (Management)
+      if (sup.userId) {
+        edges.push({
+          source: `u_${sup.userId}`,
+          target: `sup_${sup.id}`,
+          type: "MANAGES",
+          label: "Admin"
+        });
+      }
+    });
+
+    // 4. Edges: User -> Store
+    userStoreRoles.forEach(role => {
+      edges.push({
+        source: `u_${role.userId}`,
+        target: `s_${role.storeId}`,
+        type: "WORKS_AT",
+        label: role.role
+      });
+    });
+
+    // 5. Edges: Supplier <-> Store (Active Connection)
+    supplierStores.forEach(rel => {
+      edges.push({
+        source: `sup_${rel.supplierId}`,
+        target: `s_${rel.storeId}`,
+        type: "CONNECTED",
+        label: "Active"
+      });
+    });
+
+    // 6. Edges: SupplierRequest (Pending)
+    supplierRequests.forEach(req => {
+        // Need to be careful not to duplicate if multiple requests exist (though pending should be uniqueish)
+       if (req.supplierId && req.storeId) {
+            edges.push({
+                source: `sup_${req.supplierId}`,
+                target: `s_${req.storeId}`,
+                type: "REQUEST",
+                label: "Pending"
+            });
+       }
+    });
+
+    return sendSuccess(res, "Graph data retrieved", { nodes, edges });
+  } catch (err) {
+    return sendInternalError(res, err, "Failed to retrieve graph data");
+  }
+});
+
 router.delete("/users/:id", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
     const { id } = req.params;

@@ -2,7 +2,7 @@ import React from "react";
 import { useRecoilValue } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import {  Bell, Settings, LogOut, Users, Package,  Calendar,  Search,  X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, Banknote } from "lucide-react";
+import {  Bell, Settings, LogOut, Users, Package,  Calendar,  Search,  X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, Banknote, CheckCircle } from "lucide-react";
 
 import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
@@ -174,6 +174,8 @@ const StoreOwnerDashboard: React.FC = () => {
     const [loading, setLoading] = React.useState(true);
     const [supplierRequests, setSupplierRequests] = React.useState<SupplierRequest[]>([]);
     const [myRequests, setMyRequests] = React.useState<SupplierRequest[]>([]);
+    const [receipts, setReceipts] = React.useState<any[]>([]);
+    const [receiptsModalOpen, setReceiptsModalOpen] = React.useState(false);
     const [showNotifications, setShowNotifications] = React.useState(false);
     const [showFeedback, setShowFeedback] = React.useState(false);
     const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
@@ -190,6 +192,15 @@ const StoreOwnerDashboard: React.FC = () => {
     const [reorderSupplierId, setReorderSupplierId] = React.useState<string>("");
     const [reorderNote, setReorderNote] = React.useState("");
     const [isAiLoading, setIsAiLoading] = React.useState(false);
+
+    // POS Payment & Receipt Preview State
+    const [posPaymentMethod, setPosPaymentMethod] = React.useState<string>("CASH");
+    const [showReceiptPreview, setShowReceiptPreview] = React.useState(false);
+    const [currentReceiptUrl, setCurrentReceiptUrl] = React.useState<string | null>(null);
+    const [currentSaleId, setCurrentSaleId] = React.useState<string | null>(null);
+    const [receiptEmail, setReceiptEmail] = React.useState("");
+    const [isSendingEmail, setIsSendingEmail] = React.useState(false);
+
 
     const handleOpenReorder = async () => {
         setReorderModalOpen(true);
@@ -332,38 +343,64 @@ const StoreOwnerDashboard: React.FC = () => {
         });
     };
 
+    const handleSendReceipt = async () => {
+        if (!currentSaleId) {
+            alert("Error: Sale ID not found. Cannot send receipt.");
+            return;
+        }
+        if (!receiptEmail) {
+            alert("Please enter a valid email.");
+            return;
+        }
+        setIsSendingEmail(true);
+        try {
+            await dashboardApi.sendReceiptEmail(currentSaleId, receiptEmail);
+            alert("Receipt sent successfully!");
+            setReceiptEmail("");
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to send email: " + (err.response?.data?.message || err.message));
+        } finally {
+            setIsSendingEmail(false);
+        }
+    };
+
     const handleCheckout = async () => {
         if (posCart.size === 0) return;
         if (!confirm("Confirm checkout?")) return;
 
         setIsCheckoutLoading(true);
         try {
-            const items = Array.from(posCart.entries()).map(([medicineId, qty]) => ({
-                medicineId,
-                qty
-            }));
-
-            const response = await dashboardApi.checkoutSale({ items });
+            const items = Array.from(posCart.entries()).map(([medicineId, qty]) => ({ medicineId, qty }));
             
-            // Handle PDF Download
-            const url = window.URL.createObjectURL(new Blob([response.data as any]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `Receipt-${Date.now()}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.parentNode?.removeChild(link);
+            // Pass paymentMethod from state
+            const res = await dashboardApi.checkoutSale(items, posPaymentMethod);
             
-            // Success cleanup
-            setPosModalOpen(false);
+            // "res.data" is the blob because responseType: 'blob'
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
+            
+            // Extract Sale ID from headers
+            const saleId = res.headers['x-sale-id']; 
+            
+            setCurrentReceiptUrl(url);
+            if (saleId) setCurrentSaleId(saleId);
+            
+            setShowReceiptPreview(true);
+            
+            // Reset cart
             setPosCart(new Map());
             setPosQuery("");
-            setPosResults([]);
-            setShowFeedback(true);
+            setPosPaymentMethod("CASH"); // Reset to default
             
-            // Refresh dashboard data to reflect inventory changes
-            fetchData();
-            
+            // Refresh dashboard data/receipts silently?
+             try {
+                const r = await dashboardApi.getReceipts();
+                setReceipts(r.data.data.receipts);
+            } catch (e) {
+                console.error("Failed to refresh receipts", e);
+            }
+
         } catch (err: any) {
             console.error(err);
             alert("Checkout failed: " + (err.response?.data?.message || err.message));
@@ -556,6 +593,32 @@ const StoreOwnerDashboard: React.FC = () => {
 
 
 
+    // --- Receipts / History ---
+    const handleViewReceipts = async () => {
+        setReceiptsModalOpen(true);
+        try {
+            const res = await dashboardApi.getReceipts();
+            if (res.data.success) {
+                setReceipts(res.data.data.receipts);
+            }
+        } catch (err) {
+            console.error("Failed to fetch receipts", err);
+        }
+    };
+
+    const viewReceiptPDF = async (id: string) => {
+        try {
+            const res = await dashboardApi.getReceiptPDF(id);
+             // Create a Blob from the PDF Stream
+            const file = new Blob([res.data as any], { type: 'application/pdf' });
+            const fileURL = URL.createObjectURL(file);
+            window.open(fileURL, '_blank');
+        } catch (err) {
+            console.error("Failed to load PDF", err);
+            alert("Failed to load PDF");
+        }
+    };
+
     if (loading) {
         return (
             <div className={`min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4`}>
@@ -638,12 +701,21 @@ const StoreOwnerDashboard: React.FC = () => {
 
                     {/* Right: Actions */}
                     <div className="flex items-center gap-3 shrink-0">
+                        {/* History Button */}
+                        <Button
+                            onClick={handleViewReceipts}
+                            variant="outline"
+                            className="bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 shadow-sm gap-2"
+                        >
+                            <FileText className="w-4 h-4" /> History
+                        </Button>
+
                         {/* Reorder Button */}
                         <Button 
                             onClick={handleOpenReorder}
                             className="bg-slate-900 text-white hover:bg-slate-800 shadow-sm gap-2"
                         >
-                            <Package className="w-4 h-4" /> New Reorder
+                            <FileText className="w-4 h-4" /> New Reorder
                         </Button>
 
                         {/* POS / New Sale Button */}
@@ -1582,6 +1654,25 @@ const StoreOwnerDashboard: React.FC = () => {
                                         <span>₹0.00</span>
                                     </div> */}
 
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">Payment Method</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {["CASH", "CARD", "UPI", "OTHER"].map((method) => (
+                                                <button
+                                                    key={method}
+                                                    onClick={() => setPosPaymentMethod(method)}
+                                                    className={`py-2 px-3 rounded-xl text-sm font-bold border transition-all ${
+                                                        posPaymentMethod === method
+                                                            ? "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm ring-1 ring-emerald-500"
+                                                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                    }`}
+                                                >
+                                                    {method}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
                                     <Button 
                                         className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/30 font-bold text-lg"
                                         disabled={posCart.size === 0 || isCheckoutLoading}
@@ -1590,6 +1681,152 @@ const StoreOwnerDashboard: React.FC = () => {
                                         {isCheckoutLoading ? "Processing..." : "Checkout & Print"}
                                     </Button>
                                 </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+            {/* Receipt Preview Modal */}
+            <AnimatePresence>
+                {showReceiptPreview && currentReceiptUrl && (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg md:max-w-3xl flex flex-col overflow-hidden max-h-[90vh]"
+                        >
+                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                                    Receipt Generated
+                                </h3>
+                                <button onClick={() => setShowReceiptPreview(false)} className="p-1 hover:bg-slate-200 rounded-full">
+                                    <X className="w-5 h-5 text-slate-500" />
+                                </button>
+                            </div>
+                            
+                            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                                {/* PDF Preview */}
+                                <div className="flex-1 bg-slate-100 p-4 flex items-center justify-center border-r border-slate-100">
+                                    <iframe 
+                                        src={currentReceiptUrl + "#toolbar=0"} 
+                                        className="w-full h-full min-h-[400px] rounded-lg shadow-sm bg-white"
+                                        title="Receipt Preview"
+                                    />
+                                </div>
+                                
+                                {/* Actions */}
+                                <div className="w-full md:w-72 bg-white p-6 flex flex-col">
+                                    <h4 className="font-bold text-slate-700 mb-4">Actions</h4>
+                                    
+                                    <div className="mb-6">
+                                        <label className="block text-sm font-medium text-slate-600 mb-2">Send Receipt to Email</label>
+                                        <div className="flex flex-col gap-2">
+                                            <input 
+                                                type="email" 
+                                                placeholder="customer@example.com" 
+                                                value={receiptEmail}
+                                                onChange={(e) => setReceiptEmail(e.target.value)}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                                            />
+                                            <Button 
+                                                onClick={handleSendReceipt} 
+                                                disabled={isSendingEmail || !receiptEmail}
+                                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                size="sm"
+                                            >
+                                                {isSendingEmail ? "Sending..." : "Send Email"}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-auto pt-6 border-t border-slate-100">
+                                        <p className="text-xs text-slate-400 text-center mb-3">Or download directly</p>
+                                        <a 
+                                            href={currentReceiptUrl} 
+                                            download={`Receipt-${Date.now()}.pdf`}
+                                            className="block w-full text-center py-2 px-4 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition-colors"
+                                        >
+                                            Download PDF
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Receipts / History Modal */}
+            <AnimatePresence>
+                {receiptsModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-800">Sales History</h2>
+                                    <p className="text-sm text-slate-500">View and download past receipts</p>
+                                </div>
+                                <button onClick={() => setReceiptsModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                    <X className="w-6 h-6 text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+                                {receipts.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+                                        <div className="bg-white p-4 rounded-full shadow-sm">
+                                            <FileText className="w-8 h-8 opacity-50" />
+                                        </div>
+                                        <p>No receipts found.</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {receipts.map((receipt) => (
+                                            <div key={receipt.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                <div className="flex items-center gap-4">
+                                                     <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-bold">
+                                                        <FileText className="w-6 h-6" />
+                                                     </div>
+                                                     <div>
+                                                         <p className="font-bold text-slate-800 text-lg">
+                                                             {receipt.data?.receiptNo || `Receipt #${receipt.id.slice(0, 8)}`}
+                                                         </p>
+                                                         <div className="flex items-center gap-3 text-sm text-slate-500 mt-1">
+                                                              <span>{new Date(receipt.createdAt).toLocaleString()}</span>
+                                                              <span className="w-1 h-1 bg-slate-300 rounded-full" />
+                                                              <span>{receipt.data?.items?.length || 0} Items</span>
+                                                         </div>
+                                                     </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-6">
+                                                     <div className="text-right">
+                                                         <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Total</p>
+                                                         <p className="text-xl font-bold text-slate-800">₹{(receipt.data?.total || 0).toLocaleString()}</p>
+                                                     </div>
+                                                     {/* Future: Add 'Download PDF' button if we store PDF URL or have endpoint to regenerate */}
+                                                     {/* For now just view details potentially or visual only */}
+                                                     {/* <Button variant="outline" size="sm">Download</Button> */}
+                                                     <Button 
+                                                        variant="outline" 
+                                                        size="sm"
+                                                        onClick={() => viewReceiptPDF(receipt.id)}
+                                                        className="gap-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                                     >
+                                                        <FileText className="w-4 h-4" /> View PDF
+                                                     </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     </div>
