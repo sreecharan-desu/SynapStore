@@ -1257,13 +1257,20 @@ dashboardRouter.get(
               batches: m.inventory
           };
       }).filter(m => {
+          // Filter by search query if present
           if (!q) return true;
           return (
               (m.brandName && m.brandName.toLowerCase().includes(q)) || 
               (m.genericName && m.genericName.toLowerCase().includes(q)) ||
               (m.sku && m.sku.toLowerCase().includes(q))
           );
-      });
+      }).sort((a, b) => {
+          // Sort Priority: LowStock (2 points) > Expiring (1 point) > Normal (0)
+          // This ensures critical items appear first, but doesn't hide others (mixed result)
+          const scoreA = (a.isLowStock ? 2 : 0) + (a.expiringSoon ? 1 : 0);
+          const scoreB = (b.isLowStock ? 2 : 0) + (b.expiringSoon ? 1 : 0);
+          return scoreB - scoreA;
+      }).slice(0, 10); // Limit to 10 items mixed
 
       return sendSuccess(res, "Inventory list for reorder", { inventory: result });
     } catch (err) {
@@ -1400,34 +1407,83 @@ dashboardRouter.get(
         const store = req.store;
         if (!store) return sendError(res, "Store context not found", 404);
 
-    // Group inventory by medicine
+    // 1. Group inventory by medicine for distinct counts (Low Stock Check)
     const inventory = await prisma.inventoryBatch.groupBy({
       by: ['medicineId'],
       where: { storeId: store.id },
       _sum: { qtyAvailable: true }
     });
 
-    const lowStockThreshold = 20; // Hardcoded for now
-    const lowStockIds = inventory.filter(i => (i._sum.qtyAvailable || 0) < lowStockThreshold).map(i => i.medicineId);
+    const lowStockThreshold = 20;
+    const currentStockMap = new Map<string, number>();
+    inventory.forEach(i => currentStockMap.set(i.medicineId, i._sum.qtyAvailable || 0));
 
-    if (lowStockIds.length === 0) {
+    const lowStockIds = inventory
+        .filter(i => (i._sum.qtyAvailable || 0) < lowStockThreshold)
+        .map(i => i.medicineId);
+
+    // 2. Find Expiring Batches (within 90 days)
+    const ninetyDays = new Date();
+    ninetyDays.setDate(ninetyDays.getDate() + 90);
+    
+    const expiringBatches = await prisma.inventoryBatch.findMany({
+        where: {
+            storeId: store.id,
+            qtyAvailable: { gt: 0 },
+            expiryDate: { lte: ninetyDays, gt: new Date() }
+        },
+        select: { medicineId: true },
+        distinct: ['medicineId']
+    });
+    const expiringIds = Array.from(new Set(expiringBatches.map(b => b.medicineId)));
+
+    // 3. Combine Target IDs
+    // @ts-ignore
+    const targetIds = Array.from(new Set([...lowStockIds, ...expiringIds]));
+
+    if (targetIds.length === 0) {
       return sendSuccess(res, "No suggestions", { suggestions: [] });
     }
 
     const medicines = await prisma.medicine.findMany({
-      where: { id: { in: lowStockIds } },
+      where: { id: { in: targetIds } },
       select: { id: true, brandName: true, strength: true, genericName: true }
     });
 
-    // Calculate suggested quantity (target = 50)
+    const dek = dekFromEnv();
+
+    // 4. Calculate suggestions
     const suggestions = medicines.map(m => {
-      const current = inventory.find(i => i.medicineId === m.id)?._sum.qtyAvailable || 0;
+      let brandName = m.brandName;
+      try {
+         const db = decryptCell(m.brandName, dek); 
+         if (db) brandName = db;
+      } catch(e) {}
+
+      const current = currentStockMap.get(m.id) || 0;
+      const isLow = current < lowStockThreshold;
+      // @ts-ignore
+      const isExpiring = expiringIds.includes(m.id);
+
+      let reason = "Low Stock";
+      let suggestedQty = 50 - current;
+
+      if (isExpiring) {
+          if (isLow) reason = "Low Stock & Expiring";
+          else {
+              reason = "Expiring Soon";
+              suggestedQty = 30; // Suggest replacement stock
+          }
+      }
+      
+      if (suggestedQty < 10) suggestedQty = 10; // Min order
+
       return {
         medicineId: m.id,
-        brandName: m.brandName,
+        brandName,
         currentStock: current,
-        suggestedQty: 50 - current,
-        reason: "Low Stock"
+        suggestedQty,
+        reason
       };
     });
 
