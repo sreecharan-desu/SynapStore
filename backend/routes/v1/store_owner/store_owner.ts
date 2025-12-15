@@ -1578,126 +1578,142 @@ dashboardRouter.post(
         return sendError(res, "Invalid items", 400);
       }
 
+      const dek = dekFromEnv();
+
       const result = await prisma.$transaction(
         async (tx) => {
           let subtotal = 0;
-          const saleItemsCreate: any[] = [];
+          const saleItemsData = [];
 
           for (const item of items) {
-            const medicine = await tx.medicine.findUnique({
-              where: { id: item.medicineId },
-              include: { inventory: { orderBy: { expiryDate: 'asc' } } }
-            });
+             const { medicineId, qty } = item;
 
-            if (!medicine) throw new Error(`Medicine ${item.medicineId} not found`);
+             const medicine = await tx.medicine.findUnique({
+               where: { id: medicineId },
+               include: {
+                 inventory: {
+                   where: { qtyAvailable: { gt: 0 } },
+                   orderBy: { expiryDate: 'asc' }
+                 }
+               }
+             });
 
-            // Check stock
-            const availableBatches = medicine.inventory.filter(b => b.qtyAvailable > 0);
-            const totalStock = availableBatches.reduce((acc, b) => acc + b.qtyAvailable, 0);
+             if (!medicine) {
+               throw new Error(`Medicine not found: ${medicineId}`);
+             }
 
-            if (totalStock < item.qty) {
-              throw new Error(`Insufficient stock for ${medicine.brandName}. Requested: ${item.qty}, Available: ${totalStock}`);
-            }
+             // Decrypt brandName for receipt
+             let brandName = medicine.brandName;
+             try {
+                const db = decryptCell(medicine.brandName, dek);
+                if (db) brandName = db;
+             } catch (e) {}
 
-            // Use MRP of first batch as selling price (Simplification)
-            const sellingPrice = Number(availableBatches[0]?.mrp) || 0;
-            const itemTotal = sellingPrice * item.qty;
-            subtotal += itemTotal;
+             // Calculate available stock
+             const availableBatches = medicine.inventory;
+             const totalStock = availableBatches.reduce((acc, b) => acc + b.qtyAvailable, 0);
 
-            // Deduct Stock
-            let qtyToDeduct = item.qty;
-            for (const batch of availableBatches) {
-              if (qtyToDeduct <= 0) break;
-              const deduct = Math.min(batch.qtyAvailable, qtyToDeduct);
+             if (totalStock < qty) {
+               throw new Error(`Insufficient stock for ${brandName}. Requested: ${qty}, Available: ${totalStock}`);
+             }
 
-              await tx.inventoryBatch.update({
-                where: { id: batch.id },
-                data: { qtyAvailable: { decrement: deduct } }
-              });
+             // Determine unit price (using first batch MRP or 0)
+             const unitPrice = availableBatches.length > 0 && availableBatches[0].mrp ? Number(availableBatches[0].mrp) : 0;
+             
+             let qtyRemaining = qty;
 
-              // Log Movement
-              await tx.stockMovement.create({
-                data: {
-                  storeId: req.store!.id,
-                  inventoryId: batch.id,
-                  medicineId: medicine.id,
-                  delta: -deduct,
-                  reason: "SALE",
-                  performedById: req.user?.id
-                }
-              });
+             for (const batch of availableBatches) {
+               if (qtyRemaining <= 0) break;
 
-              qtyToDeduct -= deduct;
-            }
+               const deduct = Math.min(batch.qtyAvailable, qtyRemaining);
 
-            saleItemsCreate.push({
-              medicineId: medicine.id,
-              qty: item.qty,
-              unitPrice: sellingPrice,
-              lineTotal: itemTotal,
-              _medicine: medicine
-            });
+               // Deduct
+               await tx.inventoryBatch.update({
+                 where: { id: batch.id },
+                 data: { qtyAvailable: { decrement: deduct } }
+               });
+
+               // Log Movement
+               await tx.stockMovement.create({
+                 data: {
+                   storeId: req.store.id,
+                   inventoryId: batch.id,
+                   medicineId: medicine.id,
+                   delta: -deduct,
+                   reason: "SALE",
+                   performedById: req.user?.id
+                 }
+               });
+
+               qtyRemaining -= deduct;
+             }
+
+             const lineTotal = unitPrice * qty;
+             subtotal += lineTotal;
+
+             saleItemsData.push({
+               medicineId,
+               qty,
+               unitPrice,
+               lineTotal,
+               brandName // Store decrypted name for receipt
+             });
           }
 
           // Create Sale
           const sale = await tx.sale.create({
             data: {
-              storeId: req.store!.id,
+              storeId: req.store.id,
+              createdById: req.user?.id,
+              subtotal,
               totalValue: subtotal,
               paymentMethod: paymentMethod || "CASH",
-              createdById: req.user?.id
+              paymentStatus: "PAID",
+              items: {
+                create: saleItemsData.map(({ medicineId, qty, unitPrice, lineTotal }) => ({
+                  medicineId, qty, unitPrice, lineTotal
+                }))
+              }
+            },
+            include: {
+              items: {
+                include: {
+                  medicine: true
+                }
+              },
+              store: true,
+              createdBy: true
             }
           });
 
-          // Create SaleItems
-          if (saleItemsCreate.length > 0) {
-            await tx.saleItem.createMany({
-              data: saleItemsCreate.map(si => ({
-                saleId: sale.id,
-                medicineId: si.medicineId,
-                qty: si.qty,
-                unitPrice: si.unitPrice,
-                lineTotal: si.lineTotal
-              }))
-            });
-          }
-
-          // Reconstruct items with medicine info for receipt
-          const extendedItems = saleItemsCreate.map(si => ({
-            ...si,
-            medicine: si._medicine
-          }));
-
-          const receiptNo = `REC-${Date.now()}`;
-
           // Create Receipt
+          const receiptNo = `REC-${Date.now()}`;
           const receiptData = {
-            storeName: req.store!.name,
+            storeName: req.store.name,
             date: sale.createdAt,
             saleId: sale.id,
             total: sale.totalValue,
-            items: extendedItems.map((i: any) => ({ name: i.medicine.brandName, qty: i.qty, price: i.unitPrice, total: i.lineTotal }))
+            items: saleItemsData.map(i => ({ 
+                name: i.brandName, 
+                qty: i.qty, 
+                price: i.unitPrice, 
+                total: i.lineTotal 
+            }))
           };
 
           await tx.receipt.create({
             data: {
               saleId: sale.id,
-              data: receiptData as any,
+              data: receiptData,
               receiptNo
             }
           });
 
-          return {
-            sale: {
-              ...sale,
-              items: extendedItems
-            },
-            receiptNo
-          };
+          return { sale, receiptNo };
         }
-      );
+      ); // end transaction
 
-      // Generate & Stream PDF (Outside transaction)
+      // Generate & Stream PDF
       const { sale, receiptNo } = result;
       const doc = new PDFDocument({ margin: 50 });
 
@@ -1707,12 +1723,18 @@ dashboardRouter.post(
 
       doc.pipe(res);
 
-      await generateReceiptPDF(doc, sale, receiptNo, req.store!, res);
+      await generateReceiptPDF(doc, sale, receiptNo, req.store, res);
 
-    } catch (error) {
+    } catch (error: any) {
       if (!res.headersSent) {
-        // @ts-ignore
-        next(error);
+         // handlePrismaError might try to send response, so stick to manual error sending if custom logic needs it, 
+         // but handlePrismaError is good.
+         if (error.message && error.message.includes("Insufficient stock")) {
+             return sendError(res, error.message, 400); 
+         }
+         handlePrismaError(res, error);
+      } else {
+        console.error("Error after headers sent:", error);
       }
     }
   }
