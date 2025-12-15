@@ -337,7 +337,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const [posQuery, setPosQuery] = React.useState("");
     const [isPosLoading, setIsPosLoading] = React.useState(false);
     const [posResults, setPosResults] = React.useState<any[]>([]);
-    const [posCart, setPosCart] = React.useState<Map<string, number>>(new Map()); // medicineId -> qty
+    const [posCart, setPosCart] = React.useState<Map<string, { qty: number, medicine: any }>>(new Map()); // medicineId -> {qty, medicine}
     const [isCheckoutLoading, setIsCheckoutLoading] = React.useState(false);
     const [showPOSConfirm, setShowPOSConfirm] = React.useState(false);
 
@@ -378,8 +378,11 @@ const StoreOwnerDashboard: React.FC = () => {
 
         setPosCart(prev => {
             const newCart = new Map(prev);
-            if (qty <= 0) newCart.delete(medicine.id);
-            else newCart.set(medicine.id, qty);
+            if (qty <= 0) {
+                newCart.delete(medicine.id);
+            } else {
+                newCart.set(medicine.id, { qty, medicine });
+            }
             return newCart;
         });
     };
@@ -416,7 +419,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
         setIsCheckoutLoading(true);
         try {
-            const items = Array.from(posCart.entries()).map(([medicineId, qty]) => ({ medicineId, qty }));
+            const items = Array.from(posCart.values()).map(({ medicine, qty }) => ({ medicineId: medicine.id, qty }));
 
             // Pass paymentMethod from state
             const res = await dashboardApi.checkoutSale(items, posPaymentMethod);
@@ -1747,7 +1750,8 @@ const StoreOwnerDashboard: React.FC = () => {
                                             )}
                                             {posResults.map((med: any) => {
                                                 const totalStock = med.inventory?.reduce((acc: any, b: any) => acc + b.qtyAvailable, 0) || 0;
-                                                const inCart = posCart.get(med.id) || 0;
+                                                const cartItem = posCart.get(med.id);
+                                                const inCart = cartItem ? cartItem.qty : 0;
                                                 return (
                                                     <div
                                                         key={med.id}
@@ -1791,7 +1795,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                 ) : (
                                                                     <button
                                                                         onClick={() => handlePOSAddToCart(med, 1)}
-                                                                        className="!bg-white border border-slate-200 text-slate-700 hover:!bg-slate-50 hover:border-slate-300 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm"
+                                                                        className="!bg-white border border-slate-200 !text-slate-900 hover:!bg-slate-50 hover:border-slate-300 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm"
                                                                     >
                                                                         Add
                                                                     </button>
@@ -1837,17 +1841,18 @@ const StoreOwnerDashboard: React.FC = () => {
                                         </div>
                                     ) : (
                                         <ul className="space-y-4">
-                                            {Array.from(posCart.entries()).map(([id, qty]) => {
-                                                const m = posResults.find(x => x.id === id) || { brandName: "Item info hidden", genericName: "unknown", strength: "" };
+                                            {Array.from(posCart.values()).map(({ medicine: m, qty }) => {
+                                                const price = m.sellingPrice || 0;
+                                                const subtotal = price * qty;
                                                 return (
-                                                    <li key={id} className="flex justify-between items-start group">
+                                                    <li key={m.id} className="flex justify-between items-start group">
                                                         <div className="flex-1 pr-4">
                                                             <div className="font-bold text-slate-800 text-sm">{m.brandName}</div>
                                                             <div className="text-xs text-slate-400 mt-0.5">{m.genericName} {m.strength && `• ${m.strength}`}</div>
                                                         </div>
                                                         <div className="flex items-center gap-3">
                                                             <div className="text-xs font-bold text-slate-500">x{qty}</div>
-                                                            <span className="font-mono text-sm font-bold text-slate-900">--</span>
+                                                            <span className="font-mono text-sm font-bold text-slate-900">₹{subtotal.toFixed(2)}</span>
                                                         </div>
                                                     </li>
                                                 );
@@ -1855,15 +1860,15 @@ const StoreOwnerDashboard: React.FC = () => {
                                             <div className="border-t-2 border-dashed border-slate-100 my-4" />
                                             <div className="flex justify-between items-center text-slate-500 text-sm">
                                                 <span>Subtotal</span>
-                                                <span className="font-mono">--</span>
+                                                <span className="font-mono">₹{Array.from(posCart.values()).reduce((acc, item) => acc + (item.medicine.sellingPrice || 0) * item.qty, 0).toFixed(2)}</span>
                                             </div>
                                             <div className="flex justify-between items-center text-slate-500 text-sm">
                                                 <span>Tax (0%)</span>
-                                                <span className="font-mono">--</span>
+                                                <span className="font-mono">₹0.00</span>
                                             </div>
                                             <div className="flex justify-between items-center text-lg font-bold text-slate-900 mt-2">
                                                 <span>Total</span>
-                                                <span className="font-mono">--</span>
+                                                <span className="font-mono">₹{Array.from(posCart.values()).reduce((acc, item) => acc + (item.medicine.sellingPrice || 0) * item.qty, 0).toFixed(2)}</span>
                                             </div>
                                         </ul>
                                     )}
@@ -1908,140 +1913,142 @@ const StoreOwnerDashboard: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                    </motion.div>
+                    </motion.div >
                 )}
 
                 {/* --- HISTORY TAB --- */}
-                {activeTab === 'history' && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-white rounded-3xl shadow-2xl w-full flex flex-col overflow-hidden"
-                    >
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                            <div>
-                                <h2 className="text-xl font-bold text-slate-800">Sales History</h2>
-                                <p className="text-sm text-slate-500">View and download past receipts</p>
+                {
+                    activeTab === 'history' && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-white rounded-3xl shadow-2xl w-full flex flex-col overflow-hidden"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-800">Sales History</h2>
+                                    <p className="text-sm text-slate-500">View and download past receipts</p>
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="flex-1 p-6 bg-slate-50">
-                            <div className="bg-white rounded-2xl border border-slate-200 overflow-y-auto max-h-[70vh] shadow-sm custom-scrollbar relative">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                                        <tr>
-                                            <th className="px-6 py-4 font-semibold text-slate-700">Receipt Details</th>
-                                            <th className="px-6 py-4 font-semibold text-slate-700">Date & Items</th>
-                                            <th className="px-6 py-4 font-semibold text-slate-700 text-right">Total Amount</th>
-                                            <th className="px-6 py-4 font-semibold text-slate-700 text-right">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {isHistoryLoading ? (
-                                            [...Array(5)].map((_, i) => (
-                                                <tr key={i}>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-4">
-                                                            <Skeleton className="w-10 h-10 rounded-xl" />
-                                                            <div className="space-y-2">
-                                                                <Skeleton className="h-4 w-32" />
-                                                                <Skeleton className="h-3 w-24" />
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="space-y-2">
-                                                            <Skeleton className="h-4 w-24" />
-                                                            <Skeleton className="h-3 w-16" />
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <div className="flex justify-end">
-                                                            <Skeleton className="h-6 w-16 rounded-lg" />
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <div className="flex justify-end gap-2">
-                                                            <Skeleton className="w-9 h-9 rounded-lg" />
-                                                            <Skeleton className="w-24 h-9 rounded-lg" />
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        ) : receipts.length === 0 ? (
+                            <div className="flex-1 p-6 bg-slate-50">
+                                <div className="bg-white rounded-2xl border border-slate-200 overflow-y-auto max-h-[70vh] shadow-sm custom-scrollbar relative">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                                             <tr>
-                                                <td colSpan={4} className="px-6 py-12">
-                                                    <div className="flex flex-col items-center justify-center text-slate-400 gap-4">
-                                                        <div className="bg-slate-50 p-4 rounded-full shadow-sm border border-slate-100">
-                                                            <FileText className="w-8 h-8 opacity-50" />
-                                                        </div>
-                                                        <p>No receipts found.</p>
-                                                    </div>
-                                                </td>
+                                                <th className="px-6 py-4 font-semibold text-slate-700">Receipt Details</th>
+                                                <th className="px-6 py-4 font-semibold text-slate-700">Date & Items</th>
+                                                <th className="px-6 py-4 font-semibold text-slate-700 text-right">Total Amount</th>
+                                                <th className="px-6 py-4 font-semibold text-slate-700 text-right">Action</th>
                                             </tr>
-                                        ) : (
-                                            receipts.map((receipt) => (
-                                                <tr key={receipt.id} className="hover:bg-slate-50 transition-colors group">
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className={`w-10 h-10 rounded-xl ${theme.light} flex items-center justify-center`}>
-                                                                <FileText className={`w-5 h-5 ${theme.text}`} />
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {isHistoryLoading ? (
+                                                [...Array(5)].map((_, i) => (
+                                                    <tr key={i}>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex items-center gap-4">
+                                                                <Skeleton className="w-10 h-10 rounded-xl" />
+                                                                <div className="space-y-2">
+                                                                    <Skeleton className="h-4 w-32" />
+                                                                    <Skeleton className="h-3 w-24" />
+                                                                </div>
                                                             </div>
-                                                            <div>
-                                                                <p className="font-bold text-slate-800">
-                                                                    {data?.store?.name || 'Store Name'}
-                                                                </p>
-                                                                <p className="text-xs text-slate-500 font-mono mt-0.5 opacity-75">
-                                                                    {receipt.data?.receiptNo || `Receipt #${receipt.id.slice(0, 8)}`}
-                                                                </p>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="space-y-2">
+                                                                <Skeleton className="h-4 w-24" />
+                                                                <Skeleton className="h-3 w-16" />
                                                             </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-col gap-1">
-                                                            <div className="flex items-center gap-2 text-slate-600">
-                                                                <span className="font-medium bg-slate-100 px-2 py-0.5 rounded text-xs">{new Date(receipt.createdAt).toLocaleDateString()}</span>
-                                                                <span className="text-xs text-slate-400">{new Date(receipt.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <div className="flex justify-end">
+                                                                <Skeleton className="h-6 w-16 rounded-lg" />
                                                             </div>
-                                                            <span className="text-xs text-slate-500 font-medium">
-                                                                {receipt.data?.items?.length || 0} Items Prescribed
-                                                            </span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <span className="text-lg font-bold text-slate-800">
-                                                            ₹{(receipt.data?.total || 0).toLocaleString()}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <div className="flex justify-end gap-2">
-                                                            <i
-
-                                                                onClick={() => downloadReceiptPDF(receipt.id, receipt.data?.receiptNo)}
-                                                                className={`w-9 h-9  p-0 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500`}
-                                                                title="Download PDF"
-                                                            >
-                                                                <Download className="w-4 h-10 cursor-pointer" />
-                                                            </i>
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={() => viewReceiptPDF(receipt.id)}
-                                                                className={`gap-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 ${theme.text}`}
-                                                            >
-                                                                <FileText className="w-3.5 h-3.5" /> View PDF
-                                                            </Button>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <div className="flex justify-end gap-2">
+                                                                <Skeleton className="w-9 h-9 rounded-lg" />
+                                                                <Skeleton className="w-24 h-9 rounded-lg" />
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            ) : receipts.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={4} className="px-6 py-12">
+                                                        <div className="flex flex-col items-center justify-center text-slate-400 gap-4">
+                                                            <div className="bg-slate-50 p-4 rounded-full shadow-sm border border-slate-100">
+                                                                <FileText className="w-8 h-8 opacity-50" />
+                                                            </div>
+                                                            <p>No receipts found.</p>
                                                         </div>
                                                     </td>
                                                 </tr>
-                                            )))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                            ) : (
+                                                receipts.map((receipt) => (
+                                                    <tr key={receipt.id} className="hover:bg-slate-50 transition-colors group">
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className={`w-10 h-10 rounded-xl ${theme.light} flex items-center justify-center`}>
+                                                                    <FileText className={`w-5 h-5 ${theme.text}`} />
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-bold text-slate-800">
+                                                                        {data?.store?.name || 'Store Name'}
+                                                                    </p>
+                                                                    <p className="text-xs text-slate-500 font-mono mt-0.5 opacity-75">
+                                                                        {receipt.data?.receiptNo || `Receipt #${receipt.id.slice(0, 8)}`}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex flex-col gap-1">
+                                                                <div className="flex items-center gap-2 text-slate-600">
+                                                                    <span className="font-medium bg-slate-100 px-2 py-0.5 rounded text-xs">{new Date(receipt.createdAt).toLocaleDateString()}</span>
+                                                                    <span className="text-xs text-slate-400">{new Date(receipt.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                                </div>
+                                                                <span className="text-xs text-slate-500 font-medium">
+                                                                    {receipt.data?.items?.length || 0} Items Prescribed
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <span className="text-lg font-bold text-slate-800">
+                                                                ₹{(receipt.data?.total || 0).toLocaleString()}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <div className="flex justify-end gap-2">
+                                                                <i
 
-                        </div>
-                    </motion.div>
-                )}
+                                                                    onClick={() => downloadReceiptPDF(receipt.id, receipt.data?.receiptNo)}
+                                                                    className={`w-9 h-9  p-0 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500`}
+                                                                    title="Download PDF"
+                                                                >
+                                                                    <Download className="w-4 h-10 cursor-pointer" />
+                                                                </i>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => viewReceiptPDF(receipt.id)}
+                                                                    className={`gap-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 ${theme.text}`}
+                                                                >
+                                                                    <FileText className="w-3.5 h-3.5" /> View PDF
+                                                                </Button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                            </div>
+                        </motion.div>
+                    )
+                }
 
 
                 {/* Suppliers Directory Modal */}
@@ -2146,7 +2153,7 @@ const StoreOwnerDashboard: React.FC = () => {
                 </AnimatePresence>
 
 
-            </main>
+            </main >
             <FeedbackToast
                 visible={showFeedback}
                 onClose={() => setShowFeedback(false)}
