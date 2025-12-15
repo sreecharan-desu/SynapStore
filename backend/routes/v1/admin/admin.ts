@@ -953,7 +953,7 @@ router.get("/dashboard/analytics", requireRole("SUPERADMIN"), async (req: any, r
 
     const formattedData = {
       overview: {
-        users: { total: totalUsers, verified: 0 /* Add if needed */ },
+        users: { total: totalUsers, verified: 0 },
         stores: { total: totalStores, active: activeStores, inactive: totalStores - activeStores },
         suppliers: { total: totalSuppliers },
         medicines: { total: totalMedicines },
@@ -986,6 +986,7 @@ router.get("/dashboard/analytics", requireRole("SUPERADMIN"), async (req: any, r
       recentCriticalActivity: recentCriticalActions
     };
 
+    // Ensure we are actually returning it
     return sendSuccess(res, "Admin analytics retrieved", formattedData);
   } catch (err: any) {
     return sendInternalError(res, err, "Failed to retrieve admin analytics");

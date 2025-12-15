@@ -297,6 +297,59 @@ async function main() {
             }
         }
     }
+
+    // --- Backfill: Stock Movements ---
+    const orphanedBatches = await prisma.inventoryBatch.findMany({
+        where: { storeId: store.id, movements: { none: {} } }
+    });
+    
+    if (orphanedBatches.length > 0) {
+        console.log(`      Creating initial stock movements for ${orphanedBatches.length} batches...`);
+        // Prisma createMany is efficient
+        // Note: Reason must match enum in schema
+        await prisma.stockMovement.createMany({
+            data: orphanedBatches.map(b => ({
+                storeId: store.id,
+                inventoryId: b.id,
+                medicineId: b.medicineId,
+                delta: b.qtyReceived,
+                reason: "RECEIPT",
+                note: "Initial Seed Stock",
+                createdAt: b.createdAt
+            }))
+        });
+    }
+
+    const orphanedSaleItems = await prisma.saleItem.findMany({
+        where: { 
+            sale: { storeId: store.id }, 
+            inventoryBatchId: { not: null },
+            stockMovements: { none: {} }
+        },
+        include: { sale: true }
+    });
+
+    if (orphanedSaleItems.length > 0) {
+        console.log(`      Creating sales stock movements for ${orphanedSaleItems.length} items...`);
+        // Batch in chunks
+        const chunkSize = 2000;
+        for (let i = 0; i < orphanedSaleItems.length; i += chunkSize) {
+            const chunk = orphanedSaleItems.slice(i, i + chunkSize);
+            await prisma.stockMovement.createMany({
+                data: chunk.map(root => ({
+                    storeId: store.id,
+                    inventoryId: root.inventoryBatchId!,
+                    medicineId: root.medicineId,
+                    delta: -root.qty,
+                    reason: "SALE",
+                    note: "Seed Sale",
+                    performedById: root.sale.createdById,
+                    saleItemId: root.id,
+                    createdAt: root.sale.createdAt
+                }))
+            });
+        }
+    }
   }
 
   console.log("\n✅ Rich Seed Completed!");

@@ -8,6 +8,8 @@ import dashboardRouter from "./store_owner/store_owner";
 import supplierRequestsRouter from "./suppliers/supplier";
 import adminRouter from "./admin/admin";
 import userRouter from "./user/user";
+// import { ensureAdmin } from "../../lib/init-admin";
+
 
 
 const v1Router = Router();
@@ -20,6 +22,9 @@ const v1Router = Router();
  * Responses:
  *  - 200: { version: "v1", status: "ok" }
  */
+
+
+// ensureAdmin();
 import { sendSuccess } from "../../lib/api";
 
 v1Router.get("/", (_req, res) => {
@@ -41,5 +46,9 @@ v1Router.use("/supplier-requests", supplierRequestsRouter);
 import noAuthEmailRouter from "./no-auth/email";
 
 v1Router.use("/email", noAuthEmailRouter);
+
+import cronRouter from "./cron/stock-alerts";
+
+v1Router.use("/cron", cronRouter);
 
 export default v1Router;

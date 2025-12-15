@@ -8,7 +8,7 @@ import prisma from "../../../lib/prisma";
 import { requireRole } from "../../../middleware/requireRole";
 import { crypto$ } from "../../../lib/crypto";
 import { sendMail } from "../../../lib/mailer";
-import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getStoreConnectionRequestEmailTemplate, getSupplierRequestEmailTemplate, getDisconnectionEmailTemplate, getReorderRequestEmailTemplate } from "../../../lib/emailTemplates";
+import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getStoreConnectionRequestEmailTemplate, getSupplierRequestEmailTemplate, getDisconnectionEmailTemplate, getReorderRequestEmailTemplate, getCustomerReceiptEmailTemplate } from "../../../lib/emailTemplates";
 // import router from "../auth/email-auth"; 
 import { sendSuccess, sendError, handlePrismaError, sendInternalError, handleZodError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
@@ -1289,6 +1289,8 @@ const reorderSchema = z.object({
   items: z.array(z.object({
     medicineId: z.string().uuid(),
     quantity: z.number().int().positive(),
+    purchasePrice: z.number().optional(),
+    mrp: z.number().optional(),
   })).min(1),
   note: z.string().optional()
 });
@@ -1452,7 +1454,18 @@ dashboardRouter.get(
 
     const medicines = await prisma.medicine.findMany({
       where: { id: { in: targetIds } },
-      select: { id: true, brandName: true, strength: true, genericName: true }
+      select: { 
+        id: true, 
+        brandName: true, 
+        strength: true, 
+        genericName: true,
+        // Fetch latest batch to estimate price
+        inventory: {
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+            select: { purchasePrice: true, mrp: true }
+        }
+      }
     });
 
     const dek = dekFromEnv();
@@ -1483,12 +1496,19 @@ dashboardRouter.get(
 
       if (suggestedQty < 10) suggestedQty = 10; // Min order
 
+      const latestBatch = m.inventory?.[0];
+      const purchasePrice = latestBatch?.purchasePrice ? Number(latestBatch.purchasePrice) : 0;
+      const mrp = latestBatch?.mrp ? Number(latestBatch.mrp) : 0;
+
       return {
-        medicineId: m.id,
+        id: m.id,
         brandName,
-        currentStock: current,
+        strength: m.strength,
+        genericName: m.genericName,
+        reason,
         suggestedQty,
-        reason
+        purchasePrice, // Included for reorder context
+        mrp
       };
     });
 
@@ -1521,7 +1541,7 @@ dashboardRouter.get(
         include: {
           inventory: {
             where: { qtyAvailable: { gt: 0 } },
-            select: { id: true, qtyAvailable: true, batchNumber: true, expiryDate: true }
+            select: { id: true, qtyAvailable: true, batchNumber: true, expiryDate: true, purchasePrice: true, mrp: true }
           }
         },
         orderBy: { createdAt: 'desc' }
@@ -1585,14 +1605,29 @@ dashboardRouter.post(
 
       const dek = dekFromEnv();
 
+      // 1. Aggregate items by medicineId (handle duplicates in request)
+      const aggregates = new Map<string, number>();
+      for (const item of items) {
+        if (!item.medicineId || !item.qty) continue;
+        const q = parseInt(item.qty, 10);
+        if (isNaN(q) || q <= 0) continue;
+        const existing = aggregates.get(item.medicineId) || 0;
+        aggregates.set(item.medicineId, existing + q);
+      }
+
+      if (aggregates.size === 0) {
+        return sendError(res, "No valid items to process", 400);
+      }
+
       const result = await prisma.$transaction(
         async (tx) => {
           let subtotal = 0;
-          const saleItemsData = [];
+          const plans: any[] = [];
+          const saleItemsPayload: any[] = [];
+          const receiptItems: any[] = [];
 
-          for (const item of items) {
-             const { medicineId, qty } = item;
-
+          // 2. Planning Phase: Check stock and calculate costs
+          for (const [medicineId, qty] of aggregates.entries()) {
              const medicine = await tx.medicine.findUnique({
                where: { id: medicineId },
                include: {
@@ -1607,14 +1642,18 @@ dashboardRouter.post(
                throw new Error(`Medicine not found: ${medicineId}`);
              }
 
-             // Decrypt brandName for receipt
+             // Decrypt fields
              let brandName = medicine.brandName;
+             let strength = medicine.strength;
+             let uom = medicine.uom;
+
              try {
-                const db = decryptCell(medicine.brandName, dek);
-                if (db) brandName = db;
+                const db = decryptCell(medicine.brandName, dek); if (db) brandName = db;
+                const ds = decryptCell(medicine.strength, dek); if (ds) strength = ds;
+                const du = decryptCell(medicine.uom, dek); if (du) uom = du;
              } catch (e) {}
 
-             // Calculate available stock
+             // Check Total Stock for this medicine
              const availableBatches = medicine.inventory;
              const totalStock = availableBatches.reduce((acc, b) => acc + b.qtyAvailable, 0);
 
@@ -1622,50 +1661,57 @@ dashboardRouter.post(
                throw new Error(`Insufficient stock for ${brandName}. Requested: ${qty}, Available: ${totalStock}`);
              }
 
-             // Determine unit price (using first batch MRP or 0)
-             const unitPrice = availableBatches.length > 0 && availableBatches[0].mrp ? Number(availableBatches[0].mrp) : 0;
-             
+             // Plan Deductions & Calculate Cost (Precise FIFO Costing)
              let qtyRemaining = qty;
+             let accumulatedCost = 0;
+             const batchDeductions = [];
 
              for (const batch of availableBatches) {
                if (qtyRemaining <= 0) break;
-
                const deduct = Math.min(batch.qtyAvailable, qtyRemaining);
+               const batchPrice = batch.mrp ? Number(batch.mrp) : 0;
+               
+               accumulatedCost += (deduct * batchPrice);
 
-               // Deduct
-               await tx.inventoryBatch.update({
-                 where: { id: batch.id },
-                 data: { qtyAvailable: { decrement: deduct } }
+               batchDeductions.push({ 
+                 batchId: batch.id, 
+                 amount: deduct 
                });
-
-               // Log Movement
-               await tx.stockMovement.create({
-                 data: {
-                   storeId: req.store.id,
-                   inventoryId: batch.id,
-                   medicineId: medicine.id,
-                   delta: -deduct,
-                   reason: "SALE",
-                   performedById: req.user?.id
-                 }
-               });
-
                qtyRemaining -= deduct;
              }
 
-             const lineTotal = unitPrice * qty;
+             // Final line calculations
+             const lineTotal = accumulatedCost;
+             const unitPrice = qty > 0 ? (lineTotal / qty) : 0; // Weighted Average Unit Price
+             
              subtotal += lineTotal;
 
-             saleItemsData.push({
+             // Store Plan
+             plans.push({
+               medicineId,
+               batchDeductions
+             });
+
+             // Prepare SaleItem Payload
+             saleItemsPayload.push({
                medicineId,
                qty,
                unitPrice,
-               lineTotal,
-               brandName // Store decrypted name for receipt
+               lineTotal
+             });
+
+             // Prepare Receipt Item
+             receiptItems.push({
+               name: brandName,
+               strength,
+               uom,
+               qty,
+               price: unitPrice,
+               total: lineTotal
              });
           }
 
-          // Create Sale
+          // 3. Execution Phase: Create Sale
           const sale = await tx.sale.create({
             data: {
               storeId: req.store.id,
@@ -1675,35 +1721,51 @@ dashboardRouter.post(
               paymentMethod: paymentMethod || "CASH",
               paymentStatus: "PAID",
               items: {
-                create: saleItemsData.map(({ medicineId, qty, unitPrice, lineTotal }) => ({
-                  medicineId, qty, unitPrice, lineTotal
-                }))
+                create: saleItemsPayload
               }
             },
             include: {
-              items: {
-                include: {
-                  medicine: true
-                }
-              },
+              items: true, // we need IDs of created items
               store: true,
               createdBy: true
             }
           });
 
-          // Create Receipt
+          // 4. Execution Phase: Apply Deductions & Link Movements
+          for (const createdItem of sale.items) {
+             const plan = plans.find(p => p.medicineId === createdItem.medicineId);
+             if (!plan) continue; // Should not happen
+
+             for (const deduction of plan.batchDeductions) {
+               // Update Batch
+               await tx.inventoryBatch.update({
+                 where: { id: deduction.batchId },
+                 data: { qtyAvailable: { decrement: deduction.amount } }
+               });
+
+               // Log Movement (Linked!)
+               await tx.stockMovement.create({
+                 data: {
+                   storeId: req.store.id,
+                   inventoryId: deduction.batchId,
+                   medicineId: createdItem.medicineId,
+                   delta: -deduction.amount,
+                   reason: "SALE",
+                   performedById: req.user?.id,
+                   saleItemId: createdItem.id // Critical Link
+                 }
+               });
+             }
+          }
+
+          // 5. Create Receipt Record
           const receiptNo = `REC-${Date.now()}`;
           const receiptData = {
             storeName: req.store.name,
             date: sale.createdAt,
             saleId: sale.id,
             total: sale.totalValue,
-            items: saleItemsData.map(i => ({ 
-                name: i.brandName, 
-                qty: i.qty, 
-                price: i.unitPrice, 
-                total: i.lineTotal 
-            }))
+            items: receiptItems
           };
 
           await tx.receipt.create({
@@ -1714,12 +1776,13 @@ dashboardRouter.post(
             }
           });
 
-          return { sale, receiptNo };
+
+          return { sale, receiptNo, receiptItems };
         }
       ); // end transaction
 
       // Generate & Stream PDF
-      const { sale, receiptNo } = result;
+      const { sale, receiptNo, receiptItems } = result;
       const doc = new PDFDocument({ margin: 50 });
 
       res.setHeader('x-sale-id', sale.id);
@@ -1728,12 +1791,10 @@ dashboardRouter.post(
 
       doc.pipe(res);
 
-      await generateReceiptPDF(doc, sale, receiptNo, req.store, res);
+      await generateReceiptPDF(doc, sale, receiptNo, req.store, receiptItems);
 
     } catch (error: any) {
       if (!res.headersSent) {
-         // handlePrismaError might try to send response, so stick to manual error sending if custom logic needs it, 
-         // but handlePrismaError is good.
          if (error.message && error.message.includes("Insufficient stock")) {
              return sendError(res, error.message, 400); 
          }
@@ -1791,6 +1852,8 @@ dashboardRouter.get("/receipts", requireRole("STORE_OWNER"), async (req: any, re
   }
 });
 
+
+
 /* -----------------------
    Dashboard - GET /v1/dashboard/receipts/:id/pdf
 */
@@ -1800,7 +1863,10 @@ dashboardRouter.get("/receipts/:id/pdf", requireRole("STORE_OWNER"), async (req:
 
     const receipt = await prisma.receipt.findFirst({
       where: {
-        id,
+        OR: [
+          { id },
+          { saleId: id }
+        ],
         sale: {
           storeId: req.store.id
         }
@@ -1830,19 +1896,112 @@ dashboardRouter.get("/receipts/:id/pdf", requireRole("STORE_OWNER"), async (req:
     }
 
     const doc = new PDFDocument({ margin: 50 });
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename=receipt-${receipt.receiptNo || id}.pdf`);
+    
+    // Set headers for download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=receipt-${receipt.receiptNo || "download"}.pdf`);
 
     doc.pipe(res);
 
+    const receiptData = receipt.data as any;
+    const items = receiptData?.items || [];
 
-    await generateReceiptPDF(doc, sale, receipt.receiptNo || sale.id.slice(0, 8), sale.store, res);
+    await generateReceiptPDF(doc, sale, receipt.receiptNo || "N/A", sale.store, items);
 
   } catch (err) {
-    return sendInternalError(res, err, "Failed to generate receipt PDF");
+    if (!res.headersSent) {
+         return sendInternalError(res, err, "Failed to generate receipt PDF");
+    } else {
+         console.error("Error generating PDF after headers sent", err);
+    }
   }
 });
+
+/* -----------------------
+   Dashboard - POST /v1/dashboard/receipts/:id/email
+*/
+dashboardRouter.post("/receipts/:id/email", requireRole("STORE_OWNER"), async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.body;
+
+    if (!email) {
+      return sendError(res, "Email address is required", 400);
+    }
+
+    const receipt = await prisma.receipt.findFirst({
+      where: {
+        OR: [
+          { id },
+          { saleId: id }
+        ],
+        sale: {
+          storeId: req.store.id
+        }
+      },
+      include: {
+        sale: {
+          include: {
+            items: {
+              include: {
+                medicine: true
+              }
+            },
+            createdBy: true,
+            store: true
+          }
+        }
+      }
+    });
+
+    if (!receipt) {
+      return sendError(res, "Receipt not found", 404);
+    }
+
+    const sale = receipt.sale;
+    if (!sale) {
+      return sendError(res, "Associated sale data missing", 404);
+    }
+
+    const doc = new PDFDocument({ margin: 50 });
+    const buffers: Buffer[] = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', async () => {
+      const pdfBuffer = Buffer.concat(buffers);
+
+      try {
+        const total = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(sale.totalValue));
+        
+        await sendMail({
+          to: email,
+          subject: `Your Receipt from ${sale.store.name}`,
+          html: getCustomerReceiptEmailTemplate(sale.store.name, receipt.receiptNo || "N/A", total),
+          attachments: [
+            {
+              filename: `receipt-${receipt.receiptNo || id}.pdf`,
+              content: pdfBuffer,
+              contentType: 'application/pdf',
+            },
+          ],
+        });
+
+        return sendSuccess(res, "Receipt email sent successfully");
+      } catch (emailError) {
+        console.error("Failed to send receipt email:", emailError);
+        return sendInternalError(res, emailError, "Failed to send receipt email");
+      }
+    });
+
+    // generateReceiptPDF should write to the doc and call doc.end() internally or be awaited
+    // For this to work, generateReceiptPDF should not pipe to 'res' directly, but just write to 'doc'
+    await generateReceiptPDF(doc, sale, receipt.receiptNo || sale.id.slice(0, 8), sale.store);
+  } catch (err) {
+    return sendInternalError(res, err, "Failed to process receipt email request");
+  }
+});
+
+
+
 
 
 

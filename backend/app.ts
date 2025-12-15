@@ -19,17 +19,58 @@ app.use(helmet());
 app.use(xss());
 app.use(hpp());
 app.use(compression());
+app.use(compression({
+  level: 6, // Balance speed and size
+  threshold: 0, // Compress everything
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
+}));
 app.use(express.json({ limit: "10mb" }));
 
 // Prettify Logs Middleware
+// Prettify Logs Middleware - Hacker/Sreecharan Vibe
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
     const duration = Date.now() - start;
     const status = res.statusCode;
-    const color = status >= 500 ? "\x1b[31m" : status >= 400 ? "\x1b[33m" : status >= 300 ? "\x1b[36m" : "\x1b[32m";
+    
+    // ANSI Colors & Styles
     const reset = "\x1b[0m";
-    console.log(`${color}[${req.method}] ${req.originalUrl} ${status}${reset} - ${duration}ms`);
+    const bright = "\x1b[1m";
+    const dim = "\x1b[2m";
+    const green = "\x1b[32m";
+    const red = "\x1b[31m";
+    const yellow = "\x1b[33m";
+    const cyan = "\x1b[36m";
+    const magenta = "\x1b[35m";
+    const blue = "\x1b[34m";
+
+    let statusColor = green;
+    let icon = "ACCESS_GRANTED";
+    
+    if (status >= 500) { 
+        statusColor = red; 
+        icon = "SYSTEM_FAILURE"; 
+    } else if (status >= 400) { 
+        statusColor = yellow; 
+        icon = "ACCESS_DENIED"; 
+    } else if (status >= 300) { 
+        statusColor = cyan; 
+        icon = "REDIRECT"; 
+    }
+
+    const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+    const method = req.method.padEnd(7); // Alignment
+
+    console.log(
+      `${dim}[${timestamp}]${reset} ${bright}${cyan}[SREECHARAN_SYS]${reset} ` +
+      `${magenta}::${reset} ${blue}${method}${reset} ` +
+      `${req.originalUrl} ${dim}>>${reset} ${statusColor}${status} ${icon}${reset} ` +
+      `${dim}[${duration}ms]${reset}`
+    );
   });
   next();
 });

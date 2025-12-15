@@ -1,4 +1,5 @@
 import { client } from "./client";
+import axios from "axios";
 import type { User, AuthResponse, Store, Supplier, SupplierRequest, AdminStats } from "../types";
 
 
@@ -26,7 +27,7 @@ export const storeApi = {
 // --- Dashboard ---
 export const dashboardApi = {
     getStore: () => client.get<{ success: boolean; data: { user: User; store: Store; roles: string[] } }>("api/v1/dashboard/store"),
-    getBootstrap: (params?: any) => client.get<any>("api/v1/dashboard/bootstrap", { params }),
+    getBootstrap: (params?: any) => client.get<{ success: boolean; data: any }>("api/v1/dashboard/bootstrap", { params }),
 
     // Supplier Requests (Store Owner View)
     getSupplierRequests: () => client.get<{ success: boolean; data: SupplierRequest[] }>("api/v1/dashboard/supplier-requests"),
@@ -43,6 +44,8 @@ export const dashboardApi = {
     getReceipts: () => client.get<{ success: boolean; data: { receipts: any[] } }>("api/v1/dashboard/receipts"),
     getReceiptPDF: (id: string) => client.get(`api/v1/dashboard/receipts/${id}/pdf`, { responseType: 'blob' }),
     sendReceiptEmail: (id: string, email: string) => client.post(`api/v1/dashboard/receipts/${id}/email`, { email }),
+    getInventoryForecast: (data: { store_id: string; medicine_id: string; horizon_days: number[] }) =>
+        axios.post("https://anandvelpuri-zenith.hf.space/forecast/inventory", data, { headers: { 'Content-Type': 'application/json' } }),
 };
 
 // --- Suppliers ---
@@ -54,7 +57,7 @@ export const suppliersApi = {
     createRequest: (data: { storeId: string; supplierId: string; message?: string }) => client.post<{ success: boolean; data: { request: SupplierRequest } }>("api/v1/supplier-requests", data),
     getDetails: (supplierId?: string) => client.get<{ success: boolean; data: { supplier: Supplier & { supplierStores?: { store: Store }[] }; requests: SupplierRequest[] } }>("api/v1/supplier-requests", { params: { supplierId } }),
     acceptRequest: (requestId: string) => client.post<{ success: boolean; message: string }>(`api/v1/supplier-requests/requests/${requestId}/accept`),
-    rejectRequest: (requestId: string) => client.post<{ success: boolean; message: string }>(`api/v1/supplier-requests/requests/${requestId}/reject`),
+    rejectRequest: (requestId: string, reason?: string) => client.post<{ success: boolean; message: string }>(`api/v1/supplier-requests/requests/${requestId}/reject`, { reason }),
     fulfillRequest: (requestId: string, data: { items: any[] }) => client.post<{ success: boolean; data: any }>(`api/v1/supplier-requests/requests/${requestId}/fulfill`, data),
     disconnectStore: (storeId: string) => client.delete<{ success: boolean; message: string }>(`api/v1/supplier-requests/stores/${storeId}`),
 };
