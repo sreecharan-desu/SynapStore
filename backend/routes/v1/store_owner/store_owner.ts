@@ -1566,7 +1566,11 @@ dashboardRouter.get(
 
 dashboardRouter.post(
   "/sales/checkout",
-  async (req: AuthRequest, res: Response) => {
+  authenticate,
+  storeContext,
+  requireStore,
+  // @ts-ignore
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const { items, paymentMethod } = req.body; // Expect items: { medicineId, qty }[], paymentMethod?
 
