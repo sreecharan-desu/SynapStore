@@ -4,11 +4,9 @@ import { X, Send, Loader2, Sparkles } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-interface ChatPayload {
-    message: string;
-    thread_id: string;
-}
+import { useRecoilValue } from "recoil";
+import { authState } from "../state/auth";
+import { sendChatMessage } from "../lib/api/chat";
 
 interface Message {
     id: string;
@@ -42,6 +40,7 @@ const OrbWithEyes = () => {
 
 export const ChatbotWidget = () => {
     const { isAuthenticated, user } = useAuthContext();
+    const { token } = useRecoilValue(authState);
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([
         { id: "welcome", role: "bot", text: "Hello! I'm SynapBot. How can I help you manage your store today?" }
@@ -109,29 +108,11 @@ export const ChatbotWidget = () => {
         setInputValue("");
         setIsLoading(true);
 
-        const url = "https://anandvelpuri-zenith.hf.space/chat";
-        const hfToken = import.meta.env.VITE_HF_TOKEN;
-
-        const payload: ChatPayload = {
-            message: userMsg.text,
-            thread_id: threadIdRef.current
-        };
-
         try {
-            const response = await fetch(url, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${hfToken}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
+            const data = await sendChatMessage({
+                message: userMsg.text,
+                thread_id: threadIdRef.current
+            }, token || "");
 
             console.log("Bot Response:", data);
 
