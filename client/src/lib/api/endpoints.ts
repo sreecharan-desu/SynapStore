@@ -1,4 +1,5 @@
 import { client } from "./client";
+import axios from "axios";
 import type { User, AuthResponse, Store, Supplier, SupplierRequest, AdminStats } from "../types";
 
 
@@ -43,6 +44,8 @@ export const dashboardApi = {
     getReceipts: () => client.get<{ success: boolean; data: { receipts: any[] } }>("api/v1/dashboard/receipts"),
     getReceiptPDF: (id: string) => client.get(`api/v1/dashboard/receipts/${id}/pdf`, { responseType: 'blob' }),
     sendReceiptEmail: (id: string, email: string) => client.post(`api/v1/dashboard/receipts/${id}/email`, { email }),
+    getInventoryForecast: (data: { store_id: string; medicine_id: string; horizon_days: number[] }) =>
+        axios.post("https://anandvelpuri-zenith.hf.space/forecast/inventory", data, { headers: { 'Content-Type': 'application/json' } }),
 };
 
 // --- Suppliers ---
