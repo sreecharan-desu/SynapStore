@@ -1289,6 +1289,8 @@ const reorderSchema = z.object({
   items: z.array(z.object({
     medicineId: z.string().uuid(),
     quantity: z.number().int().positive(),
+    purchasePrice: z.number().optional(),
+    mrp: z.number().optional(),
   })).min(1),
   note: z.string().optional()
 });
@@ -1585,20 +1587,29 @@ dashboardRouter.post(
 
       const dek = dekFromEnv();
 
+      // 1. Aggregate items by medicineId (handle duplicates in request)
+      const aggregates = new Map<string, number>();
+      for (const item of items) {
+        if (!item.medicineId || !item.qty) continue;
+        const q = parseInt(item.qty, 10);
+        if (isNaN(q) || q <= 0) continue;
+        const existing = aggregates.get(item.medicineId) || 0;
+        aggregates.set(item.medicineId, existing + q);
+      }
+
+      if (aggregates.size === 0) {
+        return sendError(res, "No valid items to process", 400);
+      }
+
       const result = await prisma.$transaction(
         async (tx) => {
           let subtotal = 0;
-          const saleItemsData = [];
+          const plans: any[] = [];
+          const saleItemsPayload: any[] = [];
+          const receiptItems: any[] = [];
 
-          for (const item of items) {
-             const { medicineId } = item;
-             const qty = parseInt(item.qty, 10); // Ensure integer
-
-             if (isNaN(qty) || qty <= 0) {
-                console.warn(`Invalid quantity for medicine ${medicineId}:`, item.qty);
-                continue;
-             }
-
+          // 2. Planning Phase: Check stock and calculate costs
+          for (const [medicineId, qty] of aggregates.entries()) {
              const medicine = await tx.medicine.findUnique({
                where: { id: medicineId },
                include: {
@@ -1613,14 +1624,14 @@ dashboardRouter.post(
                throw new Error(`Medicine not found: ${medicineId}`);
              }
 
-             // Decrypt brandName for receipt
+             // Decrypt name for receipt
              let brandName = medicine.brandName;
              try {
                 const db = decryptCell(medicine.brandName, dek);
                 if (db) brandName = db;
              } catch (e) {}
 
-             // Calculate available stock
+             // Check Total Stock for this medicine
              const availableBatches = medicine.inventory;
              const totalStock = availableBatches.reduce((acc, b) => acc + b.qtyAvailable, 0);
 
@@ -1628,52 +1639,51 @@ dashboardRouter.post(
                throw new Error(`Insufficient stock for ${brandName}. Requested: ${qty}, Available: ${totalStock}`);
              }
 
-             // Determine unit price (using first batch MRP or 0)
+             // Determine unit price (FIFO/Current: use first available batch's MRP)
+             // Using number conversion for safe math
              const unitPrice = availableBatches.length > 0 && availableBatches[0].mrp ? Number(availableBatches[0].mrp) : 0;
+             const lineTotal = unitPrice * qty;
              
+             subtotal += lineTotal;
+
+             // Plan Deductions
              let qtyRemaining = qty;
+             const batchDeductions = [];
 
              for (const batch of availableBatches) {
                if (qtyRemaining <= 0) break;
-
                const deduct = Math.min(batch.qtyAvailable, qtyRemaining);
-               
-               console.log(`[Checkout] Deducting ${deduct} from batch ${batch.id} (Available: ${batch.qtyAvailable})`);
-
-               // Deduct
-               await tx.inventoryBatch.update({
-                 where: { id: batch.id },
-                 data: { qtyAvailable: { decrement: deduct } }
+               batchDeductions.push({ 
+                 batchId: batch.id, 
+                 amount: deduct 
                });
-
-               // Log Movement
-               await tx.stockMovement.create({
-                 data: {
-                   storeId: req.store.id,
-                   inventoryId: batch.id,
-                   medicineId: medicine.id,
-                   delta: -deduct,
-                   reason: "SALE",
-                   performedById: req.user?.id
-                 }
-               });
-
                qtyRemaining -= deduct;
              }
 
-             const lineTotal = unitPrice * qty;
-             subtotal += lineTotal;
+             // Store Plan
+             plans.push({
+               medicineId,
+               batchDeductions
+             });
 
-             saleItemsData.push({
+             // Prepare SaleItem Payload
+             saleItemsPayload.push({
                medicineId,
                qty,
                unitPrice,
-               lineTotal,
-               brandName // Store decrypted name for receipt
+               lineTotal
+             });
+
+             // Prepare Receipt Item
+             receiptItems.push({
+               name: brandName,
+               qty,
+               price: unitPrice,
+               total: lineTotal
              });
           }
 
-          // Create Sale
+          // 3. Execution Phase: Create Sale
           const sale = await tx.sale.create({
             data: {
               storeId: req.store.id,
@@ -1683,35 +1693,51 @@ dashboardRouter.post(
               paymentMethod: paymentMethod || "CASH",
               paymentStatus: "PAID",
               items: {
-                create: saleItemsData.map(({ medicineId, qty, unitPrice, lineTotal }) => ({
-                  medicineId, qty, unitPrice, lineTotal
-                }))
+                create: saleItemsPayload
               }
             },
             include: {
-              items: {
-                include: {
-                  medicine: true
-                }
-              },
+              items: true, // we need IDs of created items
               store: true,
               createdBy: true
             }
           });
 
-          // Create Receipt
+          // 4. Execution Phase: Apply Deductions & Link Movements
+          for (const createdItem of sale.items) {
+             const plan = plans.find(p => p.medicineId === createdItem.medicineId);
+             if (!plan) continue; // Should not happen
+
+             for (const deduction of plan.batchDeductions) {
+               // Update Batch
+               await tx.inventoryBatch.update({
+                 where: { id: deduction.batchId },
+                 data: { qtyAvailable: { decrement: deduction.amount } }
+               });
+
+               // Log Movement (Linked!)
+               await tx.stockMovement.create({
+                 data: {
+                   storeId: req.store.id,
+                   inventoryId: deduction.batchId,
+                   medicineId: createdItem.medicineId,
+                   delta: -deduction.amount,
+                   reason: "SALE",
+                   performedById: req.user?.id,
+                   saleItemId: createdItem.id // Critical Link
+                 }
+               });
+             }
+          }
+
+          // 5. Create Receipt Record
           const receiptNo = `REC-${Date.now()}`;
           const receiptData = {
             storeName: req.store.name,
             date: sale.createdAt,
             saleId: sale.id,
             total: sale.totalValue,
-            items: saleItemsData.map(i => ({ 
-                name: i.brandName, 
-                qty: i.qty, 
-                price: i.unitPrice, 
-                total: i.lineTotal 
-            }))
+            items: receiptItems
           };
 
           await tx.receipt.create({
@@ -1740,8 +1766,6 @@ dashboardRouter.post(
 
     } catch (error: any) {
       if (!res.headersSent) {
-         // handlePrismaError might try to send response, so stick to manual error sending if custom logic needs it, 
-         // but handlePrismaError is good.
          if (error.message && error.message.includes("Insufficient stock")) {
              return sendError(res, error.message, 400); 
          }

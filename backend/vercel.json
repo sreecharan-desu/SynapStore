@@ -9,5 +9,11 @@
         "source": "/(health|)",
         "destination": "/api/index.ts"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/cron/stock-alerts",
+      "schedule": "* * * * *"
+    }
   ]
 }

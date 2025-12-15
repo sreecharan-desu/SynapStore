@@ -711,6 +711,7 @@ router.post(
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
         const { requestId } = req.params;
+        const { reason } = req.body; // Capture rejection reason
         const user = req.user!;
         
         const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
@@ -724,7 +725,10 @@ router.post(
 
         await prisma.supplierRequest.update({
             where: { id: requestId },
-            data: { status: "REJECTED" }
+            data: { 
+                status: "REJECTED",
+                // Optionally store the reason in the request itself if schema supported it
+            }
         });
 
         await prisma.activityLog.create({
@@ -732,11 +736,11 @@ router.post(
                 storeId: request.storeId,
                 userId: user.id,
                 action: "supplier_request_rejected",
-                payload: { requestId }
+                payload: { requestId, reason }
             }
         });
 
-        // Notify Store? Usually optional for rejection but good practice.
+        // Notify Store with Reason
         const store = await prisma.store.findUnique({ where: { id: request.storeId } });
         if (store) {
              const owners = await prisma.userStoreRole.findMany({
@@ -749,7 +753,7 @@ router.post(
                      sendMail({
                          to: owner.user.email,
                          subject: `Connection Rejected: ${supplier.name}`,
-                         html: getRequestRejectedEmailTemplate(supplier.name)
+                         html: getRequestRejectedEmailTemplate(supplier.name, reason) // Pass reason
                      }).catch(e => console.error("Email failed", e));
                  }
              }

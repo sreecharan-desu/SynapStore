@@ -262,10 +262,21 @@ const StoreOwnerDashboard: React.FC = () => {
             return;
         }
 
-        const items = Array.from(cart.entries()).map(([medicineId, quantity]) => ({
-            medicineId,
-            quantity
-        }));
+        const items = Array.from(cart.entries()).map(([medicineId, quantity]) => {
+            const medicine = inventoryList.find((m: any) => m.id === medicineId);
+            // Default to 0 if not found or no batches. 
+            // Prefer taking from first available batch or defined fields.
+            const firstBatch = medicine?.batches?.[0];
+            const purchasePrice = firstBatch?.purchasePrice ? Number(firstBatch.purchasePrice) : 0;
+            const mrp = firstBatch?.mrp ? Number(firstBatch.mrp) : 0;
+
+            return {
+                medicineId,
+                quantity,
+                purchasePrice,
+                mrp,
+            };
+        });
 
         try {
             const res = await dashboardApi.reorder({
