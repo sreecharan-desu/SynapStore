@@ -1454,7 +1454,18 @@ dashboardRouter.get(
 
     const medicines = await prisma.medicine.findMany({
       where: { id: { in: targetIds } },
-      select: { id: true, brandName: true, strength: true, genericName: true }
+      select: { 
+        id: true, 
+        brandName: true, 
+        strength: true, 
+        genericName: true,
+        // Fetch latest batch to estimate price
+        inventory: {
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+            select: { purchasePrice: true, mrp: true }
+        }
+      }
     });
 
     const dek = dekFromEnv();
@@ -1485,12 +1496,19 @@ dashboardRouter.get(
 
       if (suggestedQty < 10) suggestedQty = 10; // Min order
 
+      const latestBatch = m.inventory?.[0];
+      const purchasePrice = latestBatch?.purchasePrice ? Number(latestBatch.purchasePrice) : 0;
+      const mrp = latestBatch?.mrp ? Number(latestBatch.mrp) : 0;
+
       return {
-        medicineId: m.id,
+        id: m.id,
         brandName,
-        currentStock: current,
+        strength: m.strength,
+        genericName: m.genericName,
+        reason,
         suggestedQty,
-        reason
+        purchasePrice, // Included for reorder context
+        mrp
       };
     });
 
@@ -1523,7 +1541,7 @@ dashboardRouter.get(
         include: {
           inventory: {
             where: { qtyAvailable: { gt: 0 } },
-            select: { id: true, qtyAvailable: true, batchNumber: true, expiryDate: true }
+            select: { id: true, qtyAvailable: true, batchNumber: true, expiryDate: true, purchasePrice: true, mrp: true }
           }
         },
         orderBy: { createdAt: 'desc' }
@@ -1624,11 +1642,15 @@ dashboardRouter.post(
                throw new Error(`Medicine not found: ${medicineId}`);
              }
 
-             // Decrypt name for receipt
+             // Decrypt fields
              let brandName = medicine.brandName;
+             let strength = medicine.strength;
+             let uom = medicine.uom;
+
              try {
-                const db = decryptCell(medicine.brandName, dek);
-                if (db) brandName = db;
+                const db = decryptCell(medicine.brandName, dek); if (db) brandName = db;
+                const ds = decryptCell(medicine.strength, dek); if (ds) strength = ds;
+                const du = decryptCell(medicine.uom, dek); if (du) uom = du;
              } catch (e) {}
 
              // Check Total Stock for this medicine
@@ -1639,26 +1661,30 @@ dashboardRouter.post(
                throw new Error(`Insufficient stock for ${brandName}. Requested: ${qty}, Available: ${totalStock}`);
              }
 
-             // Determine unit price (FIFO/Current: use first available batch's MRP)
-             // Using number conversion for safe math
-             const unitPrice = availableBatches.length > 0 && availableBatches[0].mrp ? Number(availableBatches[0].mrp) : 0;
-             const lineTotal = unitPrice * qty;
-             
-             subtotal += lineTotal;
-
-             // Plan Deductions
+             // Plan Deductions & Calculate Cost (Precise FIFO Costing)
              let qtyRemaining = qty;
+             let accumulatedCost = 0;
              const batchDeductions = [];
 
              for (const batch of availableBatches) {
                if (qtyRemaining <= 0) break;
                const deduct = Math.min(batch.qtyAvailable, qtyRemaining);
+               const batchPrice = batch.mrp ? Number(batch.mrp) : 0;
+               
+               accumulatedCost += (deduct * batchPrice);
+
                batchDeductions.push({ 
                  batchId: batch.id, 
                  amount: deduct 
                });
                qtyRemaining -= deduct;
              }
+
+             // Final line calculations
+             const lineTotal = accumulatedCost;
+             const unitPrice = qty > 0 ? (lineTotal / qty) : 0; // Weighted Average Unit Price
+             
+             subtotal += lineTotal;
 
              // Store Plan
              plans.push({
@@ -1677,6 +1703,8 @@ dashboardRouter.post(
              // Prepare Receipt Item
              receiptItems.push({
                name: brandName,
+               strength,
+               uom,
                qty,
                price: unitPrice,
                total: lineTotal
@@ -1748,12 +1776,13 @@ dashboardRouter.post(
             }
           });
 
-          return { sale, receiptNo };
+
+          return { sale, receiptNo, receiptItems };
         }
       ); // end transaction
 
       // Generate & Stream PDF
-      const { sale, receiptNo } = result;
+      const { sale, receiptNo, receiptItems } = result;
       const doc = new PDFDocument({ margin: 50 });
 
       res.setHeader('x-sale-id', sale.id);
@@ -1762,7 +1791,7 @@ dashboardRouter.post(
 
       doc.pipe(res);
 
-      await generateReceiptPDF(doc, sale, receiptNo, req.store);
+      await generateReceiptPDF(doc, sale, receiptNo, req.store, receiptItems);
 
     } catch (error: any) {
       if (!res.headersSent) {
@@ -1820,6 +1849,71 @@ dashboardRouter.get("/receipts", requireRole("STORE_OWNER"), async (req: any, re
     return sendSuccess(res, "Receipts retrieved", { receipts });
   } catch (err) {
     return sendInternalError(res, err, "Failed to retrieve receipts");
+  }
+});
+
+
+
+/* -----------------------
+   Dashboard - GET /v1/dashboard/receipts/:id/pdf
+*/
+dashboardRouter.get("/receipts/:id/pdf", requireRole("STORE_OWNER"), async (req: any, res) => {
+  try {
+    const { id } = req.params;
+
+    const receipt = await prisma.receipt.findFirst({
+      where: {
+        OR: [
+          { id },
+          { saleId: id }
+        ],
+        sale: {
+          storeId: req.store.id
+        }
+      },
+      include: {
+        sale: {
+          include: {
+            items: {
+              include: {
+                medicine: true
+              }
+            },
+            createdBy: true,
+            store: true
+          }
+        }
+      }
+    });
+
+    if (!receipt) {
+      return sendError(res, "Receipt not found", 404);
+    }
+
+    const sale = receipt.sale;
+    if (!sale) {
+      return sendError(res, "Associated sale data missing", 404);
+    }
+
+    const doc = new PDFDocument({ margin: 50 });
+    
+    // Set headers for download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=receipt-${receipt.receiptNo || "download"}.pdf`);
+
+    doc.pipe(res);
+
+    const receiptData = receipt.data as any;
+    const items = receiptData?.items || [];
+
+    await generateReceiptPDF(doc, sale, receipt.receiptNo || "N/A", sale.store, items);
+
+  } catch (err) {
+    if (!res.headersSent) {
+         return sendInternalError(res, err, "Failed to generate receipt PDF");
+    } else {
+         console.error("Error generating PDF after headers sent", err);
+    }
   }
 });
 

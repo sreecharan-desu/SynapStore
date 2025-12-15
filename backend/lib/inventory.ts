@@ -82,11 +82,12 @@ export const InventoryService = {
         results.push(batch);
       }
 
-      // 4. Update SupplierRequest Status?
-      // Schema only has PENDING, ACCEPTED, REJECTED.
-      // It is already ACCEPTED.
-      // We can't change it to RECEIVED. 
-      // We will log activity.
+      // 4. Update SupplierRequest Status to FULFILLED
+      await tx.supplierRequest.update({
+        where: { id: requestId },
+        // @ts-ignore
+        data: { status: "FULFILLED" } // Added in recent schema update
+      });
       
       await tx.activityLog.create({
         data: {

@@ -5,10 +5,10 @@ import { getStockAlertEmailTemplate, getSupplierClientStockAlertEmailTemplate } 
 
 const cronRouter = Router();
 
-// Load interval from env or default to 24 hours (86400 seconds)
-const ALERT_INTERVAL_SECONDS = parseInt(process.env.STOCK_ALERT_INTERVAL || "86400", 10);
-const EXPIRY_THRESHOLD_DAYS = parseInt(process.env.STOCK_ALERT_EXPIRY_THRESHOLD_DAYS || "7", 10);
-const LOW_STOCK_THRESHOLD_QTY = parseInt(process.env.STOCK_ALERT_LOW_STOCK_THRESHOLD_QTY || "50", 10);
+// Load interval from env or default to 20 hours (prevent double send on daily cron, allow slight drift)
+const ALERT_INTERVAL_SECONDS = parseInt(process.env.STOCK_ALERT_INTERVAL || "72000", 10);
+const EXPIRY_THRESHOLD_DAYS = parseInt(process.env.STOCK_ALERT_EXPIRY_THRESHOLD_DAYS || "30", 10);
+const LOW_STOCK_THRESHOLD_QTY = parseInt(process.env.STOCK_ALERT_LOW_STOCK_THRESHOLD_QTY || "15", 10);
 
 cronRouter.get("/stock-alerts", async (req: Request, res: Response) => {
   try {

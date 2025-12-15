@@ -13,7 +13,7 @@
   "crons": [
     {
       "path": "/api/v1/cron/stock-alerts",
-      "schedule": "* * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }

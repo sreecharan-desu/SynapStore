@@ -41,12 +41,17 @@ const fetchLogo = async () => {
     }
 };
 
-export const generateReceiptPDF = async (doc: PDFKit.PDFDocument, sale: any, receiptNo: string, store: any) => {
+export const generateReceiptPDF = async (doc: PDFKit.PDFDocument, sale: any, receiptNo: string, store: any, items: any[] = []) => {
     // 1. Decrypt Data
     const cashier = decryptUser(sale.createdBy);
     
+    // Use explicitly passed items (likely from snapshot) or fallback to DB relation
+    const itemsToRender = (items && items.length > 0) ? items : (sale.items || []);
+    
     // 2. Fetch Logo
     const logo = await fetchLogo();
+    
+    // ... rest of layout ...
 
     // --- Layout Constants ---
     const MARGIN = 40;
@@ -137,37 +142,44 @@ export const generateReceiptPDF = async (doc: PDFKit.PDFDocument, sale: any, rec
     doc.strokeColor(BORDER_COLOR).lineWidth(0.5);
     doc.moveTo(itemColX, tableTop).lineTo(itemColX + CONTENT_WIDTH, tableTop).stroke(); // Top border
     
-    sale.items.forEach((item: any, index: number) => {
+    itemsToRender.forEach((item: any, index: number) => {
         // Pagination logic
         if (y > 750) {
             doc.addPage();
             y = 50;
         }
-
-        const itemTotal = Number(item.lineTotal).toFixed(2);
+        
+        // Handle different data structures (Snapshot vs DB)
+        const totalVal = item.total !== undefined ? item.total : item.lineTotal;
+        const itemTotal = Number(totalVal).toFixed(2);
         
         // Decrypt Medicine Name, Strength, UOM
-        let itemName = item.medicine?.brandName || "Item";
-        let strength = item.medicine?.strength || "";
-        let uom = item.medicine?.uom || "";
+        let itemName = item.name || item.medicine?.brandName || "Item";
+        // Check top-level first (from receiptData construction), then nested medicine
+        let strength = item.strength || item.medicine?.strength || "";
+        let uom = item.uom || item.medicine?.uom || "";
 
         try {
             const dek = getDek();
-            // Name
+            // Name: Only decrypt if it looks encrypted? 
+            // Actually, for receiptItems constructed in checkout, 'name' is ALREADY decrypted.
+            // But for historical receipts re-generated from DB, 'item.medicine' might be encrypted.
+            // We'll optimistically try decrypting if it fails/returns null we keep original.
+            
+            // If item comes from Receipt 'data' JSON, it's likely plain text.
+            // If item comes from Sale->SaleItem->Medicine (re-fetched), it's encrypted.
+            
+            // Simplest heuristic: Try decrypting. If result is null/empty because it wasn't encrypted, keep original.
+            
             const decryptedName = decryptCell(itemName, dek);
             if (decryptedName) itemName = decryptedName;
             
-            // Strength
-            if (strength) {
-                const decryptedStrength = decryptCell(strength, dek);
-                if (decryptedStrength) strength = decryptedStrength;
-            }
+            const decryptedStrength = decryptCell(strength, dek);
+            if (decryptedStrength) strength = decryptedStrength;
             
-            // UOM
-            if (uom) {
-                 const decryptedUom = decryptCell(uom, dek);
-                 if (decryptedUom) uom = decryptedUom;
-            }
+            const decryptedUom = decryptCell(uom, dek);
+            if (decryptedUom) uom = decryptedUom;
+
         } catch (e) {
             // ignore error, use original
         }
