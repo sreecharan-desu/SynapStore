@@ -12,18 +12,5 @@ ensureAdmin().then(() => {
   });
 });
 
-// Graceful shutdown
-const shutdown = () => {
-  console.log("Shutting down server...");
-  if (server) {
-    server.close(() => {
-      console.log("Server closed");
-      process.exit(0);
-    });
-  } else {
-    process.exit(0);
-  }
-};
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+

@@ -56,11 +56,13 @@ export const notificationQueue = {
 // create worker factory
 export function createWorker(
   processor: (job: Job) => Promise<void>,
-  concurrency = 5
+  concurrency = 5,
+  autorun = true
 ) {
   return new Worker("notifications", async (job) => processor(job), {
     connection: getRedisConnection(),
     concurrency,
+    autorun,
   });
 }
 

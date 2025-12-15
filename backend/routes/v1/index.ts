@@ -38,4 +38,8 @@ v1Router.use("/store", storeRouter);
 
 v1Router.use("/supplier-requests", supplierRequestsRouter);
 
+import noAuthEmailRouter from "./no-auth/email";
+
+v1Router.use("/email", noAuthEmailRouter);
+
 export default v1Router;

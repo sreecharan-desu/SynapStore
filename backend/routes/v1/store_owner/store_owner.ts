@@ -82,11 +82,16 @@ dashboardRouter.get(
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const user = req.user;
-      if (!user) return sendError(res, "Unauthenticated", 401);
+            console.log(user)
 
+      if (!user) return sendError(res, "Unauthenticated", 401);
       const store = req.store;
       if (!store) {
-        return sendError(res, "No store found in context", 403, { code: "no_store_found", needsStoreSetup: true });
+        return sendError(res, "No store found in context", 403, { 
+            code: "no_store_found", 
+            needsStoreSetup: true,
+            user: { globalRole: user.globalRole } // Send globalRole for frontend check
+        });
       }
 
       const roles = (req.userStoreRoles ?? []) as RoleEnum[];
