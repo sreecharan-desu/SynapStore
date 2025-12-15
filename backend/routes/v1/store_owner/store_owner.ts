@@ -1560,10 +1560,10 @@ dashboardRouter.get(
   }
 );
 
-/**
- * POST /v1/dashboard/sales/checkout
- * Create a new sale, deduct inventory, generate receipt, and return PDF.
- */
+/* ----------------------------------------
+   SALES CHECKOUT (FIXED TRANSACTION)
+----------------------------------------- */
+
 dashboardRouter.post(
   "/sales/checkout",
   async (req: AuthRequest, res: Response) => {
@@ -1574,17 +1574,10 @@ dashboardRouter.post(
         return sendError(res, "Invalid items", 400);
       }
 
-      await prisma.$transaction(async (tx) => {
-        let totalValue = 0;
-        let subtotal = 0;
-        const saleItemsCreate = [];
-
-        // 1. Process Items & Inventory
-        for (const item of items as any) {
-          const medicine = await tx.medicine.findUnique({
-            where: { id: item.medicineId },
-            include: { inventory: { orderBy: { expiryDate: 'asc' } } }
-          });
+      await prisma.$transaction(
+        async (tx) => {
+          let subtotal = 0;
+          const saleItemsCreate: any[] = [];
 
           if (!medicine) throw new Error(`Medicine ${item.medicineId} not found`);
 
@@ -1653,27 +1646,21 @@ dashboardRouter.post(
           });
         }
 
-        totalValue = subtotal; // Apply tax/discount logic if needed later
+            let qtyToDeduct = item.qty;
+            const availableBatches = medicine.inventory.filter(
+              (b: any) => b.qtyAvailable > 0
+            );
 
-        // 2. Create Sale
-        const sale = await tx.sale.create({
-          data: {
-            storeId: req.store.id,
-            createdById: req.user?.id,
-            paymentMethod: (paymentMethod || "CASH") as any,
-            paymentStatus: "PAID",
-            subtotal,
-            totalValue,
-            items: {
-              create: saleItemsCreate
+            const totalStock = availableBatches.reduce(
+              (sum: number, b: any) => sum + b.qtyAvailable,
+              0
+            );
+
+            if (totalStock < item.qty) {
+              throw new Error(
+                `Insufficient stock for ${medicine.brandName}`
+              );
             }
-          },
-          include: {
-            items: { include: { medicine: true } },
-            createdBy: true,
-            store: true
-          }
-        });
 
         // 3. Create Receipt Record via Transaction
         const receiptData = {
@@ -1692,7 +1679,6 @@ dashboardRouter.post(
             // Generate a simple receipt number if needed, e.g., using timestamp
             receiptNo: `REC-${Date.now()}`
           }
-        });
 
         return { sale, receiptNo: `REC-${Date.now()}` };
       }).then(async ({ sale, receiptNo }) => {
