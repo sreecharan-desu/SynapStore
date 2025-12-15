@@ -199,9 +199,9 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       email: user.email,
       provider: "google",
       globalRole: user.globalRole ?? null,
+      storeId: effectiveStore ? effectiveStore.id : "",
+      supplierId: supplierRows.length > 0 ? supplierRows[0].id : ""
     };
-    if (effectiveStore) tokenPayload.storeId = effectiveStore.id;
-    if (supplierRows.length > 0) tokenPayload.supplierId = supplierRows[0].id; // Add supplierId
     const token = signJwt(tokenPayload);
 
     // persist activity / audit

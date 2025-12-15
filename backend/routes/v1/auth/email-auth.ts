@@ -417,18 +417,45 @@ router.post(
       const ok = await comparePassword(password, user.passwordHash);
       if (!ok) return sendError(res, "Incorrect password", 401, { code: "invalid_password" });
 
-      // Fetch supplier info if exists (deterministically or by role)
-      const supplier = await prisma.supplier.findFirst({
-        where: { userId: user.id },
-        select: { id: true }
-      });
+      // Parallel fetching for speed
+      const [supplier, storesEntry] = await Promise.all([
+        // Fetch supplier info
+        prisma.supplier.findFirst({
+          where: { userId: user.id },
+          select: { id: true, name: true, storeId: true, isActive: true }
+        }),
+        // Fetch store roles
+        prisma.userStoreRole.findMany({
+          where: { userId: user.id },
+          select: {
+            role: true,
+            store: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                timezone: true,
+                currency: true,
+                settings: true,
+              },
+            },
+          },
+        })
+      ]);
+
+      // Determine effective store ID for token if single store
+      let tokenStoreId = "";
+      if (storesEntry.length === 1) {
+          tokenStoreId = storesEntry[0].store.id;
+      }
 
       const tokenPayload: any = {
         sub: user.id,
         email,
         globalRole: user.globalRole ?? null,
+        storeId: tokenStoreId,
+        supplierId: supplier ? supplier.id : ""
       };
-      if (supplier) tokenPayload.supplierId = supplier.id;
 
       const token = signJwt(tokenPayload);
 
@@ -442,7 +469,7 @@ router.post(
           globalRole: user.globalRole,
         },
         effectiveStore: null,
-        stores: [],
+        stores: [], // will fill this
         role_data: {
              role: user.globalRole === 'SUPERADMIN' ? 'SUPER_ADMIN' : (user.globalRole || "READ_ONLY"),
              user_id: user.id,
@@ -470,15 +497,7 @@ router.post(
         return sendSuccess(res, "Signed in as Superadmin", responseData);
       }
       else if (user.globalRole === "SUPPLIER") {
-        const supplier = await prisma.supplier.findUnique({
-          where: { userId: user.id },
-          select: {
-            id: true,
-            name: true,
-            storeId: true,
-            isActive: true,
-          },
-        });
+        // supplier variable already fetched above
         
         responseData.user.globalRole = "SUPPLIER";
         responseData.needsStoreSetup = false;
@@ -505,23 +524,8 @@ router.post(
         return sendSuccess(res, "Signed in as Supplier", responseData);
       }
       else {
-        // fetch store roles for this user
-        const stores = await prisma.userStoreRole.findMany({
-          where: { userId: user.id },
-          select: {
-            role: true,
-            store: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                timezone: true,
-                currency: true,
-                settings: true,
-              },
-            },
-          },
-        });
+        // stores already fetched as storesEntry
+        const stores = storesEntry;
 
         // NO STORE → must create one
         if (stores.length === 0) {
