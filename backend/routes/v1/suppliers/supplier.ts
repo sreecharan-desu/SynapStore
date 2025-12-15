@@ -752,7 +752,7 @@ router.post(
                  if (owner.user.email) {
                      sendMail({
                          to: owner.user.email,
-                         subject: `Connection Rejected: ${supplier.name}`,
+                         subject: `Your request Rejected: ${supplier.name}`,
                          html: getRequestRejectedEmailTemplate(supplier.name, reason) // Pass reason
                      }).catch(e => console.error("Email failed", e));
                  }

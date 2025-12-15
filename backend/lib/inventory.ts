@@ -85,8 +85,7 @@ export const InventoryService = {
       // 4. Update SupplierRequest Status to FULFILLED
       await tx.supplierRequest.update({
         where: { id: requestId },
-        // @ts-ignore
-        data: { status: "FULFILLED" } // Added in recent schema update
+        data: { status: "ACCEPTED" } // Added in recent schema update
       });
       
       await tx.activityLog.create({
