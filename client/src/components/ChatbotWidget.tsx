@@ -29,7 +29,9 @@ const OrbWithEyes = () => {
                 <motion.img
                     src="/chatbot-icon.jpg"
                     alt="SynapBot"
-                    className="w-full h-full object-cover rounded-full shadow-2xl border-4 border-white/20"
+                    draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
+                    className="w-full h-full object-cover rounded-full shadow-2xl border-4 border-white/20 select-none"
                     animate={{ rotate: [0, -5, 5, -5, 5, 0] }}
                     transition={{ duration: 3, repeat: Infinity, repeatDelay: 2, ease: "easeInOut" }}
                 />
@@ -47,6 +49,7 @@ export const ChatbotWidget = () => {
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const isDraggingRef = useRef(false);
 
     // Generate a stable thread_id for the session or user
     const threadIdRef = useRef(user?.id || `anon-${Math.random().toString(36).substr(2, 9)}`);
@@ -176,7 +179,15 @@ export const ChatbotWidget = () => {
     if (!isAuthenticated) return null;
 
     return (
-        <div ref={containerRef} className="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-6 font-sans">
+        <motion.div
+            drag
+            dragMomentum={false}
+            onDragStart={() => { isDraggingRef.current = true; }}
+            onDragEnd={() => { setTimeout(() => { isDraggingRef.current = false; }, 150); }}
+            whileDrag={{ cursor: "grabbing" }}
+            ref={containerRef}
+            className="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-6 font-sans touch-none"
+        >
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
@@ -213,7 +224,9 @@ export const ChatbotWidget = () => {
                                         <motion.img
                                             src="/chatbot-icon.jpg"
                                             alt="Bot"
-                                            className="w-full h-full object-cover rounded-full border-2 border-white/20 shadow-md relative z-10"
+                                            draggable={false}
+                                            onDragStart={(e) => e.preventDefault()}
+                                            className="w-full h-full object-cover rounded-full border-2 border-white/20 shadow-md relative z-10 select-none"
                                             animate={isWet ? {
                                                 filter: ["brightness(1) saturate(1)", "brightness(1.3) saturate(1.5) drop-shadow(0 0 8px rgba(96, 165, 250, 0.8))", "brightness(1) saturate(1)"],
                                                 scale: [1, 1.1, 1]
@@ -277,7 +290,10 @@ export const ChatbotWidget = () => {
                         </div>
 
                         {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/50 relative custom-scrollbar">
+                        <div
+                            onPointerDown={(e) => e.stopPropagation()}
+                            className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/50 relative custom-scrollbar"
+                        >
                             {/* Intro Date */}
                             <div className="text-center">
                                 <span className="px-3 py-1 bg-slate-200/50 text-slate-500 text-[10px] font-bold rounded-full uppercase tracking-wider backdrop-blur-sm">
@@ -364,7 +380,10 @@ export const ChatbotWidget = () => {
                         </div>
 
                         {/* Input Area */}
-                        <div className="p-4 bg-white border-t border-slate-100 z-10 shrink-0">
+                        <div
+                            onPointerDown={(e) => e.stopPropagation()}
+                            className="p-4 bg-white border-t border-slate-100 z-10 shrink-0"
+                        >
                             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-2 py-2 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-400 transition-all shadow-inner">
                                 <input
                                     type="text"
@@ -391,9 +410,17 @@ export const ChatbotWidget = () => {
                 )}
             </AnimatePresence >
 
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="relative w-24 h-24 flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-300 z-50 group cursor-pointer !bg-transparent"
+            <div
+                onClick={(e) => {
+                    if (isDraggingRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                    }
+                    setIsOpen(!isOpen);
+                }}
+                className="relative w-24 h-24 flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-300 z-50 group cursor-grab active:cursor-grabbing !bg-transparent"
+                role="button"
                 aria-label="Toggle Chatbot"
             >
                 <OrbWithEyes />
@@ -407,7 +434,7 @@ export const ChatbotWidget = () => {
                         <span className="relative inline-flex rounded-full h-5 w-5 bg-red-500 border-2 border-white items-center justify-center text-[10px] font-bold text-white shadow-sm">1</span>
                     </motion.span>
                 )}
-            </button>
-        </div >
+            </div>
+        </motion.div >
     );
 };
