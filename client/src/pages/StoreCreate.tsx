@@ -41,20 +41,20 @@ const StoreCreate = () => {
   const [selectedRole, setSelectedRole] =
     useState<"STORE_OWNER" | "SUPPLIER" | null>(null);
 
-  const avatars = [
-    { id: "fruit-strawberry", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f353.svg", name: "Strawberry" },
-    { id: "fruit-pineapple", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f34d.svg", name: "Pineapple" },
-    { id: "fruit-watermelon", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f349.svg", name: "Watermelon" },
-    { id: "fruit-grapes", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f347.svg", name: "Grapes" },
-  ];
+  // const avatars = [
+  //   { id: "fruit-strawberry", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f353.svg", name: "Strawberry" },
+  //   { id: "fruit-pineapple", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f34d.svg", name: "Pineapple" },
+  //   { id: "fruit-watermelon", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f349.svg", name: "Watermelon" },
+  //   { id: "fruit-grapes", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f347.svg", name: "Grapes" },
+  // ];
 
-  const colors = [
-    { id: "green", hex: "#059669", ring: "ring-emerald-500", name: "Green" }, // emerald-600
-    { id: "red", hex: "#dc2626", ring: "ring-red-500", name: "Red" }, // red-600
-    { id: "orange", hex: "#f97316", ring: "ring-orange-500", name: "Orange" }, // orange-500
-    { id: "blue", hex: "#2563eb", ring: "ring-blue-500", name: "Blue" }, // blue-600
-    { id: "black", hex: "#0f172a", ring: "ring-slate-900", name: "Black" }, // slate-900
-  ];
+  // const colors = [
+  //   { id: "green", hex: "#059669", ring: "ring-emerald-500", name: "Green" }, // emerald-600
+  //   { id: "red", hex: "#dc2626", ring: "ring-red-500", name: "Red" }, // red-600
+  //   { id: "orange", hex: "#f97316", ring: "ring-orange-500", name: "Orange" }, // orange-500
+  //   { id: "blue", hex: "#2563eb", ring: "ring-blue-500", name: "Blue" }, // blue-600
+  //   { id: "black", hex: "#0f172a", ring: "ring-slate-900", name: "Black" }, // slate-900
+  // ];
 
 
   useEffect(() => {
