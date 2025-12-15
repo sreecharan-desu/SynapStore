@@ -2,7 +2,7 @@ import React from "react";
 import { useRecoilValue } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Settings, LogOut, Users, Package, Calendar, Search, X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, CheckCircle, PieChart, Send, History, ClipboardList, Download, Mail, Phone, Trash2, ArrowRight } from "lucide-react";
+import { Bell, Settings, LogOut, Users, Package, Calendar, Search, X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, CheckCircle, Send, History, ClipboardList, Download, Mail, Phone, Trash2, ArrowRight } from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 
 import { formatDistanceToNow } from "date-fns";
@@ -208,6 +208,8 @@ const StoreOwnerDashboard: React.FC = () => {
     const [showReorderConfirm, setShowReorderConfirm] = React.useState(false);
     const [showDisconnectConfirm, setShowDisconnectConfirm] = React.useState(false);
     const [disconnectSupplierId, setDisconnectSupplierId] = React.useState<string | null>(null);
+    const [selectedReorder, setSelectedReorder] = React.useState<SupplierRequest | null>(null);
+    const [showReorderDetails, setShowReorderDetails] = React.useState(false);
 
     const [activeTab, setActiveTab] = React.useState<"overview" | "reorder" | "sale" | "history" | "suppliers" | "sent_reorders">("overview");
 
@@ -1427,7 +1429,14 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                 </div>
                                                             </div>
 
-                                                            <Button size="sm" className={`${theme.primary} text-white hover:opacity-90 shadow-md ${theme.shadow} border-none rounded-xl px-5 h-10 font-semibold gap-2 transition-all`}>
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    setSelectedReorder(req);
+                                                                    setShowReorderDetails(true);
+                                                                }}
+                                                                className={`${theme.primary} text-white hover:opacity-90 shadow-md ${theme.shadow} border-none rounded-xl px-5 h-10 font-semibold gap-2 transition-all`}
+                                                            >
                                                                 Details <ChevronDown className="w-4 h-4 opacity-60" />
                                                             </Button>
                                                         </div>
@@ -2431,6 +2440,178 @@ const StoreOwnerDashboard: React.FC = () => {
                                         </a>
                                     </div>
                                 </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+
+            {/* Disconnect Supplier Confirmation Modal */}
+            <AnimatePresence>
+                {showDisconnectConfirm && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
+                            onClick={() => setShowDisconnectConfirm(false)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center gap-4">
+                                <div className={`w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2`}>
+                                    <Trash2 className={`w-8 h-8 text-red-500`} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800">Disconnect Supplier?</h3>
+                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                                        Are you sure you want to remove this supplier from your network? You will need to request a connection again to reorder.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                                    <Button
+                                        variant="outline"
+                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        onClick={() => setShowDisconnectConfirm(false)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className={`h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white border-none shadow-lg shadow-red-200 font-semibold`}
+                                        onClick={() => {
+                                            if (disconnectSupplierId) {
+                                                executeDisconnectSupplier();
+                                            }
+                                        }}
+                                    >
+                                        Disconnect
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Reorder Details Modal */}
+            <AnimatePresence>
+                {showReorderDetails && selectedReorder && (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 z-[200]">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm"
+                            onClick={() => setShowReorderDetails(false)}
+                        />
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[85vh] flex flex-col z-10"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-slate-50/50">
+                                <div>
+                                    <div className="flex items-center gap-3 mb-1">
+                                        <h3 className="text-xl font-bold text-slate-800">Order Details</h3>
+                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${selectedReorder.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                                            selectedReorder.status === 'REJECTED' ? 'bg-red-100 text-red-700 border-red-200' :
+                                                'bg-amber-100 text-amber-700 border-amber-200'
+                                            }`}>
+                                            {selectedReorder.status}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-slate-500 font-mono">#{selectedReorder.id.slice(0, 8).toUpperCase()}</p>
+                                </div>
+                                <button
+                                    onClick={() => setShowReorderDetails(false)}
+                                    className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+                                >
+                                    <X className="w-5 h-5 text-slate-500" />
+                                </button>
+                            </div>
+
+                            <div className="overflow-y-auto p-6 space-y-6">
+                                {/* Info Grid */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                                        <div className="flex items-center gap-2 mb-2 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                            <Store className="w-3.5 h-3.5" /> Supplier
+                                        </div>
+                                        <p className="font-semibold text-slate-700">
+                                            {data?.lists?.suppliers?.find(s => s.id === selectedReorder.supplierId)?.name || 'Unknown Supplier'}
+                                        </p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                                        <div className="flex items-center gap-2 mb-2 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                            <Calendar className="w-3.5 h-3.5" /> Date Sent
+                                        </div>
+                                        <p className="font-semibold text-slate-700">
+                                            {new Date(selectedReorder.createdAt).toLocaleDateString()} at {new Date(selectedReorder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Items List */}
+                                <div>
+                                    <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                        <Package className="w-4 h-4 text-slate-400" />
+                                        Requested Items
+                                        <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                            {selectedReorder.payload?.items?.length || 0}
+                                        </span>
+                                    </h4>
+                                    <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="bg-slate-50 text-slate-500 font-medium">
+                                                <tr>
+                                                    <th className="px-4 py-3 pl-6">Medicine Name</th>
+                                                    <th className="px-4 py-3 text-right pr-6">Quantity</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {selectedReorder.payload?.items?.map((item: any, idx: number) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/50">
+                                                        <td className="px-4 py-3 pl-6 font-medium text-slate-700">{item.medicineName}</td>
+                                                        <td className="px-4 py-3 text-right pr-6 font-mono text-slate-600">{item.quantity}</td>
+                                                    </tr>
+                                                ))}
+                                                {(!selectedReorder.payload?.items || selectedReorder.payload.items.length === 0) && (
+                                                    <tr>
+                                                        <td colSpan={2} className="px-4 py-8 text-center text-slate-400">
+                                                            No items listed in this request.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Note (if applicable) */}
+                                {selectedReorder.payload?.note && (
+                                    <div className="p-4 bg-yellow-50 rounded-2xl border border-yellow-100 text-sm text-yellow-800">
+                                        <span className="font-bold block mb-1">Note:</span>
+                                        {selectedReorder.payload.note}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                                <Button
+                                    onClick={() => setShowReorderDetails(false)}
+                                    className="px-6 rounded-xl font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+                                >
+                                    Close
+                                </Button>
                             </div>
                         </motion.div>
                     </div>
