@@ -197,7 +197,7 @@ dashboardRouter.get(
         salesByHourRaw,
         paymentMethodsAgg,
         categoryBreakdownRaw,
-        stockTurnoverAgg, 
+        stockTurnoverAgg,
         agingBucketsRaw // Optimization for aging buckets? 
       ] = await Promise.all([
         prisma.medicine.count({ where: { storeId } }),
@@ -276,8 +276,8 @@ dashboardRouter.get(
         prisma.supplier.findMany({
           where: {
             OR: [
-                { storeId },
-                { supplierStores: { some: { storeId } } }
+              { storeId },
+              { supplierStores: { some: { storeId } } }
             ]
           },
           select: {
@@ -287,19 +287,19 @@ dashboardRouter.get(
             contactName: true,
             isActive: true,
             user: {
-                select: { email: true }
+              select: { email: true }
             }
           },
         }),
         Promise.resolve(0), // Webhooks placeholder
-        
+
         // --- NEW AGGREGATIONS ---
-        
+
         // AVG Order Value & Total Items (approx) & Count (replacing standalone count)
         prisma.sale.aggregate({
-            where: { storeId, createdAt: { gte: salesWindowStart } },
-            _avg: { totalValue: true },
-            _count: true
+          where: { storeId, createdAt: { gte: salesWindowStart } },
+          _avg: { totalValue: true },
+          _count: true
         }),
 
         // Sales by Day
@@ -326,10 +326,10 @@ dashboardRouter.get(
 
         // Payment Methods
         prisma.sale.groupBy({
-            by: ['paymentMethod'],
-            where: { storeId, createdAt: { gte: salesWindowStart } },
-            _count: true,
-            _sum: { totalValue: true }
+          by: ['paymentMethod'],
+          where: { storeId, createdAt: { gte: salesWindowStart } },
+          _count: true,
+          _sum: { totalValue: true }
         }),
 
         // Category Breakdown
@@ -349,9 +349,9 @@ dashboardRouter.get(
 
         // Stock Movements (for turnover)
         prisma.stockMovement.groupBy({
-            by: ["reason"],
-            where: { storeId },
-            _sum: { delta: true },
+          by: ["reason"],
+          where: { storeId },
+          _sum: { delta: true },
         }),
 
         // Inventory Aging (Optimized to fetching just dates, not full objects if possible, or just standard fetch)
@@ -377,7 +377,7 @@ dashboardRouter.get(
       res.setHeader('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
 
       // --- Processing ---
-      
+
       const recentSalesCount = salesStats._count ?? 0;
 
       const recentRevenue = Number(recentRevenueAgg._sum?.totalValue ?? 0);
@@ -405,37 +405,37 @@ dashboardRouter.get(
 
       // Parse Raw Aggregations
       const salesByDay = (salesByDayRaw as any[]).map(r => ({
-          date: r.date,
-          count: Number(r.count),
-          revenue: Number(r.revenue)
+        date: r.date,
+        count: Number(r.count),
+        revenue: Number(r.revenue)
       }));
 
       // Sales By Hour (fill gaps)
       const salesByHourMap: Record<number, any> = {};
-      for(let h=0; h<24; h++) salesByHourMap[h] = { hour: h, count: 0, revenue: 0 };
+      for (let h = 0; h < 24; h++) salesByHourMap[h] = { hour: h, count: 0, revenue: 0 };
       (salesByHourRaw as any[]).forEach(r => {
-          salesByHourMap[r.hour] = { hour: r.hour, count: Number(r.count), revenue: Number(r.revenue) };
+        salesByHourMap[r.hour] = { hour: r.hour, count: Number(r.count), revenue: Number(r.revenue) };
       });
       const salesByHour = Object.values(salesByHourMap);
 
       const paymentMethods = paymentMethodsAgg.map(p => ({
-          method: p.paymentMethod || "UNKNOWN",
-          count: p._count,
-          revenue: Number(p._sum.totalValue ?? 0)
+        method: p.paymentMethod || "UNKNOWN",
+        count: p._count,
+        revenue: Number(p._sum.totalValue ?? 0)
       }));
 
       const categoryBreakdown = (categoryBreakdownRaw as any[]).map(r => ({
-          category: r.category || "Uncategorized",
-          qty: Number(r.qty),
-          revenue: Number(r.revenue)
+        category: r.category || "Uncategorized",
+        qty: Number(r.qty),
+        revenue: Number(r.revenue)
       }));
 
       const avgOrderValue = Number(salesStats._avg.totalValue ?? 0);
       // Avg Items Per Sale - We need total sold items / total sales count
       // We can query sum of qty from sales in window
       const totalSoldQtyAgg = await prisma.saleItem.aggregate({
-          where: { sale: { storeId, createdAt: { gte: salesWindowStart } } },
-          _sum: { qty: true }
+        where: { sale: { storeId, createdAt: { gte: salesWindowStart } } },
+        _sum: { qty: true }
       });
       const totalSoldQtyInWindow = Number(totalSoldQtyAgg._sum.qty ?? 0);
       const avgItemsPerSale = (salesStats._count ?? 0) > 0 ? totalSoldQtyInWindow / salesStats._count : 0;
@@ -446,11 +446,11 @@ dashboardRouter.get(
       // Initialize buckets
       for (const b of agingBuckets) agingBucketsResult[`${b}_days`] = 0;
       agingBucketsResult[">365_days"] = 0;
-      
+
       (agingBucketsRaw as any[]).forEach(r => {
-          if (agingBucketsResult[r.bucket] !== undefined) {
-              agingBucketsResult[r.bucket] = Number(r.qty);
-          }
+        if (agingBucketsResult[r.bucket] !== undefined) {
+          agingBucketsResult[r.bucket] = Number(r.qty);
+        }
       });
 
 
@@ -474,14 +474,14 @@ dashboardRouter.get(
       // We need total sold qty all time? Or just fetch aggregations.
       // Let's do a quick aggregate for "all time paid sales qty"
       const totalSoldAllTimeAgg = await prisma.saleItem.aggregate({
-          where: { sale: { storeId, paymentStatus: "PAID" } },
-          _sum: { qty: true }
+        where: { sale: { storeId, paymentStatus: "PAID" } },
+        _sum: { qty: true }
       });
       const soldQtyTotal = Number(totalSoldAllTimeAgg._sum.qty ?? 0);
       const qtyReceivedTotal = Number(inventorySums._sum.qtyReceived ?? 0) || 1;
       const stockTurnover = soldQtyTotal / qtyReceivedTotal;
 
-      
+
       // recentSalesSummary - map items to use included medicine
       const recentSalesSummary = recentSales.map((s: any) => ({
         id: s.id,
@@ -585,7 +585,7 @@ dashboardRouter.get(
           createdAt: "desc",
         },
         include: {
-            supplier: true
+          supplier: true
         }
       });
 
@@ -770,7 +770,7 @@ dashboardRouter.post(
               console.error("Failed to send email to supplier:", e);
             }
           }
-           // NOTIFICATION WORKER removed as per requirement
+          // NOTIFICATION WORKER removed as per requirement
 
         }
       }
@@ -839,35 +839,35 @@ dashboardRouter.get(
 
       // Map results with status
       const directory = suppliers.map((s: any) => {
-        const req:any = pendingMap.get(s.id);
+        const req: any = pendingMap.get(s.id);
         let status = "NONE";
         let requestId = null;
         let requestDate = null;
-        
+
         if (connectedSet.has(s.id)) {
-            status = "CONNECTED";
+          status = "CONNECTED";
         } else if (req) {
-            requestId = req.id;
-            requestDate = req.createdAt;
-            // Check if inbound or outbound
-            // If createdById matches the supplier's userId, it is Inbound (Supplier -> Store)
-            if (s.userId && req.createdById === s.userId) {
-                status = "PENDING_INBOUND";
-            } else {
-                status = "PENDING_OUTBOUND";
-            }
+          requestId = req.id;
+          requestDate = req.createdAt;
+          // Check if inbound or outbound
+          // If createdById matches the supplier's userId, it is Inbound (Supplier -> Store)
+          if (s.userId && req.createdById === s.userId) {
+            status = "PENDING_INBOUND";
+          } else {
+            status = "PENDING_OUTBOUND";
+          }
         }
 
         return {
-            id: s.id,
-            name: s.name,
-            contactName: s.contactName,
-            phone: s.phone,
-            address: s.address,
-            email: s.user?.email || null,
-            connectionStatus: status,
-            requestId,
-            requestDate
+          id: s.id,
+          name: s.name,
+          contactName: s.contactName,
+          phone: s.phone,
+          address: s.address,
+          email: s.user?.email || null,
+          connectionStatus: status,
+          requestId,
+          requestDate
         };
       });
 
@@ -892,7 +892,7 @@ dashboardRouter.post(
   authenticate,
   storeContext,
   requireStore,
-  requireRole(["STORE_OWNER"] ),
+  requireRole(["STORE_OWNER"]),
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
       const parsed = createReqSchema.safeParse(req.body);
@@ -938,14 +938,14 @@ dashboardRouter.post(
 
       // Notify Supplier
       if (supplier.userId) {
-         const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
-         if (supUser?.email) {
-             sendMail({
-                 to: supUser.email,
-                 subject: `New Connection Request from ${store.name}`,
-                 html: getStoreConnectionRequestEmailTemplate(store.name, message)
-             }).catch(e => console.error("Email failed", e));
-         }
+        const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+        if (supUser?.email) {
+          sendMail({
+            to: supUser.email,
+            subject: `New Connection Request from ${store.name}`,
+            html: getStoreConnectionRequestEmailTemplate(store.name, message)
+          }).catch(e => console.error("Email failed", e));
+        }
       }
 
       await prisma.activityLog.create({
@@ -1007,7 +1007,7 @@ dashboardRouter.delete(
             storeId: store.id
           }
         }
-      }); 
+      });
 
       await prisma.supplierRequest.deleteMany({
         where: {
@@ -1019,8 +1019,8 @@ dashboardRouter.delete(
       // Delete ALL requests (Accepted, Pending, etc.) to ensure clean re-discovery
       await prisma.supplierRequest.deleteMany({
         where: {
-            supplierId,
-            storeId: store.id
+          supplierId,
+          storeId: store.id
         }
       });
 
@@ -1030,7 +1030,7 @@ dashboardRouter.delete(
       // Usually "Disconnect" button is for Active connections.
       // "Cancel Request" button is for Pending.
       // We'll stick to Disconnect = Delete SupplierStore.
-      
+
       // If the user wants to cancel a pending request, they can use a different endpoint or we can overload this one?
       // Let's assume this is for active connections.
       // For pending requests, we can add DELETE /supplier-requests/:id
@@ -1047,14 +1047,14 @@ dashboardRouter.delete(
       // Notify Supplier
       const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
       if (supplier && supplier.userId) {
-         const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
-         if (supUser?.email) {
-             sendMail({
-                 to: supUser.email,
-                 subject: `Connection Ended: ${store.name}`,
-                 html: getDisconnectionEmailTemplate(store.name)
-             }).catch(e => console.error("Email failed", e));
-         }
+        const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+        if (supUser?.email) {
+          sendMail({
+            to: supUser.email,
+            subject: `Connection Ended: ${store.name}`,
+            html: getDisconnectionEmailTemplate(store.name)
+          }).catch(e => console.error("Email failed", e));
+        }
       }
 
       return sendSuccess(res, "Disconnected from supplier");
@@ -1087,52 +1087,52 @@ dashboardRouter.post(
 
       // Verify connection doesn't already exist
       const existingConn = await prisma.supplierStore.findUnique({
-          where: { supplierId_storeId: { supplierId: request.supplierId, storeId: store.id } }
+        where: { supplierId_storeId: { supplierId: request.supplierId, storeId: store.id } }
       });
       if (existingConn) {
-          // just update status if needed
-          await prisma.supplierRequest.update({ where: { id: requestId }, data: { status: "ACCEPTED" } });
-          return sendSuccess(res, "Already connected");
+        // just update status if needed
+        await prisma.supplierRequest.update({ where: { id: requestId }, data: { status: "ACCEPTED" } });
+        return sendSuccess(res, "Already connected");
       }
 
       await prisma.$transaction(async (tx) => {
-          // Update request
-          await tx.supplierRequest.update({
-              where: { id: requestId },
-              data: { status: "ACCEPTED" }
-          });
+        // Update request
+        await tx.supplierRequest.update({
+          where: { id: requestId },
+          data: { status: "ACCEPTED" }
+        });
 
-          // Create connection
-          await tx.supplierStore.create({
-              data: {
-                  supplierId: request.supplierId,
-                  storeId: store.id,
-                  linkedAt: new Date()
-              }
-          });
+        // Create connection
+        await tx.supplierStore.create({
+          data: {
+            supplierId: request.supplierId,
+            storeId: store.id,
+            linkedAt: new Date()
+          }
+        });
 
-          // Log Activity
-          await tx.activityLog.create({
-              data: {
-                  storeId: store.id,
-                  userId: user.id,
-                  action: "store_owner_request_accepted",
-                  payload: { requestId, supplierId: request.supplierId }
-              }
-          });
+        // Log Activity
+        await tx.activityLog.create({
+          data: {
+            storeId: store.id,
+            userId: user.id,
+            action: "store_owner_request_accepted",
+            payload: { requestId, supplierId: request.supplierId }
+          }
+        });
       });
 
       // Notify Supplier
       const supplier = await prisma.supplier.findUnique({ where: { id: request.supplierId } });
       if (supplier && supplier.userId) {
-          const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
-          if (supUser?.email) {
-              sendMail({
-                  to: supUser.email,
-                  subject: `Request Accepted: ${store.name}`,
-                  html: getRequestAcceptedEmailTemplate(store.name)
-              }).catch(e => console.error("Email failed", e));
-          }
+        const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+        if (supUser?.email) {
+          sendMail({
+            to: supUser.email,
+            subject: `Request Accepted: ${store.name}`,
+            html: getRequestAcceptedEmailTemplate(store.name)
+          }).catch(e => console.error("Email failed", e));
+        }
       }
 
       return sendSuccess(res, "Request accepted");
@@ -1161,35 +1161,35 @@ dashboardRouter.post(
       const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
       if (!request) return sendError(res, "Request not found", 404);
       if (request.storeId !== store.id) return sendError(res, "Unauthorized request", 403);
-      
+
       // Allow rejecting pending
       if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
 
       await prisma.supplierRequest.update({
-          where: { id: requestId },
-          data: { status: "REJECTED" }
+        where: { id: requestId },
+        data: { status: "REJECTED" }
       });
 
       await prisma.activityLog.create({
-          data: {
-              storeId: store.id,
-              userId: user.id,
-              action: "store_owner_request_rejected",
-              payload: { requestId, supplierId: request.supplierId }
-          }
+        data: {
+          storeId: store.id,
+          userId: user.id,
+          action: "store_owner_request_rejected",
+          payload: { requestId, supplierId: request.supplierId }
+        }
       });
 
       // Notify Supplier
       const supplier = await prisma.supplier.findUnique({ where: { id: request.supplierId } });
       if (supplier && supplier.userId) {
-          const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
-          if (supUser?.email) {
-              sendMail({
-                  to: supUser.email,
-                  subject: `Request Declined: ${store.name}`,
-                  html: getRequestRejectedEmailTemplate(store.name)
-              }).catch(e => console.error("Email failed", e));
-          }
+        const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+        if (supUser?.email) {
+          sendMail({
+            to: supUser.email,
+            subject: `Request Declined: ${store.name}`,
+            html: getRequestRejectedEmailTemplate(store.name)
+          }).catch(e => console.error("Email failed", e));
+        }
       }
 
       return sendSuccess(res, "Request rejected");
@@ -1212,7 +1212,7 @@ dashboardRouter.get(
     try {
       const store = req.store!;
       const q = (req.query.q as string || "").toLowerCase();
-      
+
       // Fetch all active medicines for store (filtering in memory after decryption)
       const medicines = await prisma.medicine.findMany({
         where: { storeId: store.id, isActive: true },
@@ -1222,7 +1222,7 @@ dashboardRouter.get(
             orderBy: { expiryDate: 'asc' }
           },
           suppliers: {
-              select: { id: true, name: true, contactName: true }
+            select: { id: true, name: true, contactName: true }
           }
         },
         orderBy: { createdAt: 'desc' }
@@ -1231,46 +1231,46 @@ dashboardRouter.get(
       const dek = dekFromEnv();
 
       const result = medicines.map(m => {
-          let brandName = m.brandName;
-          let genericName = m.genericName;
-          let strength = m.strength;
+        let brandName = m.brandName;
+        let genericName = m.genericName;
+        let strength = m.strength;
 
-          try {
-             // Decrypt fields
-             const db = decryptCell(m.brandName, dek); if(db) brandName = db;
-             const dg = decryptCell(m.genericName, dek); if(dg) genericName = dg;
-             const ds = decryptCell(m.strength, dek); if(ds) strength = ds;
-          } catch(e) {}
+        try {
+          // Decrypt fields
+          const db = decryptCell(m.brandName, dek); if (db) brandName = db;
+          const dg = decryptCell(m.genericName, dek); if (dg) genericName = dg;
+          const ds = decryptCell(m.strength, dek); if (ds) strength = ds;
+        } catch (e) { }
 
-          const totalQty = m.inventory.reduce((sum, b) => sum + b.qtyAvailable, 0);
-          const expiringSoon = m.inventory.some(b => b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 90*24*60*60*1000));
-          const isLowStock = totalQty < 20;
+        const totalQty = m.inventory.reduce((sum, b) => sum + b.qtyAvailable, 0);
+        const expiringSoon = m.inventory.some(b => b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+        const isLowStock = totalQty < 20;
 
-          return {
-              ...m,
-              brandName, 
-              genericName,
-              strength, 
-              totalQty,
-              expiringSoon,
-              isLowStock,
-              batches: m.inventory
-          };
+        return {
+          ...m,
+          brandName,
+          genericName,
+          strength,
+          totalQty,
+          expiringSoon,
+          isLowStock,
+          batches: m.inventory
+        };
       }).filter(m => {
-          // Filter by search query if present
-          if (!q) return true;
-          return (
-              (m.brandName && m.brandName.toLowerCase().includes(q)) || 
-              (m.genericName && m.genericName.toLowerCase().includes(q)) ||
-              (m.sku && m.sku.toLowerCase().includes(q))
-          );
+        // Filter by search query if present
+        if (!q) return true;
+        return (
+          (m.brandName && m.brandName.toLowerCase().includes(q)) ||
+          (m.genericName && m.genericName.toLowerCase().includes(q)) ||
+          (m.sku && m.sku.toLowerCase().includes(q))
+        );
       }).sort((a, b) => {
-          // Sort Priority: LowStock (2 points) > Expiring (1 point) > Normal (0)
-          // This ensures critical items appear first, but doesn't hide others (mixed result)
-          const scoreA = (a.isLowStock ? 2 : 0) + (a.expiringSoon ? 1 : 0);
-          const scoreB = (b.isLowStock ? 2 : 0) + (b.expiringSoon ? 1 : 0);
-          return scoreB - scoreA;
-      }).slice(0, 10); // Limit to 10 items mixed
+        // Sort Priority: LowStock (2 points) > Expiring (1 point) > Normal (0)
+        // This ensures critical items appear first, but doesn't hide others (mixed result)
+        const scoreA = (a.isLowStock ? 2 : 0) + (a.expiringSoon ? 1 : 0);
+        const scoreB = (b.isLowStock ? 2 : 0) + (b.expiringSoon ? 1 : 0);
+        return scoreB - scoreA;
+      });
 
       return sendSuccess(res, "Inventory list for reorder", { inventory: result });
     } catch (err) {
@@ -1300,95 +1300,95 @@ dashboardRouter.post(
   requireRole(["STORE_OWNER", "MANAGER"]),
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
-        const parsed = reorderSchema.safeParse(req.body);
-        if (!parsed.success) {
-            // @ts-ignore
-            return handleZodError(res, parsed.error);
-        }
+      const parsed = reorderSchema.safeParse(req.body);
+      if (!parsed.success) {
+        // @ts-ignore
+        return handleZodError(res, parsed.error);
+      }
 
-        const store = req.store!;
-        const user = req.user!;
-        const { supplierId, items, note } = parsed.data;
+      const store = req.store!;
+      const user = req.user!;
+      const { supplierId, items, note } = parsed.data;
 
-        // Verify supplier exists
-        const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
-        if (!supplier) return sendError(res, "Supplier not found", 404);
+      // Verify supplier exists
+      const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+      if (!supplier) return sendError(res, "Supplier not found", 404);
 
-        // Fetch medicine names for the email/message details
-        const medIds = items.map(i => i.medicineId);
-        const meds = await prisma.medicine.findMany({ 
-            where: { id: { in: medIds } },
-            select: { id: true, brandName: true, strength: true }
-        });
-        const medMap = new Map(meds.map(m => [m.id, m]));
+      // Fetch medicine names for the email/message details
+      const medIds = items.map(i => i.medicineId);
+      const meds = await prisma.medicine.findMany({
+        where: { id: { in: medIds } },
+        select: { id: true, brandName: true, strength: true }
+      });
+      const medMap = new Map(meds.map(m => [m.id, m]));
 
-        // Construct readable message and enhanced items for payload
-        let details = "Items:\n";
-        const enhancedItems = items.map(item => {
-            const m = medMap.get(item.medicineId);
-            const name = m ? `${m.brandName} ${m.strength || ''}` : "Unknown Item";
-            details += `- ${name}: ${item.quantity} units\n`;
-            return {
-                ...item,
-                medicineName: name
-            };
-        });
+      // Construct readable message and enhanced items for payload
+      let details = "Items:\n";
+      const enhancedItems = items.map(item => {
+        const m = medMap.get(item.medicineId);
+        const name = m ? `${m.brandName} ${m.strength || ''}` : "Unknown Item";
+        details += `- ${name}: ${item.quantity} units\n`;
+        return {
+          ...item,
+          medicineName: name
+        };
+      });
       console.log(enhancedItems)
 
-        if (note) details += `\nNote: ${note}`;
+      if (note) details += `\nNote: ${note}`;
 
-        const payloadData = { 
-            items: enhancedItems, 
-            note: note || "", 
-            type: "REORDER" 
-        };
+      const payloadData = {
+        items: enhancedItems,
+        note: note || "",
+        type: "REORDER"
+      };
 
-        const request = await prisma.supplierRequest.create({
-            data: {
-                storeId: store.id,
-                supplierId,
-                message: JSON.stringify(payloadData), 
-                payload: payloadData, 
-                status: "PENDING",
-                createdById: user.id
-            }
-        });
-
-        // Notify Supplier
-        if (supplier.userId) {
-            const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
-            if (supUser?.email) {
-                 sendMail({
-                     to: supUser.email,
-                     subject: `New Reorder Request from ${store.name}`,
-                     html: getReorderRequestEmailTemplate(
-                         supUser.email, 
-                         store.name, 
-                         request.id, 
-                         details,
-                         process.env.FRONTEND_URL || "http://localhost:5173"
-                     ),
-                 });
-            }
+      const request = await prisma.supplierRequest.create({
+        data: {
+          storeId: store.id,
+          supplierId,
+          message: JSON.stringify(payloadData),
+          payload: payloadData,
+          status: "PENDING",
+          createdById: user.id
         }
-        
-        // Notify Store Owner (Confirmation)
-        if (user.email) {
-            // Optional: send confirmation email to requester
+      });
+
+      // Notify Supplier
+      if (supplier.userId) {
+        const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+        if (supUser?.email) {
+          sendMail({
+            to: supUser.email,
+            subject: `New Reorder Request from ${store.name}`,
+            html: getReorderRequestEmailTemplate(
+              supUser.email,
+              store.name,
+              request.id,
+              details,
+              process.env.FRONTEND_URL || "http://localhost:5173"
+            ),
+          });
         }
+      }
 
-        await prisma.activityLog.create({
-            data: {
-                storeId: store.id,
-                userId: user.id,
-                action: "reorder_created",
-                payload: { requestId: request.id, supplierId, itemCount: items.length }
-            }
-        });
+      // Notify Store Owner (Confirmation)
+      if (user.email) {
+        // Optional: send confirmation email to requester
+      }
 
-        return sendSuccess(res, "Reorder request sent successfully", { request });
+      await prisma.activityLog.create({
+        data: {
+          storeId: store.id,
+          userId: user.id,
+          action: "reorder_created",
+          payload: { requestId: request.id, supplierId, itemCount: items.length }
+        }
+      });
+
+      return sendSuccess(res, "Reorder request sent successfully", { request });
     } catch (err) {
-        next(err);
+      next(err);
     }
   }
 );
@@ -1401,11 +1401,11 @@ dashboardRouter.post(
 dashboardRouter.get(
   "/suggestions",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
-        const { user } = req;
-        if (!user) return sendError(res, "Unauthenticated", 401);
-        
-        const store = req.store;
-        if (!store) return sendError(res, "Store context not found", 404);
+    const { user } = req;
+    if (!user) return sendError(res, "Unauthenticated", 401);
+
+    const store = req.store;
+    if (!store) return sendError(res, "Store context not found", 404);
 
     // 1. Group inventory by medicine for distinct counts (Low Stock Check)
     const inventory = await prisma.inventoryBatch.groupBy({
@@ -1419,21 +1419,21 @@ dashboardRouter.get(
     inventory.forEach(i => currentStockMap.set(i.medicineId, i._sum.qtyAvailable || 0));
 
     const lowStockIds = inventory
-        .filter(i => (i._sum.qtyAvailable || 0) < lowStockThreshold)
-        .map(i => i.medicineId);
+      .filter(i => (i._sum.qtyAvailable || 0) < lowStockThreshold)
+      .map(i => i.medicineId);
 
     // 2. Find Expiring Batches (within 90 days)
     const ninetyDays = new Date();
     ninetyDays.setDate(ninetyDays.getDate() + 90);
-    
+
     const expiringBatches = await prisma.inventoryBatch.findMany({
-        where: {
-            storeId: store.id,
-            qtyAvailable: { gt: 0 },
-            expiryDate: { lte: ninetyDays, gt: new Date() }
-        },
-        select: { medicineId: true },
-        distinct: ['medicineId']
+      where: {
+        storeId: store.id,
+        qtyAvailable: { gt: 0 },
+        expiryDate: { lte: ninetyDays, gt: new Date() }
+      },
+      select: { medicineId: true },
+      distinct: ['medicineId']
     });
     const expiringIds = Array.from(new Set(expiringBatches.map(b => b.medicineId)));
 
@@ -1456,9 +1456,9 @@ dashboardRouter.get(
     const suggestions = medicines.map(m => {
       let brandName = m.brandName;
       try {
-         const db = decryptCell(m.brandName, dek); 
-         if (db) brandName = db;
-      } catch(e) {}
+        const db = decryptCell(m.brandName, dek);
+        if (db) brandName = db;
+      } catch (e) { }
 
       const current = currentStockMap.get(m.id) || 0;
       const isLow = current < lowStockThreshold;
@@ -1469,13 +1469,13 @@ dashboardRouter.get(
       let suggestedQty = 50 - current;
 
       if (isExpiring) {
-          if (isLow) reason = "Low Stock & Expiring";
-          else {
-              reason = "Expiring Soon";
-              suggestedQty = 30; // Suggest replacement stock
-          }
+        if (isLow) reason = "Low Stock & Expiring";
+        else {
+          reason = "Expiring Soon";
+          suggestedQty = 30; // Suggest replacement stock
+        }
       }
-      
+
       if (suggestedQty < 10) suggestedQty = 10; // Min order
 
       return {
@@ -1487,8 +1487,8 @@ dashboardRouter.get(
       };
     });
 
-        return sendSuccess(res, "Suggestions generated", { suggestions });
-    }
+    return sendSuccess(res, "Suggestions generated", { suggestions });
+  }
 );
 
 
@@ -1504,7 +1504,7 @@ dashboardRouter.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const q = (req.query.q as string || "").toLowerCase();
-      
+
       // Fetch all active medicines for this store
       // Note: For large inventories, this in-memory filtering is not scalable. 
       // Ideally, use a search service or deterministic encryption for searchable fields.
@@ -1521,41 +1521,41 @@ dashboardRouter.get(
         },
         orderBy: { createdAt: 'desc' }
       });
-      
+
       const dek = dekFromEnv();
 
       // Decrypt and Filter in-memory
       const matchedMedicines = allMedicines.map(med => {
-          let brandName = med.brandName;
-          let genericName = med.genericName;
-          let strength = med.strength;
+        let brandName = med.brandName;
+        let genericName = med.genericName;
+        let strength = med.strength;
 
-          try {
-             // Attempt decryption
-             const decryptedBrand = decryptCell(med.brandName, dek);
-             if (decryptedBrand) brandName = decryptedBrand;
+        try {
+          // Attempt decryption
+          const decryptedBrand = decryptCell(med.brandName, dek);
+          if (decryptedBrand) brandName = decryptedBrand;
 
-             const decryptedGeneric = decryptCell(med.genericName, dek);
-             if (decryptedGeneric) genericName = decryptedGeneric;
-             
-             const decryptedStrength = decryptCell(med.strength, dek);
-             if (decryptedStrength) strength = decryptedStrength;
-             
-          } catch(e) {}
+          const decryptedGeneric = decryptCell(med.genericName, dek);
+          if (decryptedGeneric) genericName = decryptedGeneric;
 
-          return { ...med, brandName, genericName, strength };
+          const decryptedStrength = decryptCell(med.strength, dek);
+          if (decryptedStrength) strength = decryptedStrength;
+
+        } catch (e) { }
+
+        return { ...med, brandName, genericName, strength };
       }).filter(med => {
-          if (!q) return true; 
-          return (
-              (med.brandName && med.brandName.toLowerCase().includes(q)) ||
-              (med.genericName && med.genericName.toLowerCase().includes(q)) ||
-              (med.sku && med.sku.toLowerCase().includes(q))
-          );
+        if (!q) return true;
+        return (
+          (med.brandName && med.brandName.toLowerCase().includes(q)) ||
+          (med.genericName && med.genericName.toLowerCase().includes(q)) ||
+          (med.sku && med.sku.toLowerCase().includes(q))
+        );
       });
 
-      return sendSuccess(res, "Medicines found", { medicines: matchedMedicines.slice(0, 5) });
+      return sendSuccess(res, "Medicines found", { medicines: matchedMedicines });
     } catch (error) {
-       handlePrismaError(res, error);
+      handlePrismaError(res, error);
     }
   }
 );
@@ -1569,7 +1569,7 @@ dashboardRouter.post(
   async (req: AuthRequest, res: Response) => {
     try {
       const { items, paymentMethod } = req.body; // Expect items: { medicineId, qty }[], paymentMethod?
-      
+
       if (!items || !Array.isArray(items) || items.length === 0) {
         return sendError(res, "Invalid items", 400);
       }
@@ -1594,7 +1594,7 @@ dashboardRouter.post(
           // Schema verification: Medicine model has NO price. InventoryBatch has mrp.
           // We should use MRP from batch or a default.
           // Let's grab the MRP from the first available batch or default to 0.
-          
+
           let qtyToDeduct = item.qty;
           let itemTotal = 0;
           let currentUnitPrice = 0;
@@ -1603,30 +1603,30 @@ dashboardRouter.post(
           // We need to track which batches we took from to calculate exact cost/price if needed, 
           // but for SaleItem usually we pick one unit price (e.g. MRP).
           // Simplification: Use MRP of the first batch found, or 0.
-          
+
           const availableBatches = medicine.inventory.filter(b => b.qtyAvailable > 0);
           const totalStock = availableBatches.reduce((acc, b) => acc + b.qtyAvailable, 0);
-          
+
           if (totalStock < item.qty) {
-             throw new Error(`Insufficient stock for ${medicine.brandName}. Requested: ${item.qty}, Available: ${totalStock}`);
+            throw new Error(`Insufficient stock for ${medicine.brandName}. Requested: ${item.qty}, Available: ${totalStock}`);
           }
 
           // Use MRP of the first batch as the selling price for this line item (approximated)
           // Ideally we might split lines if prices differ, but let's prevent complexity.
-          const sellingPrice = Number(availableBatches[0]?.mrp) || 0; 
+          const sellingPrice = Number(availableBatches[0]?.mrp) || 0;
           currentUnitPrice = sellingPrice;
 
           for (const batch of availableBatches) {
             if (qtyToDeduct <= 0) break;
-            
+
             const deduct = Math.min(batch.qtyAvailable, qtyToDeduct);
-            
+
             // Deduct
             await tx.inventoryBatch.update({
               where: { id: batch.id },
               data: { qtyAvailable: { decrement: deduct } }
             });
-            
+
             // Log Movement (Optional but good)
             await tx.stockMovement.create({
               data: {
@@ -1641,10 +1641,10 @@ dashboardRouter.post(
 
             qtyToDeduct -= deduct;
           }
-          
+
           itemTotal = sellingPrice * item.qty;
           subtotal += itemTotal;
-          
+
           saleItemsCreate.push({
             medicineId: medicine.id,
             qty: item.qty,
@@ -1682,43 +1682,43 @@ dashboardRouter.post(
           saleId: sale.id,
           total: sale.totalValue,
           // @ts-ignore
-          items: sale.items.map((i:any) => ({ name: i.medicine.brandName, qty: i.qty, price: i.unitPrice, total: i.lineTotal }))
+          items: sale.items.map((i: any) => ({ name: i.medicine.brandName, qty: i.qty, price: i.unitPrice, total: i.lineTotal }))
         };
         // @ts-ignore
         await tx.receipt.create({
           data: {
             saleId: sale.id,
             data: receiptData as any,
-             // Generate a simple receipt number if needed, e.g., using timestamp
+            // Generate a simple receipt number if needed, e.g., using timestamp
             receiptNo: `REC-${Date.now()}`
           }
         });
 
         return { sale, receiptNo: `REC-${Date.now()}` };
       }).then(async ({ sale, receiptNo }) => {
-          // 4. Generate & Stream PDF (Outside transaction to keep it fast)
-          // We use the shared helper for consistent "Clean & Neat" design + Decryption
-          
-          const doc = new PDFDocument({ margin: 50 });
-          
-          res.setHeader('x-sale-id', sale.id);
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename=receipt-${sale.id}.pdf`);
-          
-          doc.pipe(res);
-          
-          await generateReceiptPDF(doc, sale, receiptNo, req.store, res);
-          
+        // 4. Generate & Stream PDF (Outside transaction to keep it fast)
+        // We use the shared helper for consistent "Clean & Neat" design + Decryption
+
+        const doc = new PDFDocument({ margin: 50 });
+
+        res.setHeader('x-sale-id', sale.id);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=receipt-${sale.id}.pdf`);
+
+        doc.pipe(res);
+
+        await generateReceiptPDF(doc, sale, receiptNo, req.store, res);
+
       }).catch(err => {
-         // If transaction fails
-         console.error("Checkout validation failed:", err);
-         if (!res.headersSent) {
-            return sendError(res, err.message || "Checkout failed", 400);
-         }
+        // If transaction fails
+        console.error("Checkout validation failed:", err);
+        if (!res.headersSent) {
+          return sendError(res, err.message || "Checkout failed", 400);
+        }
       });
 
     } catch (error) {
-       if (!res.headersSent) handlePrismaError(res, error);
+      if (!res.headersSent) handlePrismaError(res, error);
     }
   }
 );
@@ -1737,89 +1737,89 @@ dashboardRouter.post(
  *  - 500: Internal server error
 */
 dashboardRouter.get("/receipts", requireRole("STORE_OWNER"), async (req: any, res) => {
-    try {
-        const receipts = await prisma.receipt.findMany({
-            where: {
-                sale: {
-                    storeId: req.store.id
-                }
-            },
-            orderBy: {
-                createdAt: "desc"
-            },
-            include: {
-                sale: {
-                    select: {
-                        totalValue: true,
-                        createdAt: true,
-                        items: {
-                          include: {
-                             medicine: true
-                          }
-                        }
-                    }
-                }
+  try {
+    const receipts = await prisma.receipt.findMany({
+      where: {
+        sale: {
+          storeId: req.store.id
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      },
+      include: {
+        sale: {
+          select: {
+            totalValue: true,
+            createdAt: true,
+            items: {
+              include: {
+                medicine: true
+              }
             }
-        });
+          }
+        }
+      }
+    });
 
-        // Map data if necessary to match frontend expectations, or send raw
-        return sendSuccess(res, "Receipts retrieved", { receipts });
-    } catch (err) {
-        return sendInternalError(res, err, "Failed to retrieve receipts");
-    }
+    // Map data if necessary to match frontend expectations, or send raw
+    return sendSuccess(res, "Receipts retrieved", { receipts });
+  } catch (err) {
+    return sendInternalError(res, err, "Failed to retrieve receipts");
+  }
 });
 
 /* -----------------------
    Dashboard - GET /v1/dashboard/receipts/:id/pdf
 */
 dashboardRouter.get("/receipts/:id/pdf", requireRole("STORE_OWNER"), async (req: any, res) => {
-    try {
-        const { id } = req.params;
+  try {
+    const { id } = req.params;
 
-        const receipt = await prisma.receipt.findFirst({
-            where: {
-                id,
-                sale: {
-                    storeId: req.store.id
-                }
+    const receipt = await prisma.receipt.findFirst({
+      where: {
+        id,
+        sale: {
+          storeId: req.store.id
+        }
+      },
+      include: {
+        sale: {
+          include: {
+            items: {
+              include: {
+                medicine: true
+              }
             },
-            include: {
-                sale: {
-                    include: {
-                        items: {
-                            include: {
-                                medicine: true
-                            }
-                        },
-                        createdBy: true,
-                        store: true
-                    }
-                }
-            }
-        });
-
-        if (!receipt) {
-            return sendError(res, "Receipt not found", 404);
+            createdBy: true,
+            store: true
+          }
         }
+      }
+    });
 
-        const sale = receipt.sale;
-        if (!sale) {
-             return sendError(res, "Associated sale data missing", 404);
-        }
-
-        const doc = new PDFDocument({ margin: 50 });
-
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename=receipt-${receipt.receiptNo || id}.pdf`);
-
-        doc.pipe(res);
-
-
-        await generateReceiptPDF(doc, sale, receipt.receiptNo || sale.id.slice(0, 8), sale.store, res);
-
-    } catch (err) {
-        return sendInternalError(res, err, "Failed to generate receipt PDF");
+    if (!receipt) {
+      return sendError(res, "Receipt not found", 404);
     }
+
+    const sale = receipt.sale;
+    if (!sale) {
+      return sendError(res, "Associated sale data missing", 404);
+    }
+
+    const doc = new PDFDocument({ margin: 50 });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename=receipt-${receipt.receiptNo || id}.pdf`);
+
+    doc.pipe(res);
+
+
+    await generateReceiptPDF(doc, sale, receipt.receiptNo || sale.id.slice(0, 8), sale.store, res);
+
+  } catch (err) {
+    return sendInternalError(res, err, "Failed to generate receipt PDF");
+  }
 });
 
 
