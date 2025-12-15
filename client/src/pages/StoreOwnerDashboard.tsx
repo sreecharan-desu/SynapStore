@@ -355,7 +355,7 @@ const StoreOwnerDashboard: React.FC = () => {
     // --- Forecast State ---
     const [forecastQuery, setForecastQuery] = React.useState("");
     const [forecastResults, setForecastResults] = React.useState<any[]>([]);
-    const [selectedForecastMedicine, setSelectedForecastMedicine] = React.useState<any | null>(null);
+    const [_selectedForecastMedicine, setSelectedForecastMedicine] = React.useState<any | null>(null);
     const [forecastData, setForecastData] = React.useState<any | null>(null);
     const [isForecastLoading, setIsForecastLoading] = React.useState(false);
     const [isForecastSearching, setIsForecastSearching] = React.useState(false);
