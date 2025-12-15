@@ -8,7 +8,7 @@ import prisma from "../../../lib/prisma";
 import { requireRole } from "../../../middleware/requireRole";
 import { crypto$ } from "../../../lib/crypto";
 import { sendMail } from "../../../lib/mailer";
-import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getStoreConnectionRequestEmailTemplate, getSupplierRequestEmailTemplate, getDisconnectionEmailTemplate, getReorderRequestEmailTemplate } from "../../../lib/emailTemplates";
+import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getStoreConnectionRequestEmailTemplate, getSupplierRequestEmailTemplate, getDisconnectionEmailTemplate, getReorderRequestEmailTemplate, getCustomerReceiptEmailTemplate } from "../../../lib/emailTemplates";
 // import router from "../auth/email-auth"; 
 import { sendSuccess, sendError, handlePrismaError, sendInternalError, handleZodError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
@@ -82,11 +82,16 @@ dashboardRouter.get(
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const user = req.user;
-      if (!user) return sendError(res, "Unauthenticated", 401);
+            console.log(user)
 
+      if (!user) return sendError(res, "Unauthenticated", 401);
       const store = req.store;
       if (!store) {
-        return sendError(res, "No store found in context", 403, { code: "no_store_found", needsStoreSetup: true });
+        return sendError(res, "No store found in context", 403, { 
+            code: "no_store_found", 
+            needsStoreSetup: true,
+            user: { globalRole: user.globalRole } // Send globalRole for frontend check
+        });
       }
 
       const roles = (req.userStoreRoles ?? []) as RoleEnum[];
@@ -1586,7 +1591,13 @@ dashboardRouter.post(
           const saleItemsData = [];
 
           for (const item of items) {
-             const { medicineId, qty } = item;
+             const { medicineId } = item;
+             const qty = parseInt(item.qty, 10); // Ensure integer
+
+             if (isNaN(qty) || qty <= 0) {
+                console.warn(`Invalid quantity for medicine ${medicineId}:`, item.qty);
+                continue;
+             }
 
              const medicine = await tx.medicine.findUnique({
                where: { id: medicineId },
@@ -1626,6 +1637,8 @@ dashboardRouter.post(
                if (qtyRemaining <= 0) break;
 
                const deduct = Math.min(batch.qtyAvailable, qtyRemaining);
+               
+               console.log(`[Checkout] Deducting ${deduct} from batch ${batch.id} (Available: ${batch.qtyAvailable})`);
 
                // Deduct
                await tx.inventoryBatch.update({
@@ -1723,7 +1736,7 @@ dashboardRouter.post(
 
       doc.pipe(res);
 
-      await generateReceiptPDF(doc, sale, receiptNo, req.store, res);
+      await generateReceiptPDF(doc, sale, receiptNo, req.store);
 
     } catch (error: any) {
       if (!res.headersSent) {
@@ -1787,15 +1800,23 @@ dashboardRouter.get("/receipts", requireRole("STORE_OWNER"), async (req: any, re
 });
 
 /* -----------------------
-   Dashboard - GET /v1/dashboard/receipts/:id/pdf
+   Dashboard - POST /v1/dashboard/receipts/:id/email
 */
-dashboardRouter.get("/receipts/:id/pdf", requireRole("STORE_OWNER"), async (req: any, res) => {
+dashboardRouter.post("/receipts/:id/email", requireRole("STORE_OWNER"), async (req: any, res) => {
   try {
     const { id } = req.params;
+    const { email } = req.body;
+
+    if (!email) {
+      return sendError(res, "Email address is required", 400);
+    }
 
     const receipt = await prisma.receipt.findFirst({
       where: {
-        id,
+        OR: [
+          { id },
+          { saleId: id }
+        ],
         sale: {
           storeId: req.store.id
         }
@@ -1825,19 +1846,44 @@ dashboardRouter.get("/receipts/:id/pdf", requireRole("STORE_OWNER"), async (req:
     }
 
     const doc = new PDFDocument({ margin: 50 });
+    const buffers: Buffer[] = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', async () => {
+      const pdfBuffer = Buffer.concat(buffers);
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename=receipt-${receipt.receiptNo || id}.pdf`);
+      try {
+        const total = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(sale.totalValue));
+        
+        await sendMail({
+          to: email,
+          subject: `Your Receipt from ${sale.store.name}`,
+          html: getCustomerReceiptEmailTemplate(sale.store.name, receipt.receiptNo || "N/A", total),
+          attachments: [
+            {
+              filename: `receipt-${receipt.receiptNo || id}.pdf`,
+              content: pdfBuffer,
+              contentType: 'application/pdf',
+            },
+          ],
+        });
 
-    doc.pipe(res);
+        return sendSuccess(res, "Receipt email sent successfully");
+      } catch (emailError) {
+        console.error("Failed to send receipt email:", emailError);
+        return sendInternalError(res, emailError, "Failed to send receipt email");
+      }
+    });
 
-
-    await generateReceiptPDF(doc, sale, receipt.receiptNo || sale.id.slice(0, 8), sale.store, res);
-
+    // generateReceiptPDF should write to the doc and call doc.end() internally or be awaited
+    // For this to work, generateReceiptPDF should not pipe to 'res' directly, but just write to 'doc'
+    await generateReceiptPDF(doc, sale, receipt.receiptNo || sale.id.slice(0, 8), sale.store);
   } catch (err) {
-    return sendInternalError(res, err, "Failed to generate receipt PDF");
+    return sendInternalError(res, err, "Failed to process receipt email request");
   }
 });
+
+
+
 
 
 

@@ -41,7 +41,7 @@ const fetchLogo = async () => {
     }
 };
 
-export const generateReceiptPDF = async (doc: PDFKit.PDFDocument, sale: any, receiptNo: string, store: any, res: any) => {
+export const generateReceiptPDF = async (doc: PDFKit.PDFDocument, sale: any, receiptNo: string, store: any) => {
     // 1. Decrypt Data
     const cashier = decryptUser(sale.createdBy);
     

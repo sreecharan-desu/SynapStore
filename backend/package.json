@@ -4,13 +4,13 @@
   "description": "An outpass Management System",
   "main": "dist/index.js",
   "scripts": {
-    "dev:server": "nodemon --watch '*.ts' --exec 'ts-node' ./index.ts",
-    "dev:worker": "nodemon --watch '*.ts' --exec 'ts-node' worker-entry.ts",
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:worker\"",
+    "dev:server": "nodemon --watch '*.ts' --exec 'ts-node --transpile-only' ./index.ts",
+    "dev:worker": "nodemon --watch '*.ts' --exec 'ts-node --transpile-only' worker-entry.ts",
+    "dev": "npm run dev:server",
     "postinstall": "prisma generate",
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
-    "worker": "ts-node worker-entry.ts"
+    "worker": "ts-node --transpile-only worker-entry.ts"
   },
   "author": "SreeCharan Desu",
   "license": "MIT",

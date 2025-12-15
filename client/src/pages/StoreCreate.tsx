@@ -6,6 +6,7 @@ import { authState } from "../state/auth";
 import { jsonFetch } from "../utils/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { DottedSurface } from "../components/ui/dotted-surface";
+import { dashboardApi } from "../lib/api/endpoints";
 
 type StoreResponse = {
   success: boolean;
@@ -39,6 +40,64 @@ const StoreCreate = () => {
   const [avatar] = useState("fruit-strawberry");
   const [selectedRole, setSelectedRole] =
     useState<"STORE_OWNER" | "SUPPLIER" | null>(null);
+
+  const avatars = [
+    { id: "fruit-strawberry", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f353.svg", name: "Strawberry" },
+    { id: "fruit-pineapple", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f34d.svg", name: "Pineapple" },
+    { id: "fruit-watermelon", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f349.svg", name: "Watermelon" },
+    { id: "fruit-grapes", src: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/1f347.svg", name: "Grapes" },
+  ];
+
+  const colors = [
+    { id: "green", hex: "#059669", ring: "ring-emerald-500", name: "Green" }, // emerald-600
+    { id: "red", hex: "#dc2626", ring: "ring-red-500", name: "Red" }, // red-600
+    { id: "orange", hex: "#f97316", ring: "ring-orange-500", name: "Orange" }, // orange-500
+    { id: "blue", hex: "#2563eb", ring: "ring-blue-500", name: "Blue" }, // blue-600
+    { id: "black", hex: "#0f172a", ring: "ring-slate-900", name: "Black" }, // slate-900
+  ];
+
+
+  useEffect(() => {
+    // Check if role updated while on this screen
+    const checkRole = async () => {
+        try {
+            const res = await dashboardApi.getStore(); // or getBootstrap
+            if (res.data.success) {
+                const fetchedUser = res.data.data.user;
+                if (auth.user && fetchedUser.globalRole !== auth.user.globalRole) {
+                    setAuth((prev: any) => ({
+                        ...prev,
+                        user: { ...prev.user, globalRole: fetchedUser.globalRole }
+                    }));
+                    if (fetchedUser.globalRole === "SUPPLIER") {
+                        alert("Access Updated: Congrats you are now a SUPPLIER!");
+                        // Navigation will happen automatically via RoleGuard or logic below
+                    }
+                }
+            }
+        } catch (e: any) {
+            // Check for specific "no_store_found" error which now carries the user role
+            // Depending on how jsonFetch throws, key might vary. Usually e is the thrown error.
+            // If jsonFetch throws the parsed JSON body as `error` property or similar, we inspect it.
+            // Based on previous files, jsonFetch throws an Error object with extra props if code/details exist.
+            
+            if (e.code === "no_store_found" && e.details?.user?.globalRole) {
+                 const fetchedRole = e.details.user.globalRole;
+                 if (auth.user && fetchedRole !== auth.user.globalRole) {
+                    setAuth((prev: any) => ({
+                        ...prev,
+                        user: { ...prev.user, globalRole: fetchedRole }
+                    }));
+                    if (fetchedRole === "SUPPLIER") {
+                        alert("Access Updated: Congrats you are now a SUPPLIER!");
+                        navigate("/supplier/dashboard", { replace: true });
+                    }
+                 }
+            }
+        }
+    };
+    if (auth.token) checkRole();
+  }, [auth.token]);
 
   useEffect(() => {
     if (!auth.needsStoreSetup && auth.effectiveStore) {

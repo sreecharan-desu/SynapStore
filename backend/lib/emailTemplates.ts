@@ -181,7 +181,14 @@ export function getDisconnectionEmailTemplate(partnerName: string): string {
   `, "Connection Ended");
 }
 
-export function getReceiptEmailTemplate(storeName: string, receiptData: any): string {
+export function getReceiptEmailTemplate(storeName: string, receiptData: any, additionalInfo?: string): string {
+  const extraContent = additionalInfo 
+    ? `<div style="margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
+         <h3 style="color: #111827; font-size: 16px; margin-bottom: 12px;">Order Summary</h3>
+         ${additionalInfo}
+       </div>`
+    : "";
+
   return wrapContent(`
     <h2 style="${HEADING_STYLES}">Processing Complete</h2>
     <p style="${PARAGRAPH_STYLES}">
@@ -197,7 +204,8 @@ export function getReceiptEmailTemplate(storeName: string, receiptData: any): st
            <span>${new Date().toLocaleDateString()}</span>
         </div>
     </div>
-    <div style="text-align: center;">
+    ${extraContent}
+    <div style="text-align: center; margin-top: 24px;">
       <a href="${FRONTEND_URL}/dashboard" style="${BUTTON_STYLES}">View Report</a>
     </div>
   `, "Upload Receipt");
@@ -224,5 +232,20 @@ export function getReorderRequestEmailTemplate(supplierEmail: string, storeName:
       <a href="${frontendUrl}/supplier/requests" style="${BUTTON_STYLES}">View Request</a>
     </div>
   `, "Reorder Request");
+}
+
+export function getCustomerReceiptEmailTemplate(storeName: string, receiptNo: string, total: string): string {
+  return wrapContent(`
+    <h2 style="${HEADING_STYLES}">Receipt from ${storeName}</h2>
+    <p style="${PARAGRAPH_STYLES}">
+      Dear Customer,
+    </p>
+    <p style="${PARAGRAPH_STYLES}">
+      Thank you for your purchase. Please find your receipt (<strong>${receiptNo}</strong>) attached for the total amount of <strong>${total}</strong>.
+    </p>
+    <p style="${PARAGRAPH_STYLES}">
+       We appreciate your business and hope to see you again soon!
+    </p>
+  `, "Your Receipt");
 }
 

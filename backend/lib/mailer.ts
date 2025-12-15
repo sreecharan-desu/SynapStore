@@ -28,8 +28,9 @@ export async function sendMail(options: {
   subject: string;
   text?: string;
   html?: string;
+  attachments?: any[];
 }) {
-  const { to, subject, text, html } = options;
+  const { to, subject, text, html, attachments } = options;
 
   return transporter.sendMail({
     from,
@@ -37,6 +38,8 @@ export async function sendMail(options: {
     subject,
     text,
     html,
+    attachments,
   });
 }
+
 

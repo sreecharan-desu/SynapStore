@@ -1,7 +1,8 @@
 import "dotenv/config"; // Ensure env vars are loaded first
-import { worker } from "./worker/notificationworker";
+import { worker, startWorker } from "./worker/notificationworker";
 
 console.log("Starting notification worker...");
+startWorker();
 
 // Keep process alive
 process.on("SIGINT", async () => {

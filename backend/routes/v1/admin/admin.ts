@@ -1003,8 +1003,17 @@ const sendNotificationSchema = z.object({
   message: z.string().min(1),
 });
 
+import { startWorker, processAndDrain } from "../../../worker/notificationworker";
+
 router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, res) => {
   try {
+     const isSeverless = !!process.env.VERCEL;
+
+     // Start worker in background for standard server, skip for serverless (we drain later)
+     if (!isSeverless) {
+        startWorker().catch(e => console.error("Failed to start worker lazily", e));
+     }
+
      const body = sendNotificationSchema.parse(req.body);
      const { targetRole, targetUserIds, type, subject, message } = body;
 
@@ -1063,6 +1072,11 @@ router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, r
      });
      
      await Promise.all(dispatchPromises);
+     
+     // For Serverless: Process queue immediately before exiting
+     if (process.env.VERCEL) {
+         await processAndDrain();
+     }
      
      return sendSuccess(res, `Notification dispatched to ${users.length} users.`);
 
