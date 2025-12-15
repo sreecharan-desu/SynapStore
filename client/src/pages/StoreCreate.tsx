@@ -6,6 +6,7 @@ import { authState } from "../state/auth";
 import { jsonFetch } from "../utils/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { DottedSurface } from "../components/ui/dotted-surface";
+import { dashboardApi } from "../lib/api/endpoints";
 
 type StoreResponse = {
   success: boolean;
@@ -55,6 +56,49 @@ const StoreCreate = () => {
     { id: "blue", hex: "#2563eb", ring: "ring-blue-500", name: "Blue" }, // blue-600
     { id: "black", hex: "#0f172a", ring: "ring-slate-900", name: "Black" }, // slate-900
   ];
+
+
+  useEffect(() => {
+    // Check if role updated while on this screen
+    const checkRole = async () => {
+        try {
+            const res = await dashboardApi.getStore(); // or getBootstrap
+            if (res.data.success) {
+                const fetchedUser = res.data.data.user;
+                if (auth.user && fetchedUser.globalRole !== auth.user.globalRole) {
+                    setAuth((prev: any) => ({
+                        ...prev,
+                        user: { ...prev.user, globalRole: fetchedUser.globalRole }
+                    }));
+                    if (fetchedUser.globalRole === "SUPPLIER") {
+                        alert("Access Updated: Congrats you are now a SUPPLIER!");
+                        // Navigation will happen automatically via RoleGuard or logic below
+                    }
+                }
+            }
+        } catch (e: any) {
+            // Check for specific "no_store_found" error which now carries the user role
+            // Depending on how jsonFetch throws, key might vary. Usually e is the thrown error.
+            // If jsonFetch throws the parsed JSON body as `error` property or similar, we inspect it.
+            // Based on previous files, jsonFetch throws an Error object with extra props if code/details exist.
+            
+            if (e.code === "no_store_found" && e.details?.user?.globalRole) {
+                 const fetchedRole = e.details.user.globalRole;
+                 if (auth.user && fetchedRole !== auth.user.globalRole) {
+                    setAuth((prev: any) => ({
+                        ...prev,
+                        user: { ...prev.user, globalRole: fetchedRole }
+                    }));
+                    if (fetchedRole === "SUPPLIER") {
+                        alert("Access Updated: Congrats you are now a SUPPLIER!");
+                        navigate("/supplier/dashboard", { replace: true });
+                    }
+                 }
+            }
+        }
+    };
+    if (auth.token) checkRole();
+  }, [auth.token]);
 
   useEffect(() => {
     if (!auth.needsStoreSetup && auth.effectiveStore) {

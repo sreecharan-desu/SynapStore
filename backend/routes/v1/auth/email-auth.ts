@@ -417,11 +417,20 @@ router.post(
       const ok = await comparePassword(password, user.passwordHash);
       if (!ok) return sendError(res, "Incorrect password", 401, { code: "invalid_password" });
 
-      const token = signJwt({
+      // Fetch supplier info if exists (deterministically or by role)
+      const supplier = await prisma.supplier.findFirst({
+        where: { userId: user.id },
+        select: { id: true }
+      });
+
+      const tokenPayload: any = {
         sub: user.id,
         email,
         globalRole: user.globalRole ?? null,
-      });
+      };
+      if (supplier) tokenPayload.supplierId = supplier.id;
+
+      const token = signJwt(tokenPayload);
 
       // Response payload construction
       let responseData: any = {
@@ -434,6 +443,12 @@ router.post(
         },
         effectiveStore: null,
         stores: [],
+        role_data: {
+             role: user.globalRole === 'SUPERADMIN' ? 'SUPER_ADMIN' : (user.globalRole || "READ_ONLY"),
+             user_id: user.id,
+             store_id: null,
+             supplier_id: null
+        }
       };
 
       // if SUPERADMIN, bypass store checks and return global admin context
@@ -470,7 +485,10 @@ router.post(
         responseData.needsStoreSelection = false;
         responseData.supplier = supplier;
         responseData.suppliers = supplier ? [supplier] : [];
-        // decrypt username if needed, handled by variable 'user' coming from findUserByEmail which decrypts
+        
+        if (supplier) {
+            responseData.role_data.supplier_id = supplier.id;
+        }
         
         // EMAIL NOTIFICATION: Supplier Sign-in
         sendMail({
@@ -518,6 +536,11 @@ router.post(
             ...s.store,
             roles: [s.role],
           };
+          
+          if (s.role === 'STORE_OWNER') {
+              responseData.role_data.store_id = s.store.id;
+          }
+
           // EMAIL NOTIFICATION: Sign-in
           sendMail({
             to: email,
@@ -536,6 +559,11 @@ router.post(
         // (future support) MULTIPLE STORES → frontend must show switcher
         responseData.stores = stores; // maps to store names
         responseData.needsStoreSelection = true;
+        
+        const ownedStore = stores.find(s => s.role === 'STORE_OWNER');
+        if (ownedStore) {
+             responseData.role_data.store_id = ownedStore.store.id;
+        }
         
         // EMAIL NOTIFICATION: New Sign-in
         sendMail({

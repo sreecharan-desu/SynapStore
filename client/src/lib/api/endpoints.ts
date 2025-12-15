@@ -26,7 +26,7 @@ export const storeApi = {
 // --- Dashboard ---
 export const dashboardApi = {
     getStore: () => client.get<{ success: boolean; data: { user: User; store: Store; roles: string[] } }>("api/v1/dashboard/store"),
-    getBootstrap: (params?: any) => client.get<any>("api/v1/dashboard/bootstrap", { params }),
+    getBootstrap: (params?: any) => client.get<{ success: boolean; data: any }>("api/v1/dashboard/bootstrap", { params }),
 
     // Supplier Requests (Store Owner View)
     getSupplierRequests: () => client.get<{ success: boolean; data: SupplierRequest[] }>("api/v1/dashboard/supplier-requests"),

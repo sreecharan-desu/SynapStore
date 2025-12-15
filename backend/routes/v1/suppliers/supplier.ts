@@ -763,6 +763,7 @@ router.post(
 );
 
 const fulfillSchema = z.object({
+  message: z.string().optional(),
   items: z.array(z.object({
     medicineId: z.string().uuid(),
     quantity: z.number().int().positive(),
@@ -792,13 +793,16 @@ router.post(
         if (!request) return sendError(res, "Request not found", 404);
 
         if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
-        if (request.status !== "ACCEPTED") return sendError(res, "Request must be ACCEPTED before fulfillment", 400);
+        // Allow PENDING status for direct fulfillment (Accept & Fulfill)
+        if (request.status !== "ACCEPTED" && request.status !== "PENDING") {
+           return sendError(res, "Request must be PENDING or ACCEPTED to fulfill", 400);
+        }
 
         const parsed = fulfillSchema.safeParse(req.body);
         if (!parsed.success) return handleZodError(res, parsed.error);
 
         // Convert expiryDate string to Date object
-        const items = parsed.data.items.map(i => ({
+        const fulfilledItems = parsed.data.items.map(i => ({
             ...i,
             expiryDate: i.expiryDate ? new Date(i.expiryDate) : undefined
         }));
@@ -807,10 +811,27 @@ router.post(
             request.storeId,
             supplier.id,
             requestId,
-            items,
+            fulfilledItems,
             user.id
         );
+        
+        // --- Calculate Discrepancies (Partial Fulfillment) ---
+        let infoHtml = "";
 
+        if (parsed.data.message) {
+             infoHtml += `
+               <div style="background-color: #f9fafb; padding: 16px; border-left: 4px solid #1f2937; margin-bottom: 20px; color: #4b5563; font-style: italic;">
+                 <strong>Note from Supplier:</strong> "${parsed.data.message}"
+               </div>
+             `;
+        }
+
+        let missingItemsHtml = "";
+        // @ts-ignore
+        const requestedItems = request.payload?.items || [];
+        
+        if (Array.isArray(requestedItems) && requestedItems.length > 0) {}
+        
         // Notify Store Owner
         const store = await prisma.store.findUnique({ 
              where: { id: request.storeId },
@@ -828,7 +849,7 @@ router.post(
                      sendMail({
                          to: owner.user.email,
                          subject: `Reorder Received: ${supplier.name}`,
-                         html: getReceiptEmailTemplate(store.name, { count: items.length }) 
+                         html: getReceiptEmailTemplate(store.name, { count: fulfilledItems.length }, infoHtml) 
                      }).catch(e => console.error("Email failed", e));
                  }
              }

@@ -201,6 +201,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       globalRole: user.globalRole ?? null,
     };
     if (effectiveStore) tokenPayload.storeId = effectiveStore.id;
+    if (supplierRows.length > 0) tokenPayload.supplierId = supplierRows[0].id; // Add supplierId
     const token = signJwt(tokenPayload);
 
     // persist activity / audit
@@ -236,7 +237,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       console.error("google signin: failed to persist logs", e);
     }
 
-    const responseData = {
+    const responseData: any = {
       token,
       user: {
         id: user.id,
@@ -253,7 +254,20 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
         name: s.name,
         isActive: s.isActive,
       })),
+      role_data: {
+             role: user.globalRole === 'SUPERADMIN' ? 'SUPER_ADMIN' : (user.globalRole || "READ_ONLY"),
+             user_id: user.id,
+             store_id: null,
+             supplier_id: null
+      }
     };
+    
+    if (link && link.store && link.role === 'STORE_OWNER') {
+        responseData.role_data.store_id = link.store.id;
+    }
+    if (supplierRows.length > 0) {
+        responseData.role_data.supplier_id = supplierRows[0].id;
+    }
 
     return sendSuccess(res, "Google authentication successful", responseData);
 
