@@ -303,10 +303,10 @@ const Login: React.FC = () => {
     try {
       const body = await jsonFetch<SigninResponse>("/api/v1/auth/signin", {
         method: "POST",
-        body: JSON.stringify({ 
-          email, 
-          password, 
-          captchaToken: isCaptchaBypassed ? undefined : captchaToken 
+        body: JSON.stringify({
+          email,
+          password,
+          captchaToken: isCaptchaBypassed ? undefined : captchaToken
         }),
       });
       if (body.data.token) {
@@ -334,9 +334,9 @@ const Login: React.FC = () => {
     try {
       const body = await jsonFetch<SigninResponse>("/api/v1/oauth/google", {
         method: "POST",
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           idToken: credential,
-          captchaToken: isCaptchaBypassed ? undefined : captchaToken 
+          captchaToken: isCaptchaBypassed ? undefined : captchaToken
         }),
       });
       if (body.data.token) {
@@ -400,7 +400,6 @@ const Login: React.FC = () => {
       setShowOtp(false);
       setIsSignup(false);
       setOtp(Array.from({ length: OTP_LENGTH }).map(() => ""));
-      setEmail("");
       setPassword("");
       toast.success("OTP verified - you can now sign in");
     } catch (err: any) {
@@ -652,12 +651,12 @@ const Login: React.FC = () => {
                           <Turnstile
                             sitekey={CLOUDFLARE_SITE_KEY}
                             onVerify={(token) => {
-                                setCaptchaToken(token);
-                                setCaptchaErrorCount(0);
+                              setCaptchaToken(token);
+                              setCaptchaErrorCount(0);
                             }}
                             onError={() => {
-                                setCaptchaErrorCount((prev: number) => prev + 1);
-                                setCaptchaToken("");
+                              setCaptchaErrorCount((prev: number) => prev + 1);
+                              setCaptchaToken("");
                             }}
                             onExpire={() => setCaptchaToken("")}
                           />

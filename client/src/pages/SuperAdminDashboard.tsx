@@ -9,14 +9,15 @@ import {
     Package, Truck, LogOut, Trash2,
     PieChart as PieChartIcon,
     Bell, Lock, X, ArrowRightLeft,
-    Send, Mail, MessageSquare, CheckCircle2, RefreshCw, ShoppingCart, Share2, Filter
+    Send, Mail, MessageSquare, CheckCircle2, RefreshCw, ShoppingCart, Share2, Filter, Calendar
 } from "lucide-react";
+import { format } from 'date-fns';
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { adminApi } from "../lib/api/endpoints";
 import type { User, Store, Supplier } from "../lib/types";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { } from "react-icons/fa";
+import { FaExchangeAlt } from "react-icons/fa";
 import { MdNotificationsActive } from "react-icons/md";
 import {
     AreaChart, Area, PieChart, Pie, Cell,
@@ -559,6 +560,12 @@ const SuperAdminDashboard: React.FC = () => {
 
                         <div className="flex items-center gap-4">
 
+                            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                <Calendar className="w-4 h-4 text-slate-400" />
+                                <span className="text-sm font-semibold text-slate-600">
+                                    {format(new Date(), 'EEE d MMM')}
+                                </span>
+                            </div>
 
                             <motion.div
                                 initial={{ opacity: 0, x: 20 }}
@@ -1347,10 +1354,10 @@ const SuperAdminDashboard: React.FC = () => {
                                                                         <Button
                                                                             variant="outline"
                                                                             size="sm"
-                                                                            className="!bg-black !text-white hover:!bg-slate-800 border-none h-8 mr-2"
+                                                                            className="!bg-black !text-white hover:!bg-slate-800 border-none h-8 mr-2 flex items-center gap-2"
                                                                             onClick={() => initiateConvertUser(user.id, user.username)}
                                                                         >
-                                                                            Convert
+                                                                            <FaExchangeAlt /> Convert
                                                                         </Button>
                                                                     )}
                                                                     <Button
@@ -1605,13 +1612,13 @@ const SuperAdminDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                         <Button
                                             variant="outline"
-                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                             onClick={() => setShowLogoutConfirm(false)}
                                         >
                                             Cancel
                                         </Button>
                                         <Button
-                                            className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                             onClick={performLogout}
                                         >
                                             Yes, Sign Out
@@ -1657,13 +1664,13 @@ const SuperAdminDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                         <Button
                                             variant="outline"
-                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                             onClick={() => setStoreToDelete(null)}
                                         >
                                             Cancel
                                         </Button>
                                         <Button
-                                            className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                             onClick={performDeleteStore}
                                         >
                                             Yes, Delete
@@ -1713,16 +1720,13 @@ const SuperAdminDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                         <Button
                                             variant="outline"
-                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                             onClick={() => setStoreToToggle(null)}
                                         >
                                             Cancel
                                         </Button>
                                         <Button
-                                            className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${storeToToggle.isActive
-                                                ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
-                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
-                                                }`}
+                                            className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                             onClick={performToggleStore}
                                         >
                                             Confirm
@@ -1768,13 +1772,13 @@ const SuperAdminDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                         <Button
                                             variant="outline"
-                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                             onClick={() => setSupplierToDelete(null)}
                                         >
                                             Cancel
                                         </Button>
                                         <Button
-                                            className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                             onClick={performDeleteSupplier}
                                         >
                                             Yes, Delete
@@ -1824,16 +1828,13 @@ const SuperAdminDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                         <Button
                                             variant="outline"
-                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                             onClick={() => setSupplierToToggle(null)}
                                         >
                                             Cancel
                                         </Button>
                                         <Button
-                                            className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${supplierToToggle.isActive
-                                                ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
-                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
-                                                }`}
+                                            className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                             onClick={performToggleSupplier}
                                         >
                                             Confirm
@@ -1879,13 +1880,13 @@ const SuperAdminDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                         <Button
                                             variant="outline"
-                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                             onClick={() => setUserToDelete(null)}
                                         >
                                             Cancel
                                         </Button>
                                         <Button
-                                            className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                             onClick={performDeleteUser}
                                         >
                                             Yes, Delete
@@ -1931,13 +1932,13 @@ const SuperAdminDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                         <Button
                                             variant="outline"
-                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                             onClick={() => setUserToConvert(null)}
                                         >
                                             Cancel
                                         </Button>
                                         <Button
-                                            className="h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-lg shadow-indigo-500/20 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                             onClick={performConvertUser}
                                         >
                                             Confirm
@@ -1986,16 +1987,13 @@ const SuperAdminDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                         <Button
                                             variant="outline"
-                                            className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                             onClick={() => setUserToToggle(null)}
                                         >
                                             Cancel
                                         </Button>
                                         <Button
-                                            className={`h-12 rounded-xl text-white border-none shadow-lg font-semibold ${userToToggle.isActive
-                                                ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
-                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
-                                                }`}
+                                            className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                             onClick={performToggleUser}
                                         >
                                             Confirm

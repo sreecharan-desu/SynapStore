@@ -119,6 +119,19 @@ const SupplierDashboard: React.FC = () => {
     const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string; subtext?: string } | null>(null);
     const [profileResult, setProfileResult] = useState<{ success: boolean; message: string; subtext?: string } | null>(null);
 
+    // Order Action States
+    const [actionLoading, setActionLoading] = useState<string | null>(null); // Stores ID of item being processed
+    const [actionResult, setActionResult] = useState<{ type: 'success' | 'error', message: string, title: string } | null>(null);
+
+    // Disconnect Modal State
+    const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
+    const [storeToDisconnect, setStoreToDisconnect] = useState<string | null>(null);
+
+    // Reject Modal State
+    const [rejectModalOpen, setRejectModalOpen] = useState(false);
+    const [requestToReject, setRequestToReject] = useState<string | null>(null);
+    const [rejectionReason, setRejectionReason] = useState("");
+
     const handleSubmitFulfillment = async () => {
         if (!requestToFulfill) return;
         try {
@@ -128,16 +141,28 @@ const SupplierDashboard: React.FC = () => {
                 return;
             }
 
+            setActionLoading("FULFILL");
             const res = await suppliersApi.fulfillRequest(requestToFulfill.id, { items: fulfillItems });
             if (res.data.success) {
-                alert("Reorder fulfilled successfully!");
                 setFulfillModalOpen(false);
                 setRequestToFulfill(null);
                 setFulfillItems([]);
+                setActionResult({
+                    type: 'success',
+                    title: 'Order Accepted',
+                    message: 'The order has been successfully accepted and inventory is being processed.'
+                });
+                refreshData();
             }
         } catch (err: any) {
             console.error(err);
-            alert("Failed to fulfill: " + err.message);
+            setActionResult({
+                type: 'error',
+                title: 'Submission Failed',
+                message: err.message || "Failed to fulfill order."
+            });
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -291,17 +316,33 @@ const SupplierDashboard: React.FC = () => {
         }}
     />
 
-    const handleDisconnectStore = async (storeId: string) => {
-        if (!confirm("Are you sure you want to disconnect from this store?")) return;
+    const handleDisconnectStore = (storeId: string) => {
+        setStoreToDisconnect(storeId);
+        setDisconnectModalOpen(true);
+    };
+
+    const confirmDisconnect = async () => {
+        if (!storeToDisconnect) return;
         try {
-            const res = await suppliersApi.disconnectStore(storeId);
+            const res = await suppliersApi.disconnectStore(storeToDisconnect);
             if (res.data.success) {
-                setConnectedStores(prev => prev.filter(s => s.id !== storeId));
-                alert("Store disconnected successfully.");
+                setConnectedStores(prev => prev.filter(s => s.id !== storeToDisconnect));
+                setDisconnectModalOpen(false);
+                setStoreToDisconnect(null);
+                setActionResult({
+                    type: 'success',
+                    title: 'Disconnected',
+                    message: 'You have successfully disconnected from the store.'
+                });
             }
         } catch (err) {
             console.error("Failed to disconnect", err);
-            alert("Failed to disconnect store");
+            setActionResult({
+                type: 'error',
+                title: 'Disconnection Failed',
+                message: 'Failed to disconnect store. Please try again.'
+            });
+            setDisconnectModalOpen(false);
         }
     };
 
@@ -446,19 +487,29 @@ const SupplierDashboard: React.FC = () => {
         }
     };
 
-    const handleRejectRequest = async (requestId: string) => {
-        const reason = prompt("Please provide a reason for rejection (optional):");
-        if (reason === null) return; // User cancelled
+    const handleRejectRequest = (requestId: string) => {
+        setRequestToReject(requestId);
+        setRejectionReason("");
+        setRejectModalOpen(true);
+    };
+
+    const submitRejection = async () => {
+        if (!requestToReject) return;
 
         try {
-            const res = await suppliersApi.rejectRequest(requestId, reason);
+            setActionLoading(requestToReject);
+            const res = await suppliersApi.rejectRequest(requestToReject, rejectionReason);
             if (res.data.success) {
-                alert("Request rejected.");
-                setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: "REJECTED" } : r));
+                setActionResult({ type: 'success', title: 'Order Rejected', message: 'The order request has been rejected.' });
+                setRequests(prev => prev.map(r => r.id === requestToReject ? { ...r, status: "REJECTED" } : r));
+                setRejectModalOpen(false);
+                setRequestToReject(null);
             }
         } catch (err: any) {
             console.error(err);
-            alert("Failed to reject request: " + err.message);
+            setActionResult({ type: 'error', title: 'Rejection Failed', message: err.message });
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -745,9 +796,8 @@ const SupplierDashboard: React.FC = () => {
                                                                     </div>
                                                                 </div>
                                                                 <Button
-                                                                    variant="ghost"
                                                                     size="sm"
-                                                                    className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg group-hover:opacity-100 transition-all font-medium text-xs"
+                                                                    className="!bg-black !text-white hover:!bg-slate-800 rounded-lg group-hover:opacity-100 transition-all font-medium text-xs shadow-md shadow-black/10"
                                                                     onClick={() => {
                                                                         setActiveTab('requests');
                                                                         // Optional: Set a filter or focus on this item
@@ -761,7 +811,7 @@ const SupplierDashboard: React.FC = () => {
                                                 </div>
                                                 <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
                                                     <p className="text-xs text-slate-400 font-medium">Total Inbound: <span className="text-slate-900">{requests.length}</span></p>
-                                                    <Button variant="link" size="sm" className="text-indigo-600 hover:text-indigo-700 font-semibold text-xs p-0 h-auto" onClick={() => setActiveTab('requests')}>
+                                                    <Button size="sm" className="!bg-black !text-white hover:!bg-slate-800 font-semibold text-xs h-9 px-4 rounded-lg shadow-md shadow-black/10" onClick={() => setActiveTab('requests')}>
                                                         See All History &rarr;
                                                     </Button>
                                                 </div>
@@ -816,7 +866,7 @@ const SupplierDashboard: React.FC = () => {
                                                         </div>
 
                                                         <Button
-                                                            className="w-full mt-6 bg-slate-900 text-white hover:bg-emerald-600 transition-colors"
+                                                            className="w-full mt-6 !bg-black !text-white hover:!bg-slate-800 transition-colors shadow-lg shadow-black/20"
                                                             onClick={() => setSelectedStore(store)}
                                                         >
                                                             Connect
@@ -967,7 +1017,7 @@ const SupplierDashboard: React.FC = () => {
                                                                                     <div className="flex items-center justify-center gap-2 transition-opacity">
                                                                                         <Button
                                                                                             size="sm"
-                                                                                            className="h-8 shadow-sm bg-emerald-600 hover:bg-emerald-700 text-white border-0"
+                                                                                            className="h-8 shadow-sm !bg-black hover:!bg-slate-800 !text-white border-0 shadow-md shadow-black/10"
                                                                                             onClick={() => handleAcceptRequest(req.id)}
                                                                                         >
                                                                                             Accept
@@ -975,7 +1025,7 @@ const SupplierDashboard: React.FC = () => {
                                                                                         <Button
                                                                                             size="sm"
                                                                                             variant="outline"
-                                                                                            className="h-8 border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                                                                                            className="h-8 !border-black !text-black hover:!bg-slate-50"
                                                                                             onClick={() => handleRejectRequest(req.id)}
                                                                                         >
                                                                                             Reject
@@ -1154,15 +1204,16 @@ const SupplierDashboard: React.FC = () => {
                                                                     <div className="flex justify-end gap-4">
                                                                         {isPending ? (
                                                                             <>
-                                                                                <Button variant="outline" onClick={() => handleRejectRequest(req.id)} className="border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 px-6">
+                                                                                <Button onClick={() => handleRejectRequest(req.id)} disabled={actionLoading === req.id} className="!bg-black !text-white hover:!bg-black px-6 min-w-[120px] shadow-lg shadow-black/20">
+                                                                                    {actionLoading === req.id ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
                                                                                     Reject Order
                                                                                 </Button>
-                                                                                <Button onClick={() => handleAcceptRequest(req.id)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 shadow-lg shadow-indigo-200">
+                                                                                <Button onClick={() => handleAcceptRequest(req.id)} className="!bg-black hover:!bg-slate-800 !text-white px-8 shadow-lg shadow-black/20">
                                                                                     Accept Order
                                                                                 </Button>
                                                                             </>
                                                                         ) : isAccepted ? (
-                                                                            <Button onClick={() => openFulfillModal(req)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 shadow-lg shadow-emerald-200">
+                                                                            <Button onClick={() => openFulfillModal(req)} className="!bg-black hover:!bg-slate-800 !text-white px-8 shadow-lg shadow-black/20">
                                                                                 Fulfill Order
                                                                             </Button>
                                                                         ) : (
@@ -1295,7 +1346,7 @@ const SupplierDashboard: React.FC = () => {
                                                                     <Button
                                                                         variant="outline"
                                                                         size="sm"
-                                                                        className="text-xs border-slate-200 text-slate-600 hover:bg-slate-50 h-8"
+                                                                        className="text-xs !bg-black !text-white hover:!bg-slate-800 border-none h-8 shadow-md shadow-black/10"
                                                                         onClick={() => setHistoryDetailRequest(req)}
                                                                     >
                                                                         View Details
@@ -1374,7 +1425,7 @@ const SupplierDashboard: React.FC = () => {
                                                         </div>
 
                                                         <Button
-                                                            className="w-full mt-6 bg-white text-slate-500 border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all shadow-sm"
+                                                            className="w-full mt-6 !bg-black !text-white hover:!bg-slate-800 transition-colors shadow-sm"
                                                             onClick={() => handleDisconnectStore(store.id)}
                                                         >
                                                             Disconnect
@@ -1405,7 +1456,6 @@ const SupplierDashboard: React.FC = () => {
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <Button
-                                                variant="outline"
                                                 onClick={() => setProfileForm({
                                                     name: "",
                                                     contactName: "",
@@ -1415,14 +1465,14 @@ const SupplierDashboard: React.FC = () => {
                                                     defaultMOQ: 0
                                                 })}
                                                 disabled={loading}
-                                                className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-red-600 px-6 h-11 rounded-xl font-medium transition-all"
+                                                className="!bg-black !text-white hover:!bg-black px-6 h-11 rounded-xl font-medium transition-all border-none"
                                             >
                                                 Reset
                                             </Button>
                                             <Button
                                                 onClick={handleSaveProfile}
                                                 disabled={loading}
-                                                className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 px-6 h-11 rounded-xl transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed font-medium"
+                                                className="!bg-black hover:!bg-slate-800 !text-white shadow-lg shadow-black/20 px-6 h-11 rounded-xl transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed font-medium"
                                             >
                                                 {loading ? (
                                                     <>
@@ -1611,9 +1661,8 @@ const SupplierDashboard: React.FC = () => {
                                                     </div>
                                                 </div>
                                                 <Button
-                                                    variant="outline"
                                                     onClick={() => SupplierService.downloadTemplate()}
-                                                    className="w-full h-11 border-dashed border-2 border-slate-300 text-slate-600 hover:border-teal-500 hover:text-teal-600 hover:bg-teal-50 transition-all rounded-xl text-sm font-medium"
+                                                    className="w-full h-11 !bg-black !text-white hover:!bg-slate-800 transition-colors rounded-xl text-sm font-medium shadow-md shadow-black/10"
                                                 >
                                                     <Download className="w-4 h-4 mr-2" />
                                                     Download CSV Template
@@ -1810,9 +1859,9 @@ const SupplierDashboard: React.FC = () => {
                                         <h3 className="text-xl font-bold text-slate-800">Order Details</h3>
                                         <p className="text-sm text-slate-500 font-mono">#{historyDetailRequest.id}</p>
                                     </div>
-                                    <Button variant="ghost" size="sm" onClick={() => setHistoryDetailRequest(null)}>
-                                        <XCircle className="w-6 h-6 text-slate-400 hover:text-slate-600" />
-                                    </Button>
+                                    <button onClick={() => setHistoryDetailRequest(null)} className="p-2 cursor-pointer !bg-black hover:!bg-slate-800 rounded-full transition-colors shadow-md shadow-black/10">
+                                        <X className="w-5 h-5 !text-white" />
+                                    </button>
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto pr-2 space-y-6">
@@ -1888,7 +1937,7 @@ const SupplierDashboard: React.FC = () => {
                                 </div>
 
                                 <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
-                                    <Button onClick={() => setHistoryDetailRequest(null)} className="bg-slate-900 text-white">
+                                    <Button onClick={() => setHistoryDetailRequest(null)} className="!bg-black !text-white hover:!bg-slate-800 shadow-lg shadow-black/20">
                                         Close Details
                                     </Button>
                                 </div>
@@ -1912,7 +1961,9 @@ const SupplierDashboard: React.FC = () => {
                                         <h3 className="text-lg font-bold text-slate-800">Connect with {selectedStore.name}</h3>
                                         <p className="text-sm text-slate-500">Send a request to start supplying this store.</p>
                                     </div>
-                                    <Button variant="ghost" size="sm" onClick={() => setSelectedStore(null)}><XCircle className="w-5 h-5 text-slate-400" /></Button>
+                                    <button onClick={() => setSelectedStore(null)} className="p-2 cursor-pointer !bg-black hover:!bg-slate-800 rounded-full transition-colors shadow-md shadow-black/10">
+                                        <X className="w-5 h-5 !text-white" />
+                                    </button>
                                 </div>
 
                                 <form onSubmit={handleConnect}>
@@ -1928,8 +1979,8 @@ const SupplierDashboard: React.FC = () => {
                                     </div>
 
                                     <div className="flex justify-end gap-3">
-                                        <Button type="button" variant="secondary" onClick={() => setSelectedStore(null)}>Cancel</Button>
-                                        <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+                                        <Button type="button" variant="outline" className="cursor-pointer !border-black !text-black hover:!bg-slate-50 !bg-white" onClick={() => setSelectedStore(null)}>Cancel</Button>
+                                        <Button type="submit" className="cursor-pointer !bg-black hover:!bg-slate-800 !text-white gap-2 border-none shadow-lg shadow-black/20">
                                             <Send className="w-4 h-4" /> Send Request
                                         </Button>
                                     </div>
@@ -2032,13 +2083,13 @@ const SupplierDashboard: React.FC = () => {
                                         <Button
                                             variant="outline"
                                             onClick={() => setShowLogoutConfirm(false)}
-                                            className="flex-1 border-slate-200 hover:bg-slate-50 text-slate-700"
+                                            className="flex-1 cursor-pointer !border-black !text-black hover:!bg-slate-50 !bg-white"
                                         >
                                             Cancel
                                         </Button>
                                         <Button
                                             onClick={confirmLogout}
-                                            className="flex-1 bg-red-600 hover:bg-red-700 text-white border-none"
+                                            className="flex-1 cursor-pointer !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20"
                                         >
                                             Logout
                                         </Button>
@@ -2065,9 +2116,9 @@ const SupplierDashboard: React.FC = () => {
                                         <h2 className="text-xl font-bold text-slate-900">Fulfill Reorder #{requestToFulfill.id.slice(0, 6)}</h2>
                                         <p className="text-sm text-slate-500">Review items and enter batch details. You can adjust quantities.</p>
                                     </div>
-                                    <Button variant="ghost" size="icon" onClick={() => setFulfillModalOpen(false)}>
-                                        <X className="w-5 h-5" />
-                                    </Button>
+                                    <button onClick={() => setFulfillModalOpen(false)} className="p-2 cursor-pointer !bg-black hover:!bg-slate-800 rounded-full transition-colors shadow-md shadow-black/10">
+                                        <X className="w-5 h-5 !text-white" />
+                                    </button>
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -2159,8 +2210,11 @@ const SupplierDashboard: React.FC = () => {
                                 </div>
 
                                 <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
-                                    <Button variant="ghost" onClick={() => setFulfillModalOpen(false)}>Cancel</Button>
-                                    <Button onClick={handleSubmitFulfillment} className="bg-emerald-600 hover:bg-emerald-700">Confirm & Send Items</Button>
+                                    <Button variant="outline" className="cursor-pointer !border-black !text-black hover:!bg-slate-50 !bg-white" onClick={() => setFulfillModalOpen(false)}>Cancel</Button>
+                                    <Button onClick={handleSubmitFulfillment} disabled={actionLoading === "FULFILL"} className="cursor-pointer !bg-black hover:!bg-slate-800 min-w-[150px] !text-white border-none shadow-lg shadow-black/20">
+                                        {actionLoading === "FULFILL" ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+                                        Confirm & Send Items
+                                    </Button>
                                 </div>
                             </motion.div>
                         </div>
@@ -2168,6 +2222,37 @@ const SupplierDashboard: React.FC = () => {
                 }
             </AnimatePresence >
 
+            {/* Action Result Modal */}
+            <AnimatePresence>
+                {actionResult && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center relative overflow-hidden"
+                        >
+                            <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 ${actionResult.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                                {actionResult.type === 'success' ? <CheckCircle className="w-8 h-8" /> : <XCircle className="w-8 h-8" />}
+                            </div>
+
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">
+                                {actionResult.title}
+                            </h3>
+                            <p className="text-slate-500 mb-8 leading-relaxed">
+                                {actionResult.message}
+                            </p>
+
+                            <Button
+                                onClick={() => setActionResult(null)}
+                                className="w-full h-12 cursor-pointer rounded-xl font-bold !bg-black !text-white hover:!bg-slate-800"
+                            >
+                                Done
+                            </Button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
             {/* Upload Result Modal */}
             <AnimatePresence>
                 {uploadResult && (
@@ -2187,7 +2272,7 @@ const SupplierDashboard: React.FC = () => {
                             </p>
                             <Button
                                 onClick={() => setUploadResult(null)}
-                                className={`w-full ${uploadResult.success ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'} text-white`}
+                                className="w-full h-12 cursor-pointer rounded-xl font-bold !bg-black !text-white hover:!bg-slate-800 shadow-lg shadow-black/20"
                             >
                                 {uploadResult.success ? 'Done' : 'Close'}
                             </Button>
@@ -2215,10 +2300,109 @@ const SupplierDashboard: React.FC = () => {
                             </p>
                             <Button
                                 onClick={() => setProfileResult(null)}
-                                className={`w-full ${profileResult.success ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-red-600 hover:bg-red-700'} text-white`}
+                                className="w-full h-12 cursor-pointer rounded-xl font-bold !bg-black !text-white hover:!bg-slate-800 shadow-lg shadow-black/20"
                             >
                                 {profileResult.success ? 'Continue' : 'Close'}
                             </Button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Disconnect Store Confirmation Modal */}
+            <AnimatePresence>
+                {disconnectModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 overflow-hidden border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center">
+                                <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                                    <StoreIcon className="w-6 h-6 text-red-500" />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900 mb-2">Disconnect Store?</h3>
+                                <p className="text-slate-500 text-sm mb-6">
+                                    Are you sure you want to disconnect from this store? This action cannot be undone.
+                                </p>
+                                <div className="flex gap-3 w-full">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            setDisconnectModalOpen(false);
+                                            setStoreToDisconnect(null);
+                                        }}
+                                        className="flex-1 cursor-pointer !border-black !text-black hover:!bg-slate-50 !bg-white"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        onClick={confirmDisconnect}
+                                        className="flex-1 cursor-pointer !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20"
+                                    >
+                                        Disconnect
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Reject Request Confirmation Modal */}
+            <AnimatePresence>
+                {rejectModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 overflow-hidden border border-slate-100"
+                        >
+                            <div className="flex justify-between items-start mb-4">
+                                <h3 className="text-lg font-bold text-slate-800">Reject Request</h3>
+                                <button
+                                    onClick={() => setRejectModalOpen(false)}
+                                    className="p-2 cursor-pointer !bg-black hover:!bg-slate-800 rounded-full transition-colors shadow-md shadow-black/10"
+                                >
+                                    <X className="w-5 h-5 !text-white" />
+                                </button>
+                            </div>
+
+                            <p className="text-slate-500 text-sm mb-4">
+                                Are you sure you want to reject this request? You can optionally provide a reason.
+                            </p>
+
+                            <textarea
+                                className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-black/5 outline-none resize-none bg-slate-50 mb-6"
+                                rows={3}
+                                placeholder="Reason for rejection (optional)..."
+                                value={rejectionReason}
+                                onChange={(e) => setRejectionReason(e.target.value)}
+                            />
+
+                            <div className="flex gap-3 w-full">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setRejectModalOpen(false);
+                                        setRequestToReject(null);
+                                    }}
+                                    className="flex-1 cursor-pointer !border-black !text-black hover:!bg-slate-50 !bg-white"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={submitRejection}
+                                    disabled={!!actionLoading}
+                                    className="flex-1 cursor-pointer !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20"
+                                >
+                                    {actionLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+                                    Reject
+                                </Button>
+                            </div>
                         </motion.div>
                     </div>
                 )}
