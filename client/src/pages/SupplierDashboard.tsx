@@ -3,10 +3,10 @@ import { useRecoilValue, useSetRecoilState } from "recoil";
 import { authState, clearAuthState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Package, TruckIcon, FileText, DollarSign,
+    Package, Calendar,
     Search, Send, Clock, CheckCircle, XCircle,
-    LogOut, AlertCircle, LayoutGrid, User, ShoppingBag, Inbox, Upload,
-    Store as StoreIcon, Phone, MapPin, Building, Download, FileSpreadsheet, RefreshCw, X, History
+    LogOut, LayoutGrid, User, ShoppingBag, Inbox, Upload,
+    Store as StoreIcon, Phone, MapPin, Building, Download, FileSpreadsheet, RefreshCw, X, History, Info
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -14,27 +14,11 @@ import { suppliersApi } from "../lib/api/endpoints";
 import { SupplierService } from "../lib/api/supplierService";
 import type { Store, SupplierRequest } from "../lib/types";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 // --- Components ---
 
-const StatCard = ({ icon: Icon, label, value, color, delay }: any) => (
-    <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay }}
-        className="bg-white/60 backdrop-blur-xl border border-white/50 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all"
-    >
-        <div className="flex items-center justify-between mb-4">
-            <div className={`w-12 h-12 bg-gradient-to-br ${color} rounded-xl flex items-center justify-center shadow-inner`}>
-                <Icon className="w-6 h-6 text-white" />
-            </div>
-            <div className="text-right">
-                <p className="text-2xl font-bold text-slate-800">{value}</p>
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{label}</p>
-            </div>
-        </div>
-    </motion.div>
-);
+
 
 const RequestBadge = ({ status }: { status: string }) => {
     switch (status) {
@@ -68,8 +52,10 @@ const SupplierDashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState<"dashboard" | "marketplace" | "requests" | "orders" | "history" | "my-stores" | "profile" | "upload">("dashboard");
     const [loading, setLoading] = useState(false);
     const [uploadStatusMessage, setUploadStatusMessage] = useState<string>("");
+    const [uploadProgress, setUploadProgress] = useState<number>(0);
 
     // Data
+    const [isScrolled, setIsScrolled] = useState(false);
     const [stores, setStores] = useState<Store[]>([]);
     const [requests, setRequests] = useState<SupplierRequest[]>([]);
     const [connectedStores, setConnectedStores] = useState<Store[]>([]);
@@ -130,6 +116,8 @@ const SupplierDashboard: React.FC = () => {
     };
 
     const [historyDetailRequest, setHistoryDetailRequest] = useState<SupplierRequest | null>(null);
+    const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string; subtext?: string } | null>(null);
+    const [profileResult, setProfileResult] = useState<{ success: boolean; message: string; subtext?: string } | null>(null);
 
     const handleSubmitFulfillment = async () => {
         if (!requestToFulfill) return;
@@ -168,20 +156,20 @@ const SupplierDashboard: React.FC = () => {
                     setRequests(requestsData || []);
 
                     if (supData?.supplierStores) {
-                         setConnectedStores(supData.supplierStores.map((s: any) => s.store));
+                        setConnectedStores(supData.supplierStores.map((s: any) => s.store));
                     }
 
                     // Populate profile form if needed (only if fields are empty to avoid overwriting user edits in progress?)
                     // Actually, usually we overwrite on refresh.
                     if (supData) {
-                         setProfileForm({
-                             name: supData.name || "",
-                             contactName: supData.contactName || "",
-                             phone: supData.phone || "",
-                             address: supData.address || "",
-                             defaultLeadTime: supData.defaultLeadTime || 0,
-                             defaultMOQ: supData.defaultMOQ || 0
-                         });
+                        setProfileForm({
+                            name: supData.name || "",
+                            contactName: supData.contactName || "",
+                            phone: supData.phone || "",
+                            address: supData.address || "",
+                            defaultLeadTime: supData.defaultLeadTime || 0,
+                            defaultMOQ: supData.defaultMOQ || 0
+                        });
                     }
                 }
             }
@@ -189,8 +177,8 @@ const SupplierDashboard: React.FC = () => {
             // 2. Fetch Marketplace (Stores) - Always fetch on refresh if we are on that tab OR if we want to cache everything
             // Let's only fetch if on marketplace or if stores empty
             if (activeTab === 'marketplace' || stores.length === 0) {
-                 const resStores = await suppliersApi.getDiscoveryStores();
-                 if (resStores.data.success) setStores(resStores.data.data.stores);
+                const resStores = await suppliersApi.getDiscoveryStores();
+                if (resStores.data.success) setStores(resStores.data.data.stores);
             }
 
             setDataLoaded(true);
@@ -209,11 +197,11 @@ const SupplierDashboard: React.FC = () => {
         // If data never loaded, load it.
         if (!dataLoaded) {
             refreshData();
-        } 
-        
+        }
+
         // If switching to marketplace and we don't have stores, fetch them specifically?
         // refreshData covers it.
-        
+
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentSupplier, dataLoaded]); // Remove activeTab dependency to prevent refetch on tab switch
 
@@ -226,82 +214,82 @@ const SupplierDashboard: React.FC = () => {
 
     // ... (rest of code) ...
 
-                                                        <input
-                                                            type="file"
-                                                            accept=".csv, .xlsx, .xls"
-                                                            disabled={!selectedStore}
-                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-50"
-                                                            onChange={async (e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (!file) return;
-                                                                if (!currentSupplier) {
-                                                                    alert("Please create a supplier profile first.");
-                                                                    return;
-                                                                }
-                                                                if (!selectedStore) {
-                                                                    alert("Please select a target store first.");
-                                                                    return;
-                                                                }
-                                                                try {
-                                                                    setLoading(true);
-                                                                    // 1. Upload File
-                                                                    const uploadRes = await SupplierService.uploadFile({
-                                                                        storeSlug: selectedStore.slug,
-                                                                        supplierId: currentSupplier.id,
-                                                                        file
-                                                                    });
-                                                                    
-                                                                    const uploadId = (uploadRes as any).upload_id;
-                                                                    if (!uploadId) throw new Error("No upload ID returned");
+    <input
+        type="file"
+        accept=".csv, .xlsx, .xls"
+        disabled={!selectedStore}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-50"
+        onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            if (!currentSupplier) {
+                alert("Please create a supplier profile first.");
+                return;
+            }
+            if (!selectedStore) {
+                alert("Please select a target store first.");
+                return;
+            }
+            try {
+                setLoading(true);
+                // 1. Upload File
+                const uploadRes = await SupplierService.uploadFile({
+                    storeSlug: selectedStore.slug,
+                    supplierId: currentSupplier.id,
+                    file
+                });
 
-                                                                    // 2. Poll for Status
-                                                                    // We will poll every 2 seconds for a max of 2 minutes (60 attempts)
-                                                                    let status = "PENDING";
-                                                                    let attempts = 0;
-                                                                    const maxAttempts = 60;
+                const uploadId = (uploadRes as any).upload_id;
+                if (!uploadId) throw new Error("No upload ID returned");
 
-                                                                    // Simple inline polling
-                                                                    while (status !== "APPLIED" && status !== "FAILED" && attempts < maxAttempts) {
-                                                                        await new Promise(r => setTimeout(r, 2000)); // Wait 2s
-                                                                        status = await SupplierService.getUploadStatus(uploadId);
-                                                                        console.log(`Upload ${uploadId} status: ${status}`);
-                                                                        attempts++;
-                                                                    }
+                // 2. Poll for Status
+                // We will poll every 2 seconds for a max of 2 minutes (60 attempts)
+                let status = "PENDING";
+                let attempts = 0;
+                const maxAttempts = 60;
 
-                                                                    if (status !== 'APPLIED') {
-                                                                        throw new Error(`Upload processing failed or timed out. Final Status: ${status}`);
-                                                                    }
+                // Simple inline polling
+                while (status !== "APPLIED" && status !== "FAILED" && attempts < maxAttempts) {
+                    await new Promise(r => setTimeout(r, 2000)); // Wait 2s
+                    status = await SupplierService.getUploadStatus(uploadId);
+                    console.log(`Upload ${uploadId} status: ${status}`);
+                    attempts++;
+                }
 
-                                                                    // 3. Success -> Proceed
-                                                                    // IF this upload was to accept a pending order
-                                                                     if (pendingAcceptRequestId) {
-                                                                         try {
-                                                                             const acceptRes = await suppliersApi.acceptRequest(pendingAcceptRequestId);
-                                                                             if (acceptRes.data.success) {
-                                                                                 alert(`Order Fulfilled & Accepted! Inventory Updated (ID: ${uploadId})`);
-                                                                                 setPendingAcceptRequestId(null);
-                                                                                 setActiveTab("orders"); 
-                                                                                 refreshData();
-                                                                             } else {
-                                                                                 alert("Inventory Uploaded & Applied, but failed to update order status in local DB.");
-                                                                             }
-                                                                         } catch (acceptErr: any) {
-                                                                             console.error(acceptErr);
-                                                                             alert(`Inventory Uploaded & Applied, but failed to accept order: ${acceptErr.message}`);
-                                                                         }
-                                                                     } else {
-                                                                         alert(`Upload successful and applied! ID: ${uploadId}`);
-                                                                     }
+                if (status !== 'APPLIED') {
+                    throw new Error(`Upload processing failed or timed out. Final Status: ${status}`);
+                }
 
-                                                                } catch (err: any) {
-                                                                    console.error(err);
-                                                                    alert("Upload processing failed: " + (err.message || "Unknown error"));
-                                                                } finally {
-                                                                    setLoading(false);
-                                                                    e.target.value = "";
-                                                                }
-                                                            }}
-                                                        />
+                // 3. Success -> Proceed
+                // IF this upload was to accept a pending order
+                if (pendingAcceptRequestId) {
+                    try {
+                        const acceptRes = await suppliersApi.acceptRequest(pendingAcceptRequestId);
+                        if (acceptRes.data.success) {
+                            alert(`Order Fulfilled & Accepted! Inventory Updated (ID: ${uploadId})`);
+                            setPendingAcceptRequestId(null);
+                            setActiveTab("orders");
+                            refreshData();
+                        } else {
+                            alert("Inventory Uploaded & Applied, but failed to update order status in local DB.");
+                        }
+                    } catch (acceptErr: any) {
+                        console.error(acceptErr);
+                        alert(`Inventory Uploaded & Applied, but failed to accept order: ${acceptErr.message}`);
+                    }
+                } else {
+                    alert(`Upload successful and applied! ID: ${uploadId}`);
+                }
+
+            } catch (err: any) {
+                console.error(err);
+                alert("Upload processing failed: " + (err.message || "Unknown error"));
+            } finally {
+                setLoading(false);
+                e.target.value = "";
+            }
+        }}
+    />
 
     const handleDisconnectStore = async (storeId: string) => {
         if (!confirm("Are you sure you want to disconnect from this store?")) return;
@@ -364,7 +352,12 @@ const SupplierDashboard: React.FC = () => {
             });
 
             if (res.data.success) {
-                alert("Profile saved successfully!");
+                setProfileResult({
+                    success: true,
+                    message: "Profile Updated",
+                    subtext: "Your business details have been successfully saved."
+                });
+
                 const supData = res.data.data.supplier;
                 if (!currentSupplier) {
                     const newSupplierShort = {
@@ -379,10 +372,18 @@ const SupplierDashboard: React.FC = () => {
                     }));
                 }
             } else {
-                alert("Failed to save profile: Unknown error");
+                setProfileResult({
+                    success: false,
+                    message: "Update Failed",
+                    subtext: "An unknown error occurred while saving your profile."
+                });
             }
         } catch (err: any) {
-            alert("Error saving profile: " + err.message);
+            setProfileResult({
+                success: false,
+                message: "Update Failed",
+                subtext: err.message || "Failed to save profile changes."
+            });
         } finally {
             setLoading(false);
         }
@@ -410,7 +411,7 @@ const SupplierDashboard: React.FC = () => {
         // If it's a REORDER request, open modal to allow editing quantities/batches
         if (req?.payload?.type === 'REORDER' && req.payload.items) {
             setRequestToFulfill(req);
-            
+
             // Auto-generate batch details
             const defaultExpiry = new Date();
             defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1); // Default to 1 year expiry
@@ -437,7 +438,7 @@ const SupplierDashboard: React.FC = () => {
                 alert("Request accepted!");
                 // Optimistic update
                 setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: "ACCEPTED" } : r));
-                refreshData(); 
+                refreshData();
             }
         } catch (err: any) {
             console.error(err);
@@ -482,9 +483,9 @@ const SupplierDashboard: React.FC = () => {
 
 
     const pendingCount = requests.filter(r => r.status === "PENDING").length;
-    const connectedCount = requests.filter(r => r.status === "ACCEPTED").length;
 
-    const filteredMarketplaceStores = stores.filter(store => 
+
+    const filteredMarketplaceStores = stores.filter(store =>
         !requests.some(r => r.storeId === store.id && r.status === "PENDING")
     );
 
@@ -494,12 +495,19 @@ const SupplierDashboard: React.FC = () => {
             {/* Main Content Area - Full Width */}
             <div className="flex-1 flex flex-col h-screen overflow-hidden">
                 {/* Header */}
-                <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200 z-30 shrink-0">
-                    <div className="max-w-7xl mx-auto px-6 py-4">
+                <header
+                    className={`fixed top-0 left-0 w-full z-40 pl-28 pr-8
+  transition-[background-color,backdrop-filter,box-shadow,border-color]
+  duration-500 ease-out
+  ${isScrolled
+                            ? 'bg-white/60 backdrop-blur-xl border-b border-slate-200/50 shadow-sm'
+                            : 'bg-white/0 backdrop-blur-md border-b border-transparent shadow-none'
+                        }`}
+                >                    <div className="w-full py-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 bg-gradient-to-tr from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                                    <TruckIcon className="w-5 h-5 text-white" />
+                                <div className="w-12 h-12 flex items-center justify-center">
+                                    <img src="/bgremovedsupplier.png" alt="Supplier Logo" className="w-full h-full object-contain" />
                                 </div>
                                 <div>
                                     <h1 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
@@ -511,33 +519,66 @@ const SupplierDashboard: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-3 relative z-50">
-                                <Button
-                                    onClick={() => refreshData()}
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-9 w-9 bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-emerald-600 transition-colors shadow-sm rounded-xl"
-                                    title="Refresh Data"
-                                >
-                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                                </Button>
-                                <Button
-                                    onClick={handleLogout}
-                                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border-0 shadow-lg shadow-red-500/30 hover:shadow-red-500/50 rounded-xl px-4 py-2 h-auto text-sm font-semibold transition-all active:scale-95 flex items-center gap-2"
-                                >
-                                    <LogOut className="w-4 h-4" />
-                                    <span className="hidden sm:inline">Logout</span>
-                                </Button>
+                            <div className="flex items-center gap-6 relative z-50">
+                                {/* Date Display */}
+                                <div className="hidden md:flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm text-slate-600 font-medium text-sm">
+                                    <Calendar className="w-4 h-4 text-slate-400" />
+                                    <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                                </div>
+
+
+
+                                {/* Divider */}
+                                <div className="hidden md:block h-8 w-px bg-slate-200"></div>
+
+                                {/* User Profile */}
+                                <div className="flex items-center gap-3">
+                                    <div className="hidden md:flex flex-col items-end">
+                                        <span className="text-sm font-bold text-slate-800 leading-none">
+                                            {currentSupplier ? currentSupplier.name : auth.user?.username || "Supplier"}
+                                        </span>
+                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mt-1">
+                                            Supplier
+                                        </span>
+                                    </div>
+                                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-white shadow-md shadow-slate-200/50">
+                                        <span className="text-slate-600 font-bold text-sm">
+                                            {(currentSupplier?.name?.charAt(0) || auth.user?.username?.charAt(0) || "S").toUpperCase()}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Existing Actions (Refresh & Logout) */}
+                                <div className="flex items-center gap-2 ml-2">
+                                    <i
+                                        onClick={() => refreshData()}
+                                        className="h-9 w-9 bg-white border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-all shadow-sm rounded-full flex items-center justify-center cursor-pointer"
+                                        title="Refresh Data"
+                                    >
+                                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                                    </i>
+                                    <i
+                                        onClick={handleLogout}
+                                        className="h-9 w-9 bg-white border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all shadow-sm rounded-full flex items-center justify-center cursor-pointer"
+                                        title="Logout"
+                                    >
+                                        <LogOut className="w-4 h-4" />
+                                    </i>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </header>
 
                 {/* Content */}
-                <main className="flex-1 overflow-y-auto bg-[#F8FAFC] p-6 pb-32">
-                    <div className="max-w-7xl mx-auto">
+                <main
+                    className="flex-1 overflow-y-auto bg-[#F8FAFC] p-6 pt-32 pb-32 pl-28 pr-8"
+                    onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 10)}
+                >
+                    <div className="w-full">
                         <AnimatePresence mode="wait">
 
+                            {/* DASHBOARD TAB */}
                             {/* DASHBOARD TAB */}
                             {activeTab === "dashboard" && (
                                 <motion.div
@@ -546,49 +587,186 @@ const SupplierDashboard: React.FC = () => {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -10 }}
                                     transition={{ duration: 0.2 }}
+                                    className="space-y-8"
                                 >
-                                    {!currentSupplier && (
-                                        <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-                                            <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                                    {/* 1. KPI Cards Row */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        {/* Card 1: Connected Stores */}
+                                        <div className="bg-white rounded-2xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex items-center gap-5 hover:shadow-md transition-shadow">
+                                            <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                                <StoreIcon className="w-7 h-7" />
+                                            </div>
                                             <div>
-                                                <h3 className="font-semibold text-amber-800">Complete Your Profile</h3>
-                                                <p className="text-sm text-amber-600 mt-1">
-                                                    You need to set up your supplier profile before you can connect with stores.
-                                                    Go to the <b>Profile</b> tab to get started.
-                                                </p>
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Store Partners</p>
+                                                <div className="text-3xl font-black text-slate-800">{connectedStores.length}</div>
                                             </div>
                                         </div>
-                                    )}
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                                        <StatCard
-                                            icon={FileText}
-                                            label="My Request Status"
-                                            value={connectedCount + " / " + (pendingCount + connectedCount)}
-                                            color="from-blue-500 to-indigo-500"
-                                            delay={0}
-                                        />
-                                        <StatCard
-                                            icon={Package}
-                                            label="Active Products"
-                                            value="--"
-                                            color="from-emerald-500 to-teal-500"
-                                            delay={0.1}
-                                        />
-                                        <StatCard
-                                            icon={Clock}
-                                            label="Pending Actions"
-                                            value={pendingCount}
-                                            color="from-orange-500 to-amber-500"
-                                            delay={0.2}
-                                        />
-                                        <StatCard
-                                            icon={DollarSign}
-                                            label="Revenue (MTD)"
-                                            value="$0.00"
-                                            color="from-purple-500 to-pink-500"
-                                            delay={0.3}
-                                        />
+                                        {/* Card 2: Pending Requests */}
+                                        <div className="bg-white rounded-2xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex items-center gap-5 hover:shadow-md transition-shadow">
+                                            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                                                <Inbox className="w-7 h-7" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Pending Requests</p>
+                                                <div className="text-3xl font-black text-slate-800">{pendingCount}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Card 3: Network Reach */}
+                                        <div className="bg-white rounded-2xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex items-center gap-5 hover:shadow-md transition-shadow">
+                                            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+                                                <ShoppingBag className="w-7 h-7" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Marketplace</p>
+                                                <div className="text-3xl font-black text-slate-800">{stores.length}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Card 4: Total Users (Placeholder to match Admin Layout, using Profile Status data) */}
+                                        <div className="bg-white rounded-2xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex items-center gap-5 hover:shadow-md transition-shadow">
+                                            <div className="w-14 h-14 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
+                                                <User className="w-7 h-7" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Supplier Profile</p>
+                                                <div className="text-lg font-bold text-slate-800 truncate max-w-[120px]">
+                                                    {currentSupplier?.isActive ? "Active" : "Inactive"}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. Main Content Area */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        {/* Chart Section */}
+                                        <div className="lg:col-span-2 bg-white rounded-2xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col h-[420px]">
+                                            <div className="flex justify-between items-start mb-8">
+                                                <div>
+                                                    <h3 className="text-xl font-bold text-slate-800">Connection Activity</h3>
+                                                    <p className="text-sm text-slate-500 mt-1">Network growth & request trends</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex-1 w-full min-h-0">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <AreaChart data={(() => {
+                                                        const dateMap = new Map();
+                                                        for (let i = 6; i >= 0; i--) {
+                                                            const d = new Date();
+                                                            d.setDate(d.getDate() - i);
+                                                            const dateString = d.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' });
+                                                            dateMap.set(dateString, 0);
+                                                        }
+                                                        requests.forEach(r => {
+                                                            if (r.createdAt) {
+                                                                const d = new Date(r.createdAt).toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' });
+                                                                dateMap.set(d, (dateMap.get(d) || 0) + 1);
+                                                            }
+                                                        });
+                                                        return Array.from(dateMap).map(([date, count]) => ({ date, count }));
+                                                    })()}>
+                                                        <defs>
+                                                            <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
+                                                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                        <XAxis
+                                                            dataKey="date"
+                                                            stroke="#94a3b8"
+                                                            fontSize={12}
+                                                            tickLine={false}
+                                                            axisLine={false}
+                                                            dy={10}
+                                                        />
+                                                        <YAxis
+                                                            stroke="#94a3b8"
+                                                            fontSize={12}
+                                                            tickLine={false}
+                                                            axisLine={false}
+                                                            allowDecimals={false}
+                                                            dx={-10}
+                                                        />
+                                                        <Tooltip
+                                                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                                            cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                                        />
+                                                        <Area
+                                                            type="monotone"
+                                                            dataKey="count"
+                                                            stroke="#6366f1"
+                                                            strokeWidth={3}
+                                                            fillOpacity={1}
+                                                            fill="url(#colorRequests)"
+                                                        />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+
+                                        {/* Right Side Column */}
+                                        <div className="space-y-6">
+                                            {/* Recent Inbound List - Imitating "Assets" or "Small List" */}
+                                            <div className="bg-white rounded-2xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col h-[420px]">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h3 className="font-bold text-slate-800">Recent Inbound</h3>
+                                                    <span className="text-xs px-2 py-1 bg-emerald-50 text-emerald-600 rounded-full font-medium">Live</span>
+                                                </div>
+
+                                                <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+                                                    {requests.length === 0 ? (
+                                                        <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                                            <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-3">
+                                                                <Inbox className="w-6 h-6 text-slate-300" />
+                                                            </div>
+                                                            <span className="text-sm font-medium">No activity yet</span>
+                                                            <p className="text-xs text-slate-400 mt-1 center">Requests will appear here</p>
+                                                        </div>
+                                                    ) : (
+                                                        requests.slice(0, 5).map(req => (
+                                                            <div key={req.id} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl transition-all cursor-pointer group border border-transparent hover:border-slate-100">
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm ${req.status === 'ACCEPTED' ? 'bg-gradient-to-br from-emerald-100 to-teal-50 text-emerald-700' : 'bg-gradient-to-br from-amber-100 to-orange-50 text-amber-700'}`}>
+                                                                        {req.store?.name?.charAt(0) || "S"}
+                                                                    </div>
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-sm font-bold text-slate-800">{req.store?.name}</span>
+                                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${req.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                                                {req.status}
+                                                                            </span>
+                                                                            <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                                                                                <Clock className="w-3 h-3" />
+                                                                                {new Date(req.createdAt).toLocaleDateString()}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg group-hover:opacity-100 transition-all font-medium text-xs"
+                                                                    onClick={() => {
+                                                                        setActiveTab('requests');
+                                                                        // Optional: Set a filter or focus on this item
+                                                                    }}
+                                                                >
+                                                                    View
+                                                                </Button>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                                <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
+                                                    <p className="text-xs text-slate-400 font-medium">Total Inbound: <span className="text-slate-900">{requests.length}</span></p>
+                                                    <Button variant="link" size="sm" className="text-indigo-600 hover:text-indigo-700 font-semibold text-xs p-0 h-auto" onClick={() => setActiveTab('requests')}>
+                                                        See All History &rarr;
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </motion.div>
                             )}
@@ -601,7 +779,7 @@ const SupplierDashboard: React.FC = () => {
                                     animate={{ opacity: 1, x: 0 }}
                                     exit={{ opacity: 0, x: -20 }}
                                     transition={{ duration: 0.2 }}
-                                    className="space-y-6"
+                                    className="space-y-6 mt-2"
                                 >
                                     <div className="flex justify-between items-end">
                                         <div>
@@ -664,10 +842,11 @@ const SupplierDashboard: React.FC = () => {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -10 }}
                                     transition={{ duration: 0.2 }}
-                                    className="max-w-5xl mx-auto"
+                                    className="w-full mt-2"
                                 >
-                                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden min-h-[600px] flex flex-col">
-                                        <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div className="flex flex-col gap-6">
+                                        {/* Header - Floating Minimal */}
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                             <div>
                                                 <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                                                     <Inbox className="w-6 h-6 text-indigo-500" /> Connection Requests
@@ -675,14 +854,7 @@ const SupplierDashboard: React.FC = () => {
                                                 <p className="text-slate-500 mt-1">Manage inbound and outbound store partnerships.</p>
                                             </div>
                                             <div className="flex items-center gap-3">
-                                                <p
 
-                                                    className="h-10 w-10 flex items-center justify-center bg-white hover:bg-slate-100 text-black rounded-full transition-colors"
-                                                    onClick={() => refreshData()}
-                                                    title="Refresh requests"
-                                                >
-                                                    <RefreshCw strokeWidth={2.5} className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-                                                </p>
                                                 <div className="relative">
                                                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                                     <input
@@ -694,7 +866,6 @@ const SupplierDashboard: React.FC = () => {
                                                     />
                                                     {searchQuery && (
                                                         <p
-
                                                             onClick={() => setSearchQuery("")}
                                                             className="absolute h-5 w-5 right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full transition-colors !bg-transparent hover:!bg-slate-100"
                                                         >
@@ -705,7 +876,7 @@ const SupplierDashboard: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="flex-1 p-6 bg-slate-50/30">
+                                        <div className="flex-1">
                                             {loading ? (
                                                 <RequestSkeleton />
                                             ) : (
@@ -718,7 +889,7 @@ const SupplierDashboard: React.FC = () => {
                                                                 <th className="px-6 py-5 font-semibold text-slate-700 uppercase tracking-wider text-xs">Message</th>
                                                                 <th className="px-6 py-5 font-semibold text-slate-700 uppercase tracking-wider text-xs">Date</th>
                                                                 <th className="px-6 py-5 font-semibold text-slate-700 uppercase tracking-wider text-xs text-center">Status</th>
-                                                                <th className="px-6 py-5 font-semibold text-slate-700 uppercase tracking-wider text-xs text-right">Actions</th>
+                                                                <th className="px-6 py-5 font-semibold text-slate-700 uppercase tracking-wider text-xs text-center">Actions</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-slate-100">
@@ -791,9 +962,9 @@ const SupplierDashboard: React.FC = () => {
                                                                                     <RequestBadge status={req.status} />
                                                                                 </div>
                                                                             </td>
-                                                                            <td className="px-6 py-4 text-right">
+                                                                            <td className="px-6 py-4 text-center">
                                                                                 {isInbound && req.status === "PENDING" ? (
-                                                                                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                    <div className="flex items-center justify-center gap-2 transition-opacity">
                                                                                         <Button
                                                                                             size="sm"
                                                                                             className="h-8 shadow-sm bg-emerald-600 hover:bg-emerald-700 text-white border-0"
@@ -835,13 +1006,13 @@ const SupplierDashboard: React.FC = () => {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -10 }}
                                     transition={{ duration: 0.2 }}
-                                    className="max-w-6xl mx-auto space-y-8"
+                                    className="space-y-6 mt-2"
                                 >
-                                    {/* Header */}
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-200">
+                                    {/* Header - Floating Minimal */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2">
                                         <div>
-                                            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Orders Management</h2>
-                                            <p className="text-slate-500 mt-2 text-lg">Process and fulfill incoming stock requests.</p>
+                                            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Order Management</h2>
+                                            <p className="text-slate-500 text-lg">Process and fulfill incoming stock requests.</p>
                                         </div>
                                         <div className="flex gap-3">
                                             <div className="relative">
@@ -851,12 +1022,10 @@ const SupplierDashboard: React.FC = () => {
                                                     placeholder="Search orders..."
                                                     value={searchQuery}
                                                     onChange={e => setSearchQuery(e.target.value)}
-                                                    className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-64 shadow-sm"
+                                                    className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
                                                 />
                                             </div>
-                                            <Button variant="outline" onClick={refreshData} className="border-slate-200 bg-white">
-                                                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                                            </Button>
+
                                         </div>
                                     </div>
 
@@ -866,7 +1035,7 @@ const SupplierDashboard: React.FC = () => {
                                             const filteredRequests = requests.filter(req => {
                                                 // Robustly determine request type (using message if payload is missing)
                                                 let type = req.payload?.type;
-                                                
+
                                                 if (!type && req.message && typeof req.message === 'string' && req.message.trim().startsWith('{')) {
                                                     try {
                                                         // Try to parse message as JSON to recover payload
@@ -874,7 +1043,7 @@ const SupplierDashboard: React.FC = () => {
                                                         if (parsed && parsed.type) {
                                                             type = parsed.type;
                                                             // Ensure payload is available for rendering
-                                                            if (!req.payload) req.payload = parsed; 
+                                                            if (!req.payload) req.payload = parsed;
                                                         }
                                                     } catch (e) {
                                                         // Not JSON, ignore
@@ -890,12 +1059,12 @@ const SupplierDashboard: React.FC = () => {
                                                 return (req.store?.name?.toLowerCase() || "").includes(q) || req.id.toLowerCase().includes(q);
                                             });
                                             return filteredRequests.length === 0 ? (
-                                                <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center shadow-sm">
-                                                    <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                                                        <Package className="w-10 h-10 text-indigo-400" />
+                                                <div className="bg-white rounded-xl border border-dashed border-slate-300 p-20 text-center">
+                                                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                                                        <Inbox className="w-8 h-8 text-slate-300" />
                                                     </div>
-                                                    <h3 className="text-xl font-bold text-slate-900">No Pending Orders</h3>
-                                                    <p className="text-slate-500 mt-2">You have no pending reorder requests.</p>
+                                                    <h3 className="text-lg font-medium text-slate-900">No Pending Orders</h3>
+                                                    <p className="text-slate-500 mt-2">New order requests will appear here.</p>
                                                 </div>
                                             ) : (
                                                 <div className="grid grid-cols-1 gap-6">
@@ -904,120 +1073,100 @@ const SupplierDashboard: React.FC = () => {
                                                         const isAccepted = req.status === 'ACCEPTED';
 
                                                         return (
-                                                            <div key={req.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 overflow-hidden group">
+                                                            <div key={req.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group">
                                                                 {/* Order Header */}
-                                                                <div className="bg-white px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden">
-                                                                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500" />
-
-                                                                    <div className="flex items-center gap-4 relative z-10">
-                                                                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold shadow-sm group-hover:scale-105 transition-transform">
+                                                                <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold shadow-sm group-hover:scale-105 transition-transform">
                                                                             {req.store?.name?.[0] || "S"}
                                                                         </div>
                                                                         <div>
                                                                             <h3 className="font-bold text-slate-800 text-lg">{req.store?.name || "Unknown Store"}</h3>
-                                                                            <div className="flex items-center gap-3 text-xs text-slate-500 font-medium font-mono mt-1">
-                                                                                <span>Order #{req.id.slice(0, 8)}</span>
+                                                                            <div className="flex items-center gap-3 text-xs text-slate-500 font-medium font-mono mt-0.5">
+                                                                                <span>#{req.id.slice(0, 8)}</span>
                                                                                 <span className="w-1 h-1 rounded-full bg-slate-300" />
                                                                                 <span>{new Date(req.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                                                             </div>
                                                                         </div>
                                                                     </div>
 
-                                                                    <div className="flex items-center gap-3 relative z-10">
-                                                                        {/* Payment Badge */}
-                                                                        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100 shadow-sm">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100 shadow-sm uppercase tracking-wide">
                                                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                                                             CASH
                                                                         </div>
 
-                                                                        <div className={`px-4 py-1.5 rounded-full text-xs font-bold border flex items-center gap-2 shadow-sm ${isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                        <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-sm ${isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                                             isAccepted ? 'bg-blue-50 text-blue-700 border-blue-200' :
                                                                                 'bg-slate-100 text-slate-600 border-slate-200'
                                                                             }`}>
-                                                                            {isPending && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}
-                                                                            {isAccepted && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+                                                                            {isPending && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
+                                                                            {isAccepted && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
                                                                             {req.status}
                                                                         </div>
                                                                     </div>
                                                                 </div>
 
                                                                 {/* Order Body */}
-                                                                <div className="p-6 bg-slate-50/30">
-                                                                    {/* Note if any */}
+                                                                <div className="p-8">
                                                                     {req.payload?.note && (
-                                                                        <div className="bg-white/50 text-slate-600 text-sm p-4 rounded-xl mb-6 border border-indigo-100 relative pl-4 border-l-4 border-l-indigo-400 shadow-sm">
-                                                                            <span className="font-bold text-indigo-500 block text-xs mb-1 uppercase tracking-wider">Note from Store</span>
-                                                                            "{req.payload.note}"
+                                                                        <div className="bg-amber-50/50 text-slate-700 text-sm p-4 rounded-xl mb-8 border border-amber-100 flex gap-3">
+                                                                            <Info className="w-5 h-5 text-amber-500 shrink-0" />
+                                                                            <div>
+                                                                                <span className="font-bold text-amber-700 block text-xs mb-1 uppercase tracking-wider">Note from Store</span>
+                                                                                "{req.payload.note}"
+                                                                            </div>
                                                                         </div>
                                                                     )}
 
-                                                                    {/* Items List */}
-                                                                    <div className="mb-6">
-                                                                        <div className="flex items-center justify-between mb-3">
-                                                                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                                                                <Package className="w-4 h-4" /> Requested Items ({req.payload?.items?.length || 0})
-                                                                            </h4>
-                                                                            <div className="md:hidden flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">
-                                                                                CASH
-                                                                            </div>
-                                                                        </div>
-
-                                                                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                                                                            <table className="w-full text-sm text-left">
-                                                                                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
-                                                                                    <tr>
-                                                                                        <th className="px-5 py-3 text-xs uppercase tracking-wider">Medicine</th>
-                                                                                        <th className="px-5 py-3 text-right text-xs uppercase tracking-wider">Qty</th>
-                                                                                    </tr>
-                                                                                </thead>
-                                                                                <tbody className="divide-y divide-slate-100">
-                                                                                    {req.payload?.items?.map((item: any, idx: number) => (
-                                                                                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                                                                                            <td className="px-5 py-3 font-medium text-slate-700 flex items-center gap-3">
-                                                                                                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
-                                                                                                    <Package className="w-4 h-4" />
-                                                                                                </div>
-                                                                                                {item.medicineName || "Unknown Item"}
-                                                                                            </td>
-                                                                                            <td className="px-5 py-3 text-right text-slate-600 font-mono font-bold">
-                                                                                                {item.quantity}
-                                                                                            </td>
-                                                                                        </tr>
-                                                                                    ))}
-                                                                                </tbody>
-                                                                            </table>
-                                                                        </div>
+                                                                    <div className="flex items-center justify-between mb-4">
+                                                                        <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                                                                            <Package className="w-5 h-5 text-slate-400" /> Requested Items <span className="text-slate-400 font-normal">({req.payload?.items?.length || 0})</span>
+                                                                        </h4>
                                                                     </div>
 
-                                                                    {/* Actions */}
-                                                                    <div className="flex justify-end pt-2 gap-3">
+                                                                    <div className="bg-slate-50/50 rounded-xl border border-slate-200 overflow-hidden mb-8">
+                                                                        <table className="w-full text-sm text-left">
+                                                                            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                                                                                <tr>
+                                                                                    <th className="px-6 py-4 text-xs uppercase tracking-wider">Medicine Name</th>
+                                                                                    <th className="px-6 py-4 text-right text-xs uppercase tracking-wider">Quantity</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-slate-100">
+                                                                                {req.payload?.items?.map((item: any, idx: number) => (
+                                                                                    <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
+                                                                                        <td className="px-6 py-4 font-medium text-slate-700 flex items-center gap-3">
+                                                                                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 shadow-sm">
+                                                                                                <Package className="w-4 h-4" />
+                                                                                            </div>
+                                                                                            {item.medicineName || "Unknown Item"}
+                                                                                        </td>
+                                                                                        <td className="px-6 py-4 text-right text-slate-900 font-bold font-mono text-base">
+                                                                                            {item.quantity}
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+
+                                                                    <div className="flex justify-end gap-4">
                                                                         {isPending ? (
                                                                             <>
-                                                                                <Button
-                                                                                    variant="secondary"
-                                                                                    onClick={() => handleRejectRequest(req.id)}
-                                                                                    className="bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-700 hover:border-red-200 shadow-sm transition-all"
-                                                                                >
-                                                                                    Reject
+                                                                                <Button variant="outline" onClick={() => handleRejectRequest(req.id)} className="border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 px-6">
+                                                                                    Reject Order
                                                                                 </Button>
-                                                                                <Button
-                                                                                    onClick={() => handleAcceptRequest(req.id)}
-                                                                                    className="bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-lg shadow-emerald-500/20 border-none px-6 transition-all transform hover:scale-105"
-                                                                                >
-                                                                                    Accept Request
+                                                                                <Button onClick={() => handleAcceptRequest(req.id)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 shadow-lg shadow-indigo-200">
+                                                                                    Accept Order
                                                                                 </Button>
                                                                             </>
                                                                         ) : isAccepted ? (
-                                                                            <Button
-                                                                                onClick={() => openFulfillModal(req)}
-                                                                                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg shadow-blue-500/20 border-none px-6 gap-2 transition-all transform hover:scale-105"
-                                                                            >
-                                                                                <Package className="w-4 h-4" /> Fulfill Order
+                                                                            <Button onClick={() => openFulfillModal(req)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 shadow-lg shadow-emerald-200">
+                                                                                Fulfill Order
                                                                             </Button>
                                                                         ) : (
-                                                                            <div className="px-4 py-2 bg-slate-100 text-slate-400 rounded-lg text-sm font-medium italic">
-                                                                                {req.status === 'REJECTED' ? 'Rejected' : 'No actions available'}
-                                                                            </div>
+                                                                            <div className="text-slate-400 italic text-sm">No actions available</div>
                                                                         )}
                                                                     </div>
                                                                 </div>
@@ -1039,13 +1188,13 @@ const SupplierDashboard: React.FC = () => {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -10 }}
                                     transition={{ duration: 0.2 }}
-                                    className="max-w-6xl mx-auto space-y-8"
+                                    className="space-y-6 mt-2"
                                 >
                                     {/* Header */}
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-200">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2">
                                         <div>
-                                            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Order History</h2>
-                                            <p className="text-slate-500 mt-2 text-lg">View all past and current order requests.</p>
+                                            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Order History</h2>
+                                            <p className="text-slate-500 text-lg">View all past and current order requests.</p>
                                         </div>
                                         <div className="flex gap-3">
                                             <div className="relative">
@@ -1055,12 +1204,10 @@ const SupplierDashboard: React.FC = () => {
                                                     placeholder="Search history..."
                                                     value={searchQuery}
                                                     onChange={e => setSearchQuery(e.target.value)}
-                                                    className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none w-64 shadow-sm"
+                                                    className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
                                                 />
                                             </div>
-                                            <Button variant="outline" onClick={refreshData} className="border-slate-200 bg-white">
-                                                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                                            </Button>
+
                                         </div>
                                     </div>
 
@@ -1070,7 +1217,7 @@ const SupplierDashboard: React.FC = () => {
                                             const filteredRequests = requests.filter(req => {
                                                 // Robustly determine request type
                                                 let type = req.payload?.type;
-                                                
+
                                                 if (!type && req.message && typeof req.message === 'string' && req.message.trim().startsWith('{')) {
                                                     try {
                                                         const parsed = JSON.parse(req.message);
@@ -1078,7 +1225,7 @@ const SupplierDashboard: React.FC = () => {
                                                             type = parsed.type;
                                                             if (!req.payload) req.payload = parsed;
                                                         }
-                                                    } catch (e) {}
+                                                    } catch (e) { }
                                                 }
 
                                                 if (type !== 'REORDER') return false;
@@ -1088,11 +1235,11 @@ const SupplierDashboard: React.FC = () => {
                                                 return (req.store?.name?.toLowerCase() || "").includes(q) || req.id.toLowerCase().includes(q);
                                             });
                                             return filteredRequests.length === 0 ? (
-                                                <div className="bg-white rounded-3xl border border-slate-200 p-20 text-center shadow-sm">
-                                                    <div className="w-20 h-20 bg-cyan-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                                                        <History className="w-10 h-10 text-cyan-400" />
+                                                <div className="bg-white rounded-xl border border-dashed border-slate-200 p-20 text-center">
+                                                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                                                        <History className="w-8 h-8 text-slate-300" />
                                                     </div>
-                                                    <h3 className="text-xl font-bold text-slate-900">No Order History</h3>
+                                                    <h3 className="text-lg font-medium text-slate-900">No Order History</h3>
                                                     <p className="text-slate-500 mt-2">You have no order history yet.</p>
                                                 </div>
                                             ) : (
@@ -1102,56 +1249,57 @@ const SupplierDashboard: React.FC = () => {
                                                         const isAccepted = req.status === 'ACCEPTED';
 
                                                         return (
-                                                            <div key={req.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-cyan-500/10 transition-all duration-300 overflow-hidden group">
+                                                            <div key={req.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group">
                                                                 {/* Order Header */}
-                                                                <div className="bg-white px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden">
+                                                                <div className="bg-white px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 
-                                                                    <div className="flex items-center gap-4 relative z-10">
-                                                                        <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600 font-bold shadow-sm group-hover:scale-105 transition-transform">
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600 font-bold shadow-sm group-hover:scale-105 transition-transform">
                                                                             {req.store?.name?.[0] || "S"}
                                                                         </div>
                                                                         <div>
                                                                             <h3 className="font-bold text-slate-800 text-lg">{req.store?.name || "Unknown Store"}</h3>
-                                                                            <div className="flex items-center gap-3 text-xs text-slate-500 font-medium font-mono mt-1">
-                                                                                <span>Order #{req.id.slice(0, 8)}</span>
+                                                                            <div className="flex items-center gap-3 text-xs text-slate-500 font-medium font-mono mt-0.5">
+                                                                                <span>#{req.id.slice(0, 8)}</span>
                                                                                 <span className="w-1 h-1 rounded-full bg-slate-300" />
                                                                                 <span>{new Date(req.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                                                             </div>
                                                                         </div>
                                                                     </div>
 
-                                                                    <div className="flex items-center gap-3 relative z-10">
-                                                                        <div className={`px-4 py-1.5 rounded-full text-xs font-bold border flex items-center gap-2 shadow-sm ${isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-sm ${isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                                             isAccepted ? 'bg-blue-50 text-blue-700 border-blue-200' :
                                                                                 'bg-slate-100 text-slate-600 border-slate-200'
                                                                             }`}>
-                                                                            {isPending && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}
-                                                                            {isAccepted && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+                                                                            {isPending && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
+                                                                            {isAccepted && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
                                                                             {req.status}
                                                                         </div>
                                                                     </div>
                                                                 </div>
 
                                                                 {/* Order Body - Simplified for History */}
-                                                                <div className="p-6 bg-slate-50/30">
-                                                                    {req.payload?.items?.length} items requested.
-                                                                    {isAccepted ? (
-                                                                        <span className="text-emerald-600 font-medium ml-2 flex items-center gap-1 inline-flex"><CheckCircle className="w-3 h-3" /> Fulfilled/Accepted</span>
-                                                                    ) : isPending ? (
-                                                                        <span className="text-amber-600 font-medium ml-2">Pending Action</span>
-                                                                    ) : (
-                                                                        <span className="text-red-500 font-medium ml-2">Rejected</span>
-                                                                    )}
-
-                                                                    <div className="mt-4">
-                                                                        <Button
-                                                                            variant="outline"
-                                                                            className="w-full sm:w-auto text-xs border-cyan-200 text-cyan-700 hover:bg-cyan-50"
-                                                                            onClick={() => setHistoryDetailRequest(req)}
-                                                                        >
-                                                                            View Details
-                                                                        </Button>
+                                                                <div className="px-6 py-4 flex items-center justify-between">
+                                                                    <div className="text-sm text-slate-600">
+                                                                        Requested <span className="font-bold text-slate-900">{req.payload?.items?.length || 0} items</span>
+                                                                        {isAccepted ? (
+                                                                            <span className="text-emerald-600 font-medium ml-2 inline-flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Fulfilled</span>
+                                                                        ) : isPending ? (
+                                                                            <span className="text-amber-600 font-medium ml-2">Pending</span>
+                                                                        ) : (
+                                                                            <span className="text-red-500 font-medium ml-2">Rejected</span>
+                                                                        )}
                                                                     </div>
+
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="text-xs border-slate-200 text-slate-600 hover:bg-slate-50 h-8"
+                                                                        onClick={() => setHistoryDetailRequest(req)}
+                                                                    >
+                                                                        View Details
+                                                                    </Button>
                                                                 </div>
                                                             </div>
                                                         );
@@ -1169,101 +1317,73 @@ const SupplierDashboard: React.FC = () => {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -10 }}
                                     transition={{ duration: 0.2 }}
-                                    className="max-w-6xl mx-auto"
+                                    className="space-y-6 mt-2"
                                 >
-                                    <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden min-h-[600px] flex flex-col">
-
-                                        {/* Header Section */}
-                                        <div className="px-8 py-8 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                            <div>
-                                                <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
-                                                    <StoreIcon className="w-8 h-8 text-blue-600" /> Connected Stores
-                                                </h2>
-                                                <p className="text-slate-500 mt-2 text-lg">Manage your active partnerships and store integrations.</p>
-                                            </div>
-
-                                            <div className="flex items-center gap-3">
-                                                <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-full text-sm font-semibold border border-blue-100 flex items-center gap-2 shadow-sm">
-                                                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                                                    {connectedStores.length} Active {connectedStores.length === 1 ? 'Connection' : 'Connections'}
-                                                </div>
-                                            </div>
+                                    <div className="flex justify-between items-end">
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-slate-800">Connected Stores</h2>
+                                            <p className="text-slate-500">Manage your active partnerships and store integrations.</p>
                                         </div>
-
-                                        {/* Stores Grid */}
-                                        <div className="flex-1 p-8 bg-slate-50/30">
-                                            {loading ? (
-                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                    {[1, 2, 3].map((i) => (
-                                                        <div key={i} className="h-48 bg-white border border-slate-100 rounded-2xl shadow-sm animate-pulse" />
-                                                    ))}
-                                                </div>
-                                            ) : connectedStores.length === 0 ? (
-                                                <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
-                                                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
-                                                        <StoreIcon className="w-10 h-10 text-slate-300" />
-                                                    </div>
-                                                    <h3 className="text-xl font-bold text-slate-900">No Connected Stores</h3>
-                                                    <p className="text-slate-500 mt-2 text-center max-w-md">
-                                                        You haven't connected with any stores yet. Visit the Marketplace to send connection requests.
-                                                    </p>
-                                                    <Button
-                                                        onClick={() => setActiveTab("marketplace")}
-                                                        className="mt-6 bg-slate-900 text-white hover:bg-slate-800"
-                                                    >
-                                                        Browse Marketplace
-                                                    </Button>
-                                                </div>
-                                            ) : (
-                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                    {connectedStores.map(store => (
-                                                        <div key={store.id} className="group bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-xl hover:shadow-blue-500/5 hover:border-blue-200 transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-full">
-
-                                                            {/* Decorative Gradient Blob */}
-                                                            <div className="absolute -top-10 -right-10 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition-colors" />
-
-                                                            <div>
-                                                                <div className="flex justify-between items-start mb-4">
-                                                                    <div className="w-14 h-14 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center border border-blue-100 group-hover:scale-110 transition-transform duration-300">
-                                                                        <StoreIcon className="w-7 h-7 text-blue-600" />
-                                                                    </div>
-                                                                    <div className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold uppercase tracking-wide rounded-full border border-emerald-100 flex items-center gap-1.5 shadow-sm">
-                                                                        <CheckCircle className="w-3 h-3" /> Live
-                                                                    </div>
-                                                                </div>
-
-                                                                <h3 className="text-xl font-bold text-slate-800 mb-1 group-hover:text-blue-700 transition-colors">{store.name}</h3>
-                                                                <p className="text-sm text-slate-400 font-mono mb-6 flex items-center gap-2">
-                                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-300" /> {store.slug}
-                                                                </p>
-
-                                                                <div className="space-y-3">
-                                                                    <div className="flex items-center justify-between text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 group-hover:bg-blue-50/50 group-hover:border-blue-100 transition-colors">
-                                                                        <span className="text-slate-500 font-medium">Currency</span>
-                                                                        <span className="font-bold text-slate-700">{store.currency || "USD"}</span>
-                                                                    </div>
-                                                                    <div className="flex items-center justify-between text-sm p-3 bg-slate-50 rounded-lg border border-slate-100 group-hover:bg-blue-50/50 group-hover:border-blue-100 transition-colors">
-                                                                        <span className="text-slate-500 font-medium">Timezone</span>
-                                                                        <span className="font-bold text-slate-700 truncate max-w-[120px]" title={store.timezone || "UTC"}>{store.timezone || "UTC"}</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="mt-8 pt-6 border-t border-slate-100">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    className="w-full text-slate-400 hover:text-red-600 hover:bg-red-50 hover:border-red-100 border border-transparent transition-all"
-                                                                    onClick={() => handleDisconnectStore(store.id)}
-                                                                >
-                                                                    <LogOut className="w-4 h-4 mr-2" /> Disconnect Store
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
+                                        <div className="relative pb-1">
+                                            <div className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-100 flex items-center gap-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                                {connectedStores.length} Active
+                                            </div>
                                         </div>
                                     </div>
+
+                                    {/* Stores Grid */}
+                                    {loading ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {[1, 2, 3].map((i) => (
+                                                <div key={i} className="h-48 bg-white border border-slate-100 rounded-xl shadow-sm animate-pulse" />
+                                            ))}
+                                        </div>
+                                    ) : connectedStores.length === 0 ? (
+                                        <div className="col-span-full py-12 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                <StoreIcon className="w-8 h-8 text-slate-300" />
+                                            </div>
+                                            <h3 className="text-lg font-medium text-slate-900">No Connected Stores</h3>
+                                            <p className="text-slate-500 mt-1 max-w-sm mx-auto">
+                                                You haven't connected with any stores yet. Visit the Marketplace to send connection requests.
+                                            </p>
+                                            <Button
+                                                onClick={() => setActiveTab("marketplace")}
+                                                className="mt-6 bg-slate-900 text-white hover:bg-slate-800"
+                                            >
+                                                Browse Marketplace
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {connectedStores.map(store => (
+                                                <div key={store.id} className="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
+                                                    {/* Background Decorative Icon - Matches Marketplace */}
+                                                    <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:opacity-100 transition-opacity">
+                                                        <StoreIcon className="w-12 h-12 text-slate-100 group-hover:text-blue-50 group-hover:scale-110 transition-transform duration-500" />
+                                                    </div>
+
+                                                    <div className="relative z-10">
+                                                        <h3 className="text-lg font-bold text-slate-800">{store.name}</h3>
+                                                        <p className="text-sm text-slate-500 font-mono mt-1 bg-slate-100 w-fit px-2 py-0.5 rounded text-xs">{store.slug}</p>
+
+                                                        <div className="mt-6 flex flex-wrap gap-2 text-xs text-slate-500">
+                                                            <span className="bg-slate-50 px-2 py-1 rounded border border-slate-100">{store.currency || "USD"}</span>
+                                                            <span className="bg-slate-50 px-2 py-1 rounded border border-slate-100">{store.timezone || "UTC"}</span>
+                                                        </div>
+
+                                                        <Button
+                                                            className="w-full mt-6 bg-white text-slate-500 border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all shadow-sm"
+                                                            onClick={() => handleDisconnectStore(store.id)}
+                                                        >
+                                                            Disconnect
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </motion.div>
                             )}
 
@@ -1271,158 +1391,144 @@ const SupplierDashboard: React.FC = () => {
                             {activeTab === "profile" && (
                                 <motion.div
                                     key="profile"
-                                    initial={{ opacity: 0, y: 20 }}
+                                    initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="max-w-4xl mx-auto"
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="space-y-6 mt-2"
                                 >
-                                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
-                                        {/* Cover Banner */}
-                                        <div className="h-32 bg-gradient-to-r from-emerald-600 to-teal-600 relative">
-                                            <div className="absolute inset-0 bg-black/10" />
-                                            <div className="absolute -bottom-10 left-8">
-                                                <div className="w-24 h-24 bg-white p-1 rounded-2xl shadow-lg">
-                                                    <div className="w-full h-full bg-slate-100 rounded-xl flex items-center justify-center text-4xl border border-slate-200">
-                                                        👨‍💼
-                                                    </div>
-                                                </div>
+                                    {/* Header Section */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2">
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Supplier Profile</h2>
+                                            <p className="text-slate-500 text-lg">Manage your business identity and operational settings.</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <Button
+                                                variant="outline"
+                                                onClick={() => setProfileForm({
+                                                    name: "",
+                                                    contactName: "",
+                                                    phone: "",
+                                                    address: "",
+                                                    defaultLeadTime: 0,
+                                                    defaultMOQ: 0
+                                                })}
+                                                disabled={loading}
+                                                className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-red-600 px-6 h-11 rounded-xl font-medium transition-all"
+                                            >
+                                                Reset
+                                            </Button>
+                                            <Button
+                                                onClick={handleSaveProfile}
+                                                disabled={loading}
+                                                className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 px-6 h-11 rounded-xl transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed font-medium"
+                                            >
+                                                {loading ? (
+                                                    <>
+                                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                                                        Saving...
+                                                    </>
+                                                ) : (
+                                                    <>Save Changes</>
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* Business Identity Card - Full Width */}
+                                    <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm space-y-8">
+                                        <div className="flex items-center gap-4 border-b border-slate-100 pb-6 mb-6">
+                                            <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 border border-indigo-100">
+                                                <Building className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-slate-800">Business Details</h3>
+                                                <p className="text-slate-400 text-sm">Manage your company identity and logistics settings.</p>
                                             </div>
                                         </div>
 
-                                        <div className="pt-16 pb-8 px-8">
-                                            <div className="flex justify-between items-start mb-8">
-                                                <div>
-                                                    <h2 className="text-2xl font-bold text-slate-800">Supplier Profile</h2>
-                                                    <p className="text-slate-500">Manage your business identity and operational settings.</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="col-span-2">
+                                                <label className="block text-sm font-semibold text-slate-700 mb-2">Business Name</label>
+                                                <div className="relative">
+                                                    <StoreIcon className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                                    <input
+                                                        value={profileForm.name}
+                                                        onChange={e => setProfileForm({ ...profileForm, name: e.target.value })}
+                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-medium text-slate-700"
+                                                        placeholder="e.g. Acme Supplies Ltd."
+                                                    />
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                                {/* Left Column: Business Info */}
-                                                <div className="space-y-6">
-                                                    <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                                        <Building className="w-4 h-4" /> Business Details
-                                                    </h3>
-
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-slate-700 mb-2">Business Name</label>
-                                                        <div className="relative">
-                                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                                <StoreIcon className="w-4 h-4 text-slate-400" />
-                                                            </div>
-                                                            <input
-                                                                value={profileForm.name}
-                                                                onChange={e => setProfileForm({ ...profileForm, name: e.target.value })}
-                                                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                                                                placeholder="e.g. Acme Supplies Ltd."
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-slate-700 mb-2">Contact Name</label>
-                                                        <div className="relative">
-                                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                                <User className="w-4 h-4 text-slate-400" />
-                                                            </div>
-                                                            <input
-                                                                type="text"
-                                                                value={profileForm.contactName}
-                                                                onChange={e => setProfileForm({ ...profileForm, contactName: e.target.value })}
-                                                                placeholder="e.g. John Doe"
-                                                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-slate-700 mb-2">Phone Number</label>
-                                                        <div className="relative">
-                                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                                <Phone className="w-4 h-4 text-slate-400" />
-                                                            </div>
-                                                            <input
-                                                                type="text"
-                                                                value={profileForm.phone}
-                                                                onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })}
-                                                                placeholder="e.g. +1 (555) 000-0000"
-                                                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Right Column: Operations & Address */}
-                                                <div className="space-y-6">
-                                                    <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                                        <Package className="w-4 h-4" /> Operations & Location
-                                                    </h3>
-
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-slate-700 mb-2">Address</label>
-                                                        <div className="relative">
-                                                            <div className="absolute top-3 left-3 flex items-start pointer-events-none">
-                                                                <MapPin className="w-4 h-4 text-slate-400" />
-                                                            </div>
-                                                            <textarea
-                                                                value={profileForm.address}
-                                                                onChange={e => setProfileForm({ ...profileForm, address: e.target.value })}
-                                                                placeholder="e.g. 123 Industrial Park, Tech City"
-                                                                rows={3}
-                                                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all resize-none"
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-slate-700 mb-2">Lead Time (Days)</label>
-                                                            <div className="relative">
-                                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                                    <Clock className="w-4 h-4 text-slate-400" />
-                                                                </div>
-                                                                <input
-                                                                    type="number"
-                                                                    value={profileForm.defaultLeadTime}
-                                                                    onChange={e => setProfileForm({ ...profileForm, defaultLeadTime: parseInt(e.target.value) || 0 })}
-                                                                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-slate-700 mb-2">Min. Order Qty</label>
-                                                            <div className="relative">
-                                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                                    <Package className="w-4 h-4 text-slate-400" />
-                                                                </div>
-                                                                <input
-                                                                    type="number"
-                                                                    value={profileForm.defaultMOQ}
-                                                                    onChange={e => setProfileForm({ ...profileForm, defaultMOQ: parseInt(e.target.value) || 0 })}
-                                                                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-slate-700 mb-2">Contact Person</label>
+                                                <div className="relative">
+                                                    <User className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                                    <input
+                                                        type="text"
+                                                        value={profileForm.contactName}
+                                                        onChange={e => setProfileForm({ ...profileForm, contactName: e.target.value })}
+                                                        placeholder="e.g. John Doe"
+                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-medium text-slate-700"
+                                                    />
                                                 </div>
                                             </div>
 
-                                            <div className="mt-10 pt-6 border-t border-slate-100 flex justify-end">
-                                                <Button
-                                                    onClick={handleSaveProfile}
-                                                    disabled={loading}
-                                                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/30 px-8 py-6 text-lg rounded-xl transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
-                                                >
-                                                    {loading ? (
-                                                        <>
-                                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                                                            Saving...
-                                                        </>
-                                                    ) : (
-                                                        "Save Profile Changes"
-                                                    )}
-                                                </Button>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-slate-700 mb-2">Phone Number</label>
+                                                <div className="relative">
+                                                    <Phone className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                                    <input
+                                                        type="text"
+                                                        value={profileForm.phone}
+                                                        onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })}
+                                                        placeholder="e.g. +1 (555) 000-0000"
+                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-medium text-slate-700"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Operations Fields moved here */}
+                                            <div className="col-span-2 pt-4 border-t border-slate-50 mt-2">
+                                                <label className="block text-sm font-semibold text-slate-700 mb-2">Address / HQ</label>
+                                                <div className="relative">
+                                                    <MapPin className="w-5 h-5 text-slate-400 absolute top-3 left-3" />
+                                                    <textarea
+                                                        value={profileForm.address}
+                                                        onChange={e => setProfileForm({ ...profileForm, address: e.target.value })}
+                                                        placeholder="e.g. 123 Industrial Park..."
+                                                        rows={2}
+                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-medium text-slate-700 resize-none leading-relaxed"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Lead Time (Days)</label>
+                                                <div className="relative">
+                                                    <Clock className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                                    <input
+                                                        type="number"
+                                                        value={profileForm.defaultLeadTime}
+                                                        onChange={e => setProfileForm({ ...profileForm, defaultLeadTime: parseInt(e.target.value) || 0 })}
+                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-800"
+                                                    />
+                                                </div>
+
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Min. Order Qty</label>
+                                                <div className="relative">
+                                                    <Package className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                                    <input
+                                                        type="number"
+                                                        value={profileForm.defaultMOQ}
+                                                        onChange={e => setProfileForm({ ...profileForm, defaultMOQ: parseInt(e.target.value) || 0 })}
+                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-800"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -1433,754 +1539,692 @@ const SupplierDashboard: React.FC = () => {
                             {activeTab === "upload" && (
                                 <motion.div
                                     key="upload"
-                                    initial={{ opacity: 0, scale: 0.98 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.98 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="max-w-6xl mx-auto pb-20"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="space-y-6 mt-12"
                                 >
-                                    <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
-                                        {/* Cinematic Header Banner */}
-                                        <div className="bg-gradient-to-br from-indigo-700 via-blue-600 to-sky-500 min-h-[200px] relative overflow-hidden flex items-center p-12">
-                                            <div className="relative z-10 max-w-2xl">
-                                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-white/90 text-sm font-medium mb-4 backdrop-blur-sm">
-                                                    <Upload className="w-4 h-4" /> Bulk Inventory System
+                                    {/* Header Section */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2">
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Bulk Catalog Upload</h2>
+                                            <p className="text-slate-500 text-lg">Update your product listings via CSV file upload.</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Main Content Actions */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                        {/* Configuration Side */}
+                                        <div className="space-y-6">
+                                            {/* Store Selector */}
+                                            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                                                        <StoreIcon className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="font-bold text-slate-800">Target Store</h3>
+                                                        <p className="text-xs text-slate-400">Where these products will go</p>
+                                                    </div>
                                                 </div>
-                                                <h2 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight leading-tight">
-                                                    Upload Inventory
-                                                </h2>
-                                                <p className="text-lg text-blue-100 mt-4 leading-relaxed max-w-xl">
-                                                    Seamlessly update your product catalog in bulk.
-                                                    Follow the steps to ensure perfect data synchronization.
-                                                </p>
+
+                                                {loading && connectedStores.length === 0 ? (
+                                                    <div className="h-12 w-full bg-slate-100 animate-pulse rounded-lg" />
+                                                ) : connectedStores.length === 0 ? (
+                                                    <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
+                                                        No connected stores found.
+                                                    </div>
+                                                ) : (
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium text-slate-700 appearance-none cursor-pointer"
+                                                            value={selectedStore?.id || ""}
+                                                            onChange={(e) => {
+                                                                const s = connectedStores.find(st => st.id === e.target.value);
+                                                                setSelectedStore(s || null);
+                                                            }}
+                                                        >
+                                                            <option value="">Select a Store...</option>
+                                                            {connectedStores.map(store => (
+                                                                <option key={store.id} value={store.id}>
+                                                                    {store.name} ({store.currency})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
 
-                                            {/* Decorative Background Elements */}
-                                            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3" />
-                                            <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-indigo-900/40 rounded-full blur-[80px] translate-y-1/3 -translate-x-1/3" />
-                                            <FileSpreadsheet className="absolute right-12 bottom-0 w-64 h-64 text-white/5 rotate-12 translate-y-20 transform" />
-                                        </div>
-
-                                        <div className="p-10 bg-slate-50/50">
-                                            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-
-                                                {/* LEFT COLUMN - CONTROLS (Steps 1 & 2) */}
-                                                <div className="xl:col-span-5 space-y-8">
-
-                                                    {/* Step 1 Card */}
-                                                    <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
-                                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                                            <div className="text-8xl font-bold text-slate-900 leading-none -mt-4 -mr-4">1</div>
-                                                        </div>
-                                                        <div className="relative z-10">
-                                                            <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-6">
-                                                                <StoreIcon className="w-6 h-6" />
-                                                            </div>
-                                                            <h3 className="text-xl font-bold text-slate-800 mb-2">Select Target Store</h3>
-                                                            <p className="text-slate-500 mb-6">Choose the destination store for this dataset.</p>
-
-                                                            {loading && connectedStores.length === 0 ? (
-                                                                <div className="h-12 w-full bg-slate-100 animate-pulse rounded-xl" />
-                                                            ) : connectedStores.length === 0 ? (
-                                                                <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-sm font-medium">
-                                                                    No stores details found. Please check connections.
-                                                                </div>
-                                                            ) : (
-                                                                <div className="relative group/select">
-                                                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                                                        <StoreIcon className="w-5 h-5 text-indigo-500" />
-                                                                    </div>
-                                                                    <select
-                                                                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none text-base font-medium text-slate-700 transition-all cursor-pointer appearance-none"
-                                                                        value={selectedStore?.id || ""}
-                                                                        onChange={(e) => {
-                                                                            const s = connectedStores.find(st => st.id === e.target.value);
-                                                                            setSelectedStore(s || null);
-                                                                        }}
-                                                                    >
-                                                                        <option value="">-- Choose a Store --</option>
-                                                                        {connectedStores.map(store => (
-                                                                            <option key={store.id} value={store.id}>
-                                                                                {store.name} — {store.currency}
-                                                                            </option>
-                                                                        ))}
-                                                                    </select>
-                                                                    {/* Custom arrow */}
-                                                                    <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400">
-                                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                            {/* Template Downloader */}
+                                            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <div className="w-10 h-10 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
+                                                        <FileSpreadsheet className="w-5 h-5" />
                                                     </div>
-
-                                                    {/* Step 2 Card */}
-                                                    <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
-                                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                                            <div className="text-8xl font-bold text-slate-900 leading-none -mt-4 -mr-4">2</div>
-                                                        </div>
-                                                        <div className="relative z-10">
-                                                            <div className="w-12 h-12 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center mb-6">
-                                                                <FileSpreadsheet className="w-6 h-6" />
-                                                            </div>
-                                                            <h3 className="text-xl font-bold text-slate-800 mb-2">Prepare Data</h3>
-                                                            <p className="text-slate-500 mb-6">Ensure your data matches our improved CSV format.</p>
-
-                                                            <Button
-                                                                variant="outline"
-                                                                onClick={() => SupplierService.downloadTemplate()}
-                                                                className="w-full py-6 text-lg border-2 border-slate-200 text-slate-600 hover:border-teal-500 hover:text-teal-600 hover:bg-teal-50 transition-all group/btn rounded-xl"
-                                                            >
-                                                                <Download className="w-5 h-5 mr-3 group-hover/btn:translate-y-1 transition-transform duration-300" />
-                                                                Download Template
-                                                            </Button>
-                                                        </div>
+                                                    <div>
+                                                        <h3 className="font-bold text-slate-800">Data Template</h3>
+                                                        <p className="text-xs text-slate-400">Use correct CSV format</p>
                                                     </div>
                                                 </div>
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={() => SupplierService.downloadTemplate()}
+                                                    className="w-full h-11 border-dashed border-2 border-slate-300 text-slate-600 hover:border-teal-500 hover:text-teal-600 hover:bg-teal-50 transition-all rounded-xl text-sm font-medium"
+                                                >
+                                                    <Download className="w-4 h-4 mr-2" />
+                                                    Download CSV Template
+                                                </Button>
+                                            </div>
+                                        </div>
 
-                                                {/* RIGHT COLUMN - MASSIVE DROPZONE (Step 3) */}
-                                                <div className="xl:col-span-7 h-full min-h-[500px]">
-                                                    <div
-                                                        className={`h-full relative border-4 border-dashed rounded-3xl transition-all duration-500 group flex flex-col items-center justify-center p-12 text-center overflow-hidden bg-white ${!selectedStore
-                                                            ? 'border-slate-200 opacity-60 cursor-not-allowed bg-slate-50'
-                                                            : 'border-indigo-200 hover:border-indigo-500 hover:shadow-2xl hover:shadow-indigo-500/10 cursor-pointer bg-white'
-                                                            }`}
-                                                    >
-                                                        {/* Animated background when active */}
-                                                        {selectedStore && (
-                                                            <div className="absolute inset-0 bg-gradient-to-tr from-indigo-50 via-white to-blue-50 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-                                                        )}
+                                        {/* Upload Zone */}
+                                        <div className="lg:col-span-2">
+                                            <div
+                                                className={`h-full min-h-[320px] relative border-2 border-dashed rounded-xl transition-all duration-300 flex flex-col items-center justify-center p-8 text-center bg-white ${!selectedStore
+                                                    ? 'border-slate-200 opacity-60 cursor-not-allowed bg-slate-50'
+                                                    : 'border-indigo-300 hover:border-indigo-500 hover:bg-indigo-50/30 cursor-pointer'
+                                                    }`}
+                                            >
+                                                <input
+                                                    type="file"
+                                                    accept=".csv, .xlsx, .xls"
+                                                    disabled={!selectedStore || loading}
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-50"
+                                                    onChange={async (e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (!file) return;
+                                                        if (!currentSupplier) {
+                                                            alert("Please create a supplier profile first.");
+                                                            return;
+                                                        }
+                                                        if (!selectedStore) {
+                                                            alert("Please select a target store first.");
+                                                            return;
+                                                        }
 
-                                                        <input
-                                                            type="file"
-                                                            accept=".csv, .xlsx, .xls"
-                                                            disabled={!selectedStore || loading}
-                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-50"
-                                                            onChange={async (e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (!file) return;
-                                                                if (!currentSupplier) {
-                                                                    alert("Please create a supplier profile first.");
-                                                                    return;
-                                                                }
-                                                                if (!selectedStore) {
-                                                                    alert("Please select a target store first.");
-                                                                    return;
-                                                                }
-                                                                
-                                                                // Use a local variable to track if we should stop
-                                                                let isMounted = true;
+                                                        let isMounted = true;
+                                                        try {
+                                                            setLoading(true);
+                                                            setUploadProgress(0);
+                                                            setUploadStatusMessage("Initiating upload...");
 
+                                                            const uploadRes = await SupplierService.uploadFile({
+                                                                storeSlug: selectedStore.slug,
+                                                                supplierId: currentSupplier.id,
+                                                                file
+                                                            });
+                                                            const uploadId = (uploadRes as any).upload_id;
+                                                            if (!uploadId) throw new Error("No upload ID returned");
+
+                                                            let status = "PENDING";
+                                                            let attempts = 0;
+                                                            let simulatedProgress = 0;
+                                                            const maxAttempts = 60;
+
+                                                            while (status !== "APPLIED" && status !== "FAILED" && attempts < maxAttempts) {
+                                                                if (!isMounted) break;
+                                                                await new Promise(r => setTimeout(r, 1000)); // Poll every 1s for smoother progress
                                                                 try {
-                                                                    setLoading(true);
-                                                                    setUploadStatusMessage("Initiating upload...");
-                                                                    
-                                                                    // 1. Upload File
-                                                                    const uploadRes = await SupplierService.uploadFile({
-                                                                        storeSlug: selectedStore.slug,
-                                                                        supplierId: currentSupplier.id,
-                                                                        file
-                                                                    });
-                                                                    
-                                                                    const uploadId = (uploadRes as any).upload_id;
-                                                                    console.log("Upload Initiated, ID:", uploadId);
-                                                                    
-                                                                    if (!uploadId) throw new Error("No upload ID returned");
+                                                                    const statusRes = await SupplierService.getUploadStatus(uploadId);
+                                                                    status = statusRes.status;
 
-                                                                    // 2. Poll for Status
-                                                                    // We will poll every 2 seconds for a max of 2 minutes (60 attempts)
-                                                                    let status = "PENDING";
-                                                                    let attempts = 0;
-                                                                    const maxAttempts = 60;
-
-                                                                    while (status !== "APPLIED" && status !== "FAILED" && attempts < maxAttempts) {
-                                                                        if (!isMounted) break;
-                                                                        
-                                                                        // UI update is handled after fetching new status below
-                                                                        
-                                                                        await new Promise(r => setTimeout(r, 2000)); // Wait 2s
-                                                                        
-                                                                        try {
-                                                                            const statusRes = await SupplierService.getUploadStatus(uploadId);
-                                                                            console.log(`Polling Upload ${uploadId}:`, statusRes);
-
-                                                                            // Handle object response
-                                                                            if (typeof statusRes === 'object' && statusRes !== null) {
-                                                                                status = statusRes.status || "UNKNOWN";
-                                                                                const processed = statusRes.processedRows || 0;
-                                                                                const total = statusRes.totalRows || 0;
-                                                                                const percent = statusRes.progressPercent || 0;
-                                                                                
-                                                                                if (status === 'APPLIED') {
-                                                                                    setUploadStatusMessage("Upload applied successfully!");
-                                                                                    break; // Stop polling immediately
-                                                                                } else if (status === 'FAILED') {
-                                                                                    setUploadStatusMessage("Upload failed.");
-                                                                                    break; // Stop polling immediately
-                                                                                } else if (status === 'PROCESSING') {
-                                                                                     setUploadStatusMessage(`Processing: ${percent}% (${processed}/${total} rows)...`);
-                                                                                } else {
-                                                                                     setUploadStatusMessage(`Status: ${status} (Attempt ${attempts + 1})`);
-                                                                                }
-                                                                            } else {
-                                                                                // Fallback for string response if any
-                                                                                status = String(statusRes);
-                                                                                if (status === 'APPLIED') {
-                                                                                    setUploadStatusMessage("Upload applied successfully!");
-                                                                                    break;
-                                                                                }
-                                                                                setUploadStatusMessage(`Status: ${status}...`);
-                                                                            }
-
-                                                                        } catch(pollErr) {
-                                                                            console.warn("Poll request failed, retrying...", pollErr);
-                                                                        }
-                                                                        
-                                                                        attempts++;
+                                                                    // Use backend progress if available, otherwise simulate
+                                                                    if (typeof statusRes.progress === 'number' && statusRes.progress > 0) {
+                                                                        setUploadProgress(statusRes.progress);
+                                                                    } else {
+                                                                        // Simulate progress: advance 5-15% per tick, cap at 90%
+                                                                        simulatedProgress = Math.min(simulatedProgress + 5 + Math.random() * 10, 90);
+                                                                        setUploadProgress(simulatedProgress);
                                                                     }
 
-                                                                    if (status !== 'APPLIED') {
-                                                                        throw new Error(`Upload processing failed or timed out. Final Status: ${status}`);
+                                                                    setUploadStatusMessage(`Processing: ${status}...`);
+
+                                                                    if (status === "APPLIED") {
+                                                                        setUploadProgress(100);
+                                                                        // Small delay to let user see 100%
+                                                                        await new Promise(r => setTimeout(r, 500));
+                                                                        setUploadResult({
+                                                                            success: true,
+                                                                            message: "Catalog Upload Successful",
+                                                                            subtext: `${statusRes.rows_processed || 0} products have been processed and added to your store.`
+                                                                        });
+                                                                    } else if (status === "FAILED") {
+                                                                        setUploadResult({
+                                                                            success: false,
+                                                                            message: "Upload Failed",
+                                                                            subtext: statusRes.error || "An unknown error occurred while processing your file."
+                                                                        });
                                                                     }
-
-                                                                    setUploadStatusMessage("Upload applied! Finalizing...");
-
-                                                                    // 3. Success -> Proceed
-                                                                    // IF this upload was to accept a pending order
-                                                                     if (pendingAcceptRequestId) {
-                                                                         try {
-                                                                             const acceptRes = await suppliersApi.acceptRequest(pendingAcceptRequestId);
-                                                                             if (acceptRes.data.success) {
-                                                                                 setUploadStatusMessage("Order Accepted!");
-                                                                                 await new Promise(r => setTimeout(r, 1000)); // Show success message briefly
-                                                                                 alert(`Order Fulfilled & Accepted! Inventory Updated (ID: ${uploadId})`);
-                                                                                 setPendingAcceptRequestId(null);
-                                                                                 setActiveTab("orders"); 
-                                                                                 refreshData();
-                                                                             } else {
-                                                                                 alert("Inventory Uploaded & Applied, but failed to update order status in local DB.");
-                                                                             }
-                                                                         } catch (acceptErr: any) {
-                                                                             console.error(acceptErr);
-                                                                             alert(`Inventory Uploaded & Applied, but failed to accept order: ${acceptErr.message}`);
-                                                                         }
-                                                                     } else {
-                                                                         setUploadStatusMessage("Done!");
-                                                                         await new Promise(r => setTimeout(r, 500));
-                                                                         alert(`Upload successful and applied! ID: ${uploadId}`);
-                                                                     }
-
-                                                                } catch (err: any) {
-                                                                    console.error(err);
-                                                                    alert("Upload processing failed: " + (err.message || "Unknown error"));
-                                                                } finally {
-                                                                    setLoading(false);
-                                                                    setUploadStatusMessage("");
-                                                                    e.target.value = "";
+                                                                } catch (err) {
+                                                                    console.error("Polling error", err);
                                                                 }
-                                                            }}
-                                                        />
+                                                                attempts++;
+                                                            }
+                                                        } catch (error) {
+                                                            console.error("Upload flow error:", error);
+                                                            setUploadResult({
+                                                                success: false,
+                                                                message: "Upload Initiation Failed",
+                                                                subtext: "Could not start the upload process. Please check your network connection."
+                                                            });
+                                                        } finally {
+                                                            if (isMounted) {
+                                                                setLoading(false);
+                                                                setUploadStatusMessage("");
+                                                                setUploadProgress(0);
+                                                                e.target.value = "";
+                                                            }
+                                                        }
+                                                    }}
+                                                />
 
-                                                        <div className="relative z-10 pointer-events-none transform group-hover:scale-105 transition-transform duration-500">
-                                                            <div className={`w-32 h-32 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl transition-all duration-500 ${selectedStore
-                                                                ? 'bg-gradient-to-tr from-indigo-500 to-blue-500 text-white shadow-indigo-500/30'
-                                                                : 'bg-slate-200 text-slate-400'
-                                                                }`}>
-                                                                <Upload className="w-16 h-16" />
+                                                {/* Upload UI Content */}
+                                                <div className="relative z-10 pointer-events-none space-y-4 w-full flex flex-col items-center">
+                                                    {loading ? (
+                                                        <div className="flex flex-col items-center justify-center animate-in fade-in duration-300">
+                                                            <div className="relative w-32 h-32 mb-4">
+                                                                <svg className="w-full h-full transform -rotate-90">
+                                                                    <circle
+                                                                        cx="64"
+                                                                        cy="64"
+                                                                        r="56"
+                                                                        stroke="currentColor"
+                                                                        strokeWidth="8"
+                                                                        fill="none"
+                                                                        className="text-slate-100"
+                                                                    />
+                                                                    <circle
+                                                                        cx="64"
+                                                                        cy="64"
+                                                                        r="56"
+                                                                        stroke="currentColor"
+                                                                        strokeWidth="8"
+                                                                        fill="none"
+                                                                        className="text-indigo-600 transition-all duration-500 ease-out"
+                                                                        strokeDasharray={351.86}
+                                                                        strokeDashoffset={351.86 - (351.86 * uploadProgress) / 100}
+                                                                        strokeLinecap="round"
+                                                                    />
+                                                                </svg>
+                                                                <div className="absolute inset-0 flex items-center justify-center">
+                                                                    <span className="text-2xl font-bold text-slate-700">{Math.round(uploadProgress)}%</span>
+                                                                </div>
                                                             </div>
-                                                            <h3 className={`text-3xl font-extrabold mb-4 transition-colors ${selectedStore ? 'text-slate-800 group-hover:text-indigo-600' : 'text-slate-400'}`}>
-                                                                {pendingAcceptRequestId ? "Upload Order Data to Accept" : (selectedStore ? "Drop Spreadsheet File Here" : "Select Store First")}
-                                                            </h3>
-                                                            {pendingAcceptRequestId && (
-                                                                <div className="mb-4 inline-block px-4 py-1.5 rounded-full bg-amber-50 text-amber-700 text-sm font-bold border border-amber-200 animate-pulse">
-                                                                    ⚠️ Action Required for Order #{pendingAcceptRequestId.slice(0, 8)}
+                                                            <h3 className="text-xl font-bold text-slate-800 mb-1">Processing Data</h3>
+                                                            <p className="text-slate-500 text-sm font-medium">{uploadStatusMessage || "Please wait..."}</p>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <div className={`w-20 h-20 rounded-2xl mx-auto flex items-center justify-center mb-2 transition-colors duration-300 ${selectedStore ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-300'}`}>
+                                                                <Upload className="w-10 h-10" />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <h3 className={`text-xl font-bold transition-colors ${selectedStore ? 'text-slate-800' : 'text-slate-400'}`}>
+                                                                    Drop your products file here
+                                                                </h3>
+                                                                <p className={`text-sm ${selectedStore ? 'text-slate-500' : 'text-slate-400'}`}>
+                                                                    Support for .csv, .xlsx, .xls
+                                                                </p>
+                                                            </div>
+                                                            {selectedStore ? (
+                                                                <div className="pt-4">
+                                                                    <span className="px-5 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium shadow-lg shadow-indigo-200">
+                                                                        Select File
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="pt-4">
+                                                                    <span className="px-4 py-2 rounded-lg bg-slate-100 text-slate-400 text-xs font-medium border border-slate-200">
+                                                                        Select a store first
+                                                                    </span>
                                                                 </div>
                                                             )}
-                                                            <p className="text-lg text-slate-500 max-w-sm mx-auto">
-                                                                {selectedStore
-                                                                    ? "Drag and drop your spreadsheet (CSV, Excel), or click anywhere in this area to browse."
-                                                                    : "You must select a target store from the left before you can upload data."}
-                                                            </p>
-                                                        </div>
-
-                                                        {/* Step Number Background */}
-                                                        <div className={`absolute bottom-0 right-0 p-12 transition-opacity duration-300 pointer-events-none select-none ${selectedStore ? 'opacity-5 group-hover:opacity-10 text-indigo-900' : 'opacity-5 text-slate-400'}`}>
-                                                            <div className="text-[14rem] font-black leading-none -mb-16 -mr-16">3</div>
-                                                        </div>
-                                                        
-                                                        {/* Loading Overlay */}
-                                                        {loading && (
-                                                            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center animate-in fade-in duration-300">
-                                                                <RefreshCw className="w-16 h-16 text-indigo-600 animate-spin mb-4" />
-                                                                <h3 className="text-2xl font-bold text-slate-800 mb-2">Processing Data</h3>
-                                                                <p className="text-slate-500 font-medium">{uploadStatusMessage || "Please wait..."}</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 </motion.div>
                             )}
-                        </AnimatePresence>
-                    </div>
-                </main>
-
-                {/* Fulfill Reorder Modal */}
-                {fulfillModalOpen && requestToFulfill && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 overflow-hidden max-h-[90vh] flex flex-col"
-                        >
-                            <div className="flex justify-between items-start mb-4 shrink-0">
-                                <div>
-                                    <h3 className="text-lg font-bold text-slate-800">Fulfill Reorder #{requestToFulfill.id.slice(0, 6)}</h3>
-                                    <p className="text-sm text-slate-500">Provide batch details for the requested items.</p>
-                                </div>
-                                <Button variant="ghost" size="sm" onClick={() => setFulfillModalOpen(false)}><XCircle className="w-5 h-5 text-slate-400" /></Button>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-                                {fulfillItems.map((item, idx) => (
-                                    <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                                        <div className="flex justify-between items-center">
-                                            <span className="font-bold text-slate-700 text-sm">{item.medicineName} <span className="text-slate-500 font-normal ms-2">(Qty: {item.quantity})</span></span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-medium text-slate-500 mb-1">Batch Number</label>
-                                                <input
-                                                    type="text"
-                                                    value={item.batchNumber}
-                                                    onChange={e => {
-                                                        const newItems = [...fulfillItems];
-                                                        newItems[idx].batchNumber = e.target.value;
-                                                        setFulfillItems(newItems);
-                                                    }}
-                                                    placeholder="Batch #"
-                                                    className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-slate-500 mb-1">Expiry Date</label>
-                                                <input
-                                                    type="date"
-                                                    value={item.expiryDate}
-                                                    onChange={e => {
-                                                        const newItems = [...fulfillItems];
-                                                        newItems[idx].expiryDate = e.target.value;
-                                                        setFulfillItems(newItems);
-                                                    }}
-                                                    className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-slate-500 mb-1">Cost Price (Optional)</label>
-                                                <input
-                                                    type="number"
-                                                    value={item.purchasePrice}
-                                                    onChange={e => {
-                                                        const newItems = [...fulfillItems];
-                                                        newItems[idx].purchasePrice = parseFloat(e.target.value);
-                                                        setFulfillItems(newItems);
-                                                    }}
-                                                    className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-slate-500 mb-1">MRP (Optional)</label>
-                                                <input
-                                                    type="number"
-                                                    value={item.mrp}
-                                                    onChange={e => {
-                                                        const newItems = [...fulfillItems];
-                                                        newItems[idx].mrp = parseFloat(e.target.value);
-                                                        setFulfillItems(newItems);
-                                                    }}
-                                                    className="w-full text-sm p-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100 shrink-0">
-                                <Button variant="secondary" onClick={() => setFulfillModalOpen(false)}>Cancel</Button>
-                                <Button onClick={handleSubmitFulfillment} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
-                                    <CheckCircle className="w-4 h-4" /> Confirm & Send
-                                </Button>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
+                        </AnimatePresence >
+                    </div >
+                </main >
 
                 {/* Order History Details Modal */}
-                {historyDetailRequest && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                {
+                    historyDetailRequest && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 overflow-hidden max-h-[90vh] flex flex-col"
+                            >
+                                <div className="flex justify-between items-start mb-4 border-b border-slate-100 pb-4">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">Order Details</h3>
+                                        <p className="text-sm text-slate-500 font-mono">#{historyDetailRequest.id}</p>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => setHistoryDetailRequest(null)}>
+                                        <XCircle className="w-6 h-6 text-slate-400 hover:text-slate-600" />
+                                    </Button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+                                    {/* Order Metadata Grid */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Store / Entity</p>
+                                            <p className="font-semibold text-slate-800">{historyDetailRequest.store?.name || "Unknown Store"}</p>
+                                        </div>
+                                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Date</p>
+                                            <p className="font-semibold text-slate-800">
+                                                {historyDetailRequest.createdAt
+                                                    ? new Date(historyDetailRequest.createdAt).toLocaleString(undefined, {
+                                                        dateStyle: 'medium',
+                                                        timeStyle: 'short'
+                                                    })
+                                                    : "-"}
+                                            </p>
+                                        </div>
+                                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Status</p>
+                                            <div className="flex items-center gap-2">
+                                                <RequestBadge status={historyDetailRequest.status} />
+                                            </div>
+                                        </div>
+                                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Total Items</p>
+                                            <p className="font-semibold text-slate-800">{historyDetailRequest.payload?.items?.length || 0}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Note */}
+                                    {historyDetailRequest.payload?.note && (
+                                        <div className="bg-indigo-50 border border-indigo-100 text-indigo-800 p-4 rounded-xl text-sm italic">
+                                            <span className="font-bold not-italic block mb-1 text-xs uppercase">Note:</span>
+                                            "{historyDetailRequest.payload.note}"
+                                        </div>
+                                    )}
+
+                                    {/* Items Table */}
+                                    <div>
+                                        <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                                            <Package className="w-4 h-4 text-slate-400" /> Requested Items
+                                        </h4>
+                                        <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-xs uppercase tracking-wider">Medicine Name</th>
+                                                        <th className="px-4 py-3 text-xs uppercase tracking-wider">Medicine ID</th>
+                                                        <th className="px-4 py-3 text-right text-xs uppercase tracking-wider">Quantity</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {historyDetailRequest.payload?.items?.map((item: any, idx: number) => (
+                                                        <tr key={idx} className="hover:bg-slate-50/50">
+                                                            <td className="px-4 py-3 font-medium text-slate-800">
+                                                                {item.medicineName || "Unknown Item"}
+                                                            </td>
+                                                            <td className="px-4 py-3 font-mono text-slate-500 text-xs">
+                                                                {item.medicineId?.slice(0, 8)}...
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-bold text-slate-700">
+                                                                {item.quantity}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
+                                    <Button onClick={() => setHistoryDetailRequest(null)} className="bg-slate-900 text-white">
+                                        Close Details
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )
+                }
+
+                {/* Connection Request Modal */}
+                {/* Connection Request Modal - Only show if not in upload mode/tab */}
+                {
+                    selectedStore && activeTab === 'marketplace' && !connectedStores.some(s => s.id === selectedStore.id) && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 overflow-hidden"
+                            >
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-slate-800">Connect with {selectedStore.name}</h3>
+                                        <p className="text-sm text-slate-500">Send a request to start supplying this store.</p>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => setSelectedStore(null)}><XCircle className="w-5 h-5 text-slate-400" /></Button>
+                                </div>
+
+                                <form onSubmit={handleConnect}>
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">Message (Optional)</label>
+                                        <textarea
+                                            rows={4}
+                                            value={requestMessage}
+                                            onChange={e => setRequestMessage(e.target.value)}
+                                            placeholder="Hi, we'd like to supply widgets to your store..."
+                                            className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                                        />
+                                    </div>
+
+                                    <div className="flex justify-end gap-3">
+                                        <Button type="button" variant="secondary" onClick={() => setSelectedStore(null)}>Cancel</Button>
+                                        <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+                                            <Send className="w-4 h-4" /> Send Request
+                                        </Button>
+                                    </div>
+                                </form>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </div >
+
+            {/* DOCK NAVIGATION */}
+            < div className="fixed left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col justify-center pointer-events-none" >
+                <div className="pointer-events-auto">
+                    <Dock direction="vertical" panelHeight={60} magnification={70} className="bg-white/80 backdrop-blur-xl shadow-2xl rounded-2xl dark:bg-white/80">
+                        <DockItem onClick={() => setActiveTab("dashboard")}>
+                            <DockLabel>Dashboard</DockLabel>
+                            <DockIcon>
+                                <LayoutGrid className={`w-6 h-6 transition-colors ${activeTab === 'dashboard' ? 'text-slate-900 fill-slate-900/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                            </DockIcon>
+                        </DockItem>
+
+                        <DockItem onClick={() => setActiveTab("marketplace")}>
+                            <DockLabel>Marketplace</DockLabel>
+                            <DockIcon>
+                                <ShoppingBag className={`w-6 h-6 transition-colors ${activeTab === 'marketplace' ? 'text-emerald-600 fill-emerald-600/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                            </DockIcon>
+                        </DockItem>
+
+                        <DockItem onClick={() => setActiveTab("my-stores")}>
+                            <DockLabel>My Stores</DockLabel>
+                            <DockIcon>
+                                <StoreIcon className={`w-6 h-6 transition-colors ${activeTab === 'my-stores' ? 'text-blue-600 fill-blue-600/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                            </DockIcon>
+                        </DockItem>
+
+                        <DockItem onClick={() => setActiveTab("requests")}>
+                            <DockLabel>Requests</DockLabel>
+                            <DockIcon>
+                                <Inbox className={`w-6 h-6 transition-colors ${activeTab === 'requests' ? 'text-amber-500 fill-amber-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                            </DockIcon>
+                        </DockItem>
+
+                        <DockItem onClick={() => setActiveTab("orders")}>
+                            <DockLabel>Orders</DockLabel>
+                            <DockIcon>
+                                {/* Show dot if there are pending orders */}
+                                <div className="relative">
+                                    <Package className={`w-6 h-6 transition-colors ${activeTab === 'orders' ? 'text-indigo-500 fill-indigo-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                                    {requests.some(r => r.payload?.type === 'REORDER' && r.status === 'PENDING') && (
+                                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                                    )}
+                                </div>
+                            </DockIcon>
+                        </DockItem>
+
+                        <DockItem onClick={() => setActiveTab("history")}>
+                            <DockLabel>History</DockLabel>
+                            <DockIcon>
+                                <History className={`w-6 h-6 transition-colors ${activeTab === 'history' ? 'text-cyan-500 fill-cyan-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                            </DockIcon>
+                        </DockItem>
+
+                        <DockItem onClick={() => setActiveTab("profile")}>
+                            <DockLabel>Profile</DockLabel>
+                            <DockIcon>
+                                <User className={`w-6 h-6 transition-colors ${activeTab === 'profile' ? 'text-violet-600 fill-violet-600/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                            </DockIcon>
+                        </DockItem>
+
+                        <DockItem onClick={() => setActiveTab("upload")}>
+                            <DockLabel>Upload</DockLabel>
+                            <DockIcon>
+                                <Upload className={`w-6 h-6 transition-colors ${activeTab === 'upload' ? 'text-blue-500 fill-blue-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
+                            </DockIcon>
+                        </DockItem>
+                    </Dock>
+                </div>
+            </div >
+
+            {/* Logout Confirmation Modal */}
+            <AnimatePresence>
+                {
+                    showLogoutConfirm && (
+                        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                            <motion.div
+                                initial={{ scale: 0.95, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.95, opacity: 0 }}
+                                className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 overflow-hidden border border-slate-100"
+                            >
+                                <div className="flex flex-col items-center text-center">
+                                    <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                                        <LogOut className="w-6 h-6 text-red-500" />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-slate-900 mb-2">Confirm Logout</h3>
+                                    <p className="text-slate-500 text-sm mb-6">
+                                        Are you sure you want to end your session? You will need to sign in again to access your dashboard.
+                                    </p>
+                                    <div className="flex gap-3 w-full">
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => setShowLogoutConfirm(false)}
+                                            className="flex-1 border-slate-200 hover:bg-slate-50 text-slate-700"
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            onClick={confirmLogout}
+                                            className="flex-1 bg-red-600 hover:bg-red-700 text-white border-none"
+                                        >
+                                            Logout
+                                        </Button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
+            {/* Fulfill Modal */}
+            <AnimatePresence>
+                {
+                    fulfillModalOpen && requestToFulfill && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+                            >
+                                <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-slate-900">Fulfill Reorder #{requestToFulfill.id.slice(0, 6)}</h2>
+                                        <p className="text-sm text-slate-500">Review items and enter batch details. You can adjust quantities.</p>
+                                    </div>
+                                    <Button variant="ghost" size="icon" onClick={() => setFulfillModalOpen(false)}>
+                                        <X className="w-5 h-5" />
+                                    </Button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                                    {fulfillItems.map((item, idx) => {
+                                        const requestedQty = requestToFulfill?.payload?.items?.find((ri: any) => ri.medicineId === item.medicineId)?.quantity || 0;
+                                        const isPartial = item.quantity < requestedQty;
+
+                                        return (
+                                            <div key={idx} className={`p-4 rounded-lg border ${isPartial ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+                                                <div className="flex justify-between mb-4">
+                                                    <div>
+                                                        <h4 className="font-semibold text-slate-800">{item.medicineName}</h4>
+                                                        <p className="text-xs text-slate-500">Requested Qty: <span className="font-bold">{requestedQty}</span></p>
+                                                    </div>
+                                                    {isPartial && <span className="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded h-fit">Partial Fill</span>}
+                                                </div>
+
+                                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-500 block mb-1">Sending Qty</label>
+                                                        <input
+                                                            type="number"
+                                                            value={item.quantity}
+                                                            onChange={(e) => {
+                                                                const newItems = [...fulfillItems];
+                                                                newItems[idx].quantity = parseInt(e.target.value) || 0;
+                                                                setFulfillItems(newItems);
+                                                            }}
+                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-500 block mb-1">Batch #</label>
+                                                        <input
+                                                            type="text"
+                                                            value={item.batchNumber}
+                                                            onChange={(e) => {
+                                                                const newItems = [...fulfillItems];
+                                                                newItems[idx].batchNumber = e.target.value;
+                                                                setFulfillItems(newItems);
+                                                            }}
+                                                            placeholder="e.g. B123"
+                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-500 block mb-1">Expiry</label>
+                                                        <input
+                                                            type="date"
+                                                            value={item.expiryDate}
+                                                            onChange={(e) => {
+                                                                const newItems = [...fulfillItems];
+                                                                newItems[idx].expiryDate = e.target.value;
+                                                                setFulfillItems(newItems);
+                                                            }}
+                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-500 block mb-1">Price</label>
+                                                        <input
+                                                            type="number"
+                                                            value={item.purchasePrice}
+                                                            onChange={(e) => {
+                                                                const newItems = [...fulfillItems];
+                                                                newItems[idx].purchasePrice = parseFloat(e.target.value) || 0;
+                                                                setFulfillItems(newItems);
+                                                            }}
+                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-500 block mb-1">MRP</label>
+                                                        <input
+                                                            type="number"
+                                                            value={item.mrp}
+                                                            onChange={(e) => {
+                                                                const newItems = [...fulfillItems];
+                                                                newItems[idx].mrp = parseFloat(e.target.value) || 0;
+                                                                setFulfillItems(newItems);
+                                                            }}
+                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+
+                                <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+                                    <Button variant="ghost" onClick={() => setFulfillModalOpen(false)}>Cancel</Button>
+                                    <Button onClick={handleSubmitFulfillment} className="bg-emerald-600 hover:bg-emerald-700">Confirm & Send Items</Button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
+
+            {/* Upload Result Modal */}
+            <AnimatePresence>
+                {uploadResult && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 overflow-hidden max-h-[90vh] flex flex-col"
+                            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 overflow-hidden text-center"
                         >
-                            <div className="flex justify-between items-start mb-4 border-b border-slate-100 pb-4">
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">Order Details</h3>
-                                    <p className="text-sm text-slate-500 font-mono">#{historyDetailRequest.id}</p>
-                                </div>
-                                <Button variant="ghost" size="sm" onClick={() => setHistoryDetailRequest(null)}>
-                                    <XCircle className="w-6 h-6 text-slate-400 hover:text-slate-600" />
-                                </Button>
+                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${uploadResult.success ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                {uploadResult.success ? <CheckCircle className="w-8 h-8" /> : <XCircle className="w-8 h-8" />}
                             </div>
-
-                            <div className="flex-1 overflow-y-auto pr-2 space-y-6">
-                                {/* Order Metadata Grid */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Store / Entity</p>
-                                        <p className="font-semibold text-slate-800">{historyDetailRequest.store?.name || "Unknown Store"}</p>
-                                    </div>
-                                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Date</p>
-                                        <p className="font-semibold text-slate-800">
-                                            {historyDetailRequest.createdAt
-                                                ? new Date(historyDetailRequest.createdAt).toLocaleString(undefined, {
-                                                    dateStyle: 'medium',
-                                                    timeStyle: 'short'
-                                                })
-                                                : "-"}
-                                        </p>
-                                    </div>
-                                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Status</p>
-                                        <div className="flex items-center gap-2">
-                                            <RequestBadge status={historyDetailRequest.status} />
-                                        </div>
-                                    </div>
-                                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Total Items</p>
-                                        <p className="font-semibold text-slate-800">{historyDetailRequest.payload?.items?.length || 0}</p>
-                                    </div>
-                                </div>
-
-                                {/* Note */}
-                                {historyDetailRequest.payload?.note && (
-                                    <div className="bg-indigo-50 border border-indigo-100 text-indigo-800 p-4 rounded-xl text-sm italic">
-                                        <span className="font-bold not-italic block mb-1 text-xs uppercase">Note:</span>
-                                        "{historyDetailRequest.payload.note}"
-                                    </div>
-                                )}
-
-                                {/* Items Table */}
-                                <div>
-                                    <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
-                                        <Package className="w-4 h-4 text-slate-400" /> Requested Items
-                                    </h4>
-                                    <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                        <table className="w-full text-sm text-left">
-                                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                                                <tr>
-                                                    <th className="px-4 py-3 text-xs uppercase tracking-wider">Medicine Name</th>
-                                                    <th className="px-4 py-3 text-xs uppercase tracking-wider">Medicine ID</th>
-                                                    <th className="px-4 py-3 text-right text-xs uppercase tracking-wider">Quantity</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {historyDetailRequest.payload?.items?.map((item: any, idx: number) => (
-                                                    <tr key={idx} className="hover:bg-slate-50/50">
-                                                        <td className="px-4 py-3 font-medium text-slate-800">
-                                                            {item.medicineName || "Unknown Item"}
-                                                        </td>
-                                                        <td className="px-4 py-3 font-mono text-slate-500 text-xs">
-                                                            {item.medicineId?.slice(0, 8)}...
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-bold text-slate-700">
-                                                            {item.quantity}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
-                                <Button onClick={() => setHistoryDetailRequest(null)} className="bg-slate-900 text-white">
-                                    Close Details
-                                </Button>
-                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">{uploadResult.message}</h3>
+                            <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+                                {uploadResult.subtext}
+                            </p>
+                            <Button
+                                onClick={() => setUploadResult(null)}
+                                className={`w-full ${uploadResult.success ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'} text-white`}
+                            >
+                                {uploadResult.success ? 'Done' : 'Close'}
+                            </Button>
                         </motion.div>
                     </div>
                 )}
+            </AnimatePresence>
 
-                {/* Connection Request Modal */}
-                {/* Connection Request Modal - Only show if not in upload mode/tab */}
-                {selectedStore && activeTab === 'marketplace' && !connectedStores.some(s => s.id === selectedStore.id) && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            {/* Profile Result Modal */}
+            <AnimatePresence>
+                {profileResult && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 overflow-hidden"
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 overflow-hidden text-center"
                         >
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <h3 className="text-lg font-bold text-slate-800">Connect with {selectedStore.name}</h3>
-                                    <p className="text-sm text-slate-500">Send a request to start supplying this store.</p>
-                                </div>
-                                <Button variant="ghost" size="sm" onClick={() => setSelectedStore(null)}><XCircle className="w-5 h-5 text-slate-400" /></Button>
+                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${profileResult.success ? 'bg-indigo-50 text-indigo-600' : 'bg-red-50 text-red-600'}`}>
+                                {profileResult.success ? <CheckCircle className="w-8 h-8" /> : <XCircle className="w-8 h-8" />}
                             </div>
-
-                            <form onSubmit={handleConnect}>
-                                <div className="mb-4">
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Message (Optional)</label>
-                                    <textarea
-                                        rows={4}
-                                        value={requestMessage}
-                                        onChange={e => setRequestMessage(e.target.value)}
-                                        placeholder="Hi, we'd like to supply widgets to your store..."
-                                        className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
-                                    />
-                                </div>
-
-                                <div className="flex justify-end gap-3">
-                                    <Button type="button" variant="secondary" onClick={() => setSelectedStore(null)}>Cancel</Button>
-                                    <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
-                                        <Send className="w-4 h-4" /> Send Request
-                                    </Button>
-                                </div>
-                            </form>
-                        </motion.div>
-                    </div>
-                )}
-            </div>
-
-            {/* DOCK NAVIGATION */}
-            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
-                <Dock className="bg-white/80 backdrop-blur-xl border border-white/20 shadow-2xl rounded-2xl">
-                    <DockItem onClick={() => setActiveTab("dashboard")}>
-                        <DockLabel>Dashboard</DockLabel>
-                        <DockIcon>
-                            <LayoutGrid className={`w-8 h-8 transition-colors ${activeTab === 'dashboard' ? 'text-slate-900 fill-slate-900/10' : 'text-slate-400 hover:text-slate-600'}`} />
-                        </DockIcon>
-                    </DockItem>
-
-                    <DockItem onClick={() => setActiveTab("marketplace")}>
-                        <DockLabel>Marketplace</DockLabel>
-                        <DockIcon>
-                            <ShoppingBag className={`w-8 h-8 transition-colors ${activeTab === 'marketplace' ? 'text-emerald-600 fill-emerald-600/10' : 'text-slate-400 hover:text-slate-600'}`} />
-                        </DockIcon>
-                    </DockItem>
-
-                    <DockItem onClick={() => setActiveTab("my-stores")}>
-                        <DockLabel>My Stores</DockLabel>
-                        <DockIcon>
-                            <StoreIcon className={`w-8 h-8 transition-colors ${activeTab === 'my-stores' ? 'text-blue-600 fill-blue-600/10' : 'text-slate-400 hover:text-slate-600'}`} />
-                        </DockIcon>
-                    </DockItem>
-
-                    <DockItem onClick={() => setActiveTab("requests")}>
-                        <DockLabel>Requests</DockLabel>
-                        <DockIcon>
-                            <Inbox className={`w-8 h-8 transition-colors ${activeTab === 'requests' ? 'text-amber-500 fill-amber-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
-                        </DockIcon>
-                    </DockItem>
-
-                    <DockItem onClick={() => setActiveTab("orders")}>
-                        <DockLabel>Orders</DockLabel>
-                        <DockIcon>
-                            {/* Show dot if there are pending orders */}
-                            <div className="relative">
-                                <Package className={`w-8 h-8 transition-colors ${activeTab === 'orders' ? 'text-indigo-500 fill-indigo-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
-                                {requests.some(r => r.payload?.type === 'REORDER' && r.status === 'PENDING') && (
-                                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white" />
-                                )}
-                            </div>
-                        </DockIcon>
-                    </DockItem>
-
-                    <DockItem onClick={() => setActiveTab("history")}>
-                        <DockLabel>History</DockLabel>
-                        <DockIcon>
-                            <History className={`w-8 h-8 transition-colors ${activeTab === 'history' ? 'text-cyan-500 fill-cyan-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
-                        </DockIcon>
-                    </DockItem>
-
-                    <DockItem onClick={() => setActiveTab("profile")}>
-                        <DockLabel>Profile</DockLabel>
-                        <DockIcon>
-                            <User className={`w-8 h-8 transition-colors ${activeTab === 'profile' ? 'text-violet-600 fill-violet-600/10' : 'text-slate-400 hover:text-slate-600'}`} />
-                        </DockIcon>
-                    </DockItem>
-
-                    <DockItem onClick={() => setActiveTab("upload")}>
-                        <DockLabel>Upload</DockLabel>
-                        <DockIcon>
-                            <Upload className={`w-8 h-8 transition-colors ${activeTab === 'upload' ? 'text-blue-500 fill-blue-500/10' : 'text-slate-400 hover:text-slate-600'}`} />
-                        </DockIcon>
-                    </DockItem>
-                </Dock>
-            </div>
-
-            {/* Logout Confirmation Modal */}
-            <AnimatePresence>
-                {showLogoutConfirm && (
-                    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-                        <motion.div
-                            initial={{ scale: 0.95, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.95, opacity: 0 }}
-                            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 overflow-hidden border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center">
-                                <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-4">
-                                    <LogOut className="w-6 h-6 text-red-500" />
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-900 mb-2">Confirm Logout</h3>
-                                <p className="text-slate-500 text-sm mb-6">
-                                    Are you sure you want to end your session? You will need to sign in again to access your dashboard.
-                                </p>
-                                <div className="flex gap-3 w-full">
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => setShowLogoutConfirm(false)}
-                                        className="flex-1 border-slate-200 hover:bg-slate-50 text-slate-700"
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        onClick={confirmLogout}
-                                        className="flex-1 bg-red-600 hover:bg-red-700 text-white border-none"
-                                    >
-                                        Logout
-                                    </Button>
-                                </div>
-                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">{profileResult.message}</h3>
+                            <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+                                {profileResult.subtext}
+                            </p>
+                            <Button
+                                onClick={() => setProfileResult(null)}
+                                className={`w-full ${profileResult.success ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-red-600 hover:bg-red-700'} text-white`}
+                            >
+                                {profileResult.success ? 'Continue' : 'Close'}
+                            </Button>
                         </motion.div>
                     </div>
                 )}
             </AnimatePresence>
-            {/* Fulfill Modal */}
-            <AnimatePresence>
-                {fulfillModalOpen && requestToFulfill && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                        <motion.div 
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-                        >
-                            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-                                <div>
-                                    <h2 className="text-xl font-bold text-slate-900">Fulfill Reorder #{requestToFulfill.id.slice(0, 6)}</h2>
-                                    <p className="text-sm text-slate-500">Review items and enter batch details. You can adjust quantities.</p>
-                                </div>
-                                <Button variant="ghost" size="icon" onClick={() => setFulfillModalOpen(false)}>
-                                    <X className="w-5 h-5" />
-                                </Button>
-                            </div>
-                            
-                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                                {fulfillItems.map((item, idx) => {
-                                    const requestedQty = requestToFulfill?.payload?.items?.find((ri:any) => ri.medicineId === item.medicineId)?.quantity || 0;
-                                    const isPartial = item.quantity < requestedQty;
-
-                                    return (
-                                    <div key={idx} className={`p-4 rounded-lg border ${isPartial ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
-                                        <div className="flex justify-between mb-4">
-                                            <div>
-                                                <h4 className="font-semibold text-slate-800">{item.medicineName}</h4>
-                                                <p className="text-xs text-slate-500">Requested Qty: <span className="font-bold">{requestedQty}</span></p>
-                                            </div>
-                                            {isPartial && <span className="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded h-fit">Partial Fill</span>}
-                                        </div>
-                                        
-                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                            <div>
-                                                <label className="text-xs font-medium text-slate-500 block mb-1">Sending Qty</label>
-                                                <input 
-                                                    type="number"
-                                                    value={item.quantity}
-                                                    onChange={(e) => {
-                                                        const newItems = [...fulfillItems];
-                                                        newItems[idx].quantity = parseInt(e.target.value) || 0;
-                                                        setFulfillItems(newItems);
-                                                    }}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-medium text-slate-500 block mb-1">Batch #</label>
-                                                <input 
-                                                    type="text"
-                                                    value={item.batchNumber}
-                                                    onChange={(e) => {
-                                                        const newItems = [...fulfillItems];
-                                                        newItems[idx].batchNumber = e.target.value;
-                                                        setFulfillItems(newItems);
-                                                    }}
-                                                    placeholder="e.g. B123"
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-medium text-slate-500 block mb-1">Expiry</label>
-                                                <input 
-                                                    type="date"
-                                                    value={item.expiryDate}
-                                                    onChange={(e) => {
-                                                        const newItems = [...fulfillItems];
-                                                        newItems[idx].expiryDate = e.target.value;
-                                                        setFulfillItems(newItems);
-                                                    }}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                />
-                                            </div>
-                                             <div>
-                                                <label className="text-xs font-medium text-slate-500 block mb-1">Price</label>
-                                                <input 
-                                                    type="number"
-                                                    value={item.purchasePrice}
-                                                    onChange={(e) => {
-                                                        const newItems = [...fulfillItems];
-                                                        newItems[idx].purchasePrice = parseFloat(e.target.value) || 0;
-                                                        setFulfillItems(newItems);
-                                                    }}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                />
-                                            </div>
-                                             <div>
-                                                <label className="text-xs font-medium text-slate-500 block mb-1">MRP</label>
-                                                <input 
-                                                    type="number"
-                                                    value={item.mrp}
-                                                    onChange={(e) => {
-                                                        const newItems = [...fulfillItems];
-                                                        newItems[idx].mrp = parseFloat(e.target.value) || 0;
-                                                        setFulfillItems(newItems);
-                                                    }}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                )})}
-                            </div>
-
-                            <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
-                                <Button variant="ghost" onClick={() => setFulfillModalOpen(false)}>Cancel</Button>
-                                <Button onClick={handleSubmitFulfillment} className="bg-emerald-600 hover:bg-emerald-700">Confirm & Send Items</Button>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
-
         </div>
+
     );
 };
 

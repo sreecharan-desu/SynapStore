@@ -2,7 +2,7 @@ import React from "react";
 import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Settings, LogOut, Users, Package, Calendar, Search, X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, CheckCircle, Send, History, ClipboardList, Download, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, MoreHorizontal } from "lucide-react";
+import { Bell, Settings, LogOut, Users, Package, Calendar, Search, X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, CheckCircle, Send, History, ClipboardList, Download, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, MoreHorizontal, Loader2, RefreshCw } from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 
 import { formatDistanceToNow } from "date-fns";
@@ -199,9 +199,11 @@ const StoreOwnerDashboard: React.FC = () => {
     const [currentSaleId, setCurrentSaleId] = React.useState<string | null>(null);
     const [receiptEmail, setReceiptEmail] = React.useState("");
     const [isSendingEmail, setIsSendingEmail] = React.useState(false);
-    const [showReorderConfirm, setShowReorderConfirm] = React.useState(false);
+
     const [showDisconnectConfirm, setShowDisconnectConfirm] = React.useState(false);
     const [disconnectSupplierId, setDisconnectSupplierId] = React.useState<string | null>(null);
+    const [isDisconnectLoading, setIsDisconnectLoading] = React.useState(false);
+    const [isRefreshing, setIsRefreshing] = React.useState(false);
     const [selectedReorder, setSelectedReorder] = React.useState<SupplierRequest | null>(null);
     const [showReorderDetails, setShowReorderDetails] = React.useState(false);
 
@@ -249,7 +251,7 @@ const StoreOwnerDashboard: React.FC = () => {
             alert("Please add items to reorder.");
             return;
         }
-        setShowReorderConfirm(true);
+        executeReorder();
     };
 
     const executeReorder = async () => {
@@ -313,8 +315,8 @@ const StoreOwnerDashboard: React.FC = () => {
                 }
 
                 // Auto-fill Cart
-                setCart(prev => {
-                    const newCart = new Map(prev);
+                setCart(() => {
+                    const newCart = new Map();
                     suggestions.forEach((s: any) => {
                         newCart.set(s.medicineId, s.suggestedQty);
                     });
@@ -699,6 +701,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const executeDisconnectSupplier = async () => {
         if (!disconnectSupplierId) return;
+        setIsDisconnectLoading(true);
         try {
             await dashboardApi.disconnectSupplier(disconnectSupplierId);
             // Optimistically update lists.suppliers
@@ -709,11 +712,11 @@ const StoreOwnerDashboard: React.FC = () => {
                     suppliers: prev.lists.suppliers.filter(s => s.id !== disconnectSupplierId)
                 }
             } : null);
-            setShowFeedback(true);
         } catch (err) {
             console.error("Failed to disconnect", err);
             alert("Failed to disconnect supplier");
         } finally {
+            setIsDisconnectLoading(false);
             setShowDisconnectConfirm(false);
             setDisconnectSupplierId(null);
         }
@@ -1606,23 +1609,106 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </h2>
                                     <p className="text-sm text-slate-500">Manage your connected suppliers.</p>
                                 </div>
-                                <Button
-                                    onClick={() => setShowDirectory(true)}
-                                    className="!bg-slate-900 text-white hover:opacity-90 shadow-lg shadow-slate-900/20 border-none rounded-xl gap-2 font-semibold"
-                                >
-                                    <Search className="w-4 h-4" />
-                                    Find New Suppliers
-                                </Button>
+                                <div className="flex items-center gap-3">
+                                    <Button
+                                        variant="outline"
+                                        onClick={async () => {
+                                            setIsRefreshing(true);
+                                            await fetchData();
+                                            setIsRefreshing(false);
+                                        }}
+                                        className="h-11 w-11 p-0 rounded-xl border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-white hover:border-slate-300 transition-all bg-white"
+                                        title="Refresh List"
+                                    >
+                                        <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                                    </Button>
+                                    <Button
+                                        onClick={() => setShowDirectory(true)}
+                                        className="!bg-slate-900 text-white hover:opacity-90 shadow-lg shadow-slate-900/20 border-none rounded-xl gap-2 font-semibold h-11 px-5"
+                                    >
+                                        <Search className="w-4 h-4" />
+                                        Find New Suppliers
+                                    </Button>
+                                </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                                {data?.lists.suppliers && data.lists.suppliers.length > 0 ? (
+                                {(supplierRequests.length > 0 || (data?.lists.suppliers && data.lists.suppliers.length > 0)) ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {data.lists.suppliers.map((supplier, index) => (
+                                        {/* Pending Requests */}
+                                        {supplierRequests.map((req, index) => (
+                                            <motion.div
+                                                initial={{ opacity: 0, scale: 0.9 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                transition={{ delay: index * 0.05 }}
+                                                key={req.id}
+                                                className="bg-white rounded-3xl p-1 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group"
+                                            >
+                                                <div className="bg-slate-50/50 rounded-[20px] p-5 h-full flex flex-col relative overflow-hidden">
+                                                    {/* Header */}
+                                                    <div className="flex items-start justify-between mb-4 relative z-10">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-[2px] shadow-lg">
+                                                                <div className="w-full h-full bg-white rounded-[14px] flex items-center justify-center text-xl font-bold text-slate-700">
+                                                                    {req.supplier?.name?.charAt(0).toUpperCase() || "S"}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="font-bold text-slate-800 text-lg leading-tight">{req.supplier?.name || "Unknown Supplier"}</h3>
+                                                                <div className="flex items-center gap-1.5 mt-1">
+                                                                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                                                                    <span className="text-xs font-medium text-amber-600">Pending Request</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Message Box */}
+                                                    <div className="mb-6 relative z-10 bg-white p-4 rounded-xl border border-slate-100 shadow-sm min-h-[80px]">
+                                                        {req.message ? (
+                                                            <>
+                                                                <div className="absolute -top-2 -left-1">
+                                                                    <div className="w-4 h-4 text-amber-200 fill-current opacity-50">
+                                                                        <svg viewBox="0 0 24 24"><path d="M14.017 21L14.017 18C14.017 16.896 14.389 16.03 15.152 15.399C15.915 14.768 17.079 14.453 18.665 14.453L23 14.453L23 2.99999L11.517 3L11.517 14.453L12.871 14.453C13.882 14.453 14.389 14.908 14.389 15.823L14.389 21L14.017 21ZM5.389 21L5.389 18C5.389 16.896 5.761 16.03 6.524 15.399C7.287 14.768 8.451 14.453 10.037 14.453L15.372 14.453L15.372 2.99999L1 3L1 14.453L2.354 14.453C3.365 14.453 3.872 14.908 3.872 15.823L3.872 21L5.389 21Z" /></svg>
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-sm text-slate-600 italic leading-relaxed pl-2 relative z-10 line-clamp-3">
+                                                                    "{req.message}"
+                                                                </p>
+                                                            </>
+                                                        ) : (
+                                                            <div className="flex items-center justify-center h-full text-xs text-slate-300 italic">
+                                                                No message included
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Actions */}
+                                                    <div className="mt-auto pt-2 grid grid-cols-2 gap-3 relative z-10">
+                                                        <Button
+                                                            variant="outline"
+                                                            onClick={() => handleRejectRequest(req.id)}
+                                                            className="border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 h-10 rounded-xl font-semibold transition-all"
+                                                        >
+                                                            Reject
+                                                        </Button>
+                                                        <Button
+                                                            onClick={() => handleAcceptRequest(req.id)}
+                                                            className="bg-slate-900 hover:bg-slate-800 text-white border-none shadow-lg shadow-slate-900/20 h-10 rounded-xl font-semibold transition-all"
+                                                        >
+                                                            Accept
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        ))}
+
+                                        {/* Connected Suppliers */}
+                                        {data?.lists.suppliers && data.lists.suppliers.map((supplier, index) => (
                                             <motion.div
                                                 initial={{ opacity: 0, y: 20 }}
                                                 animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: index * 0.05 }}
+                                                transition={{ delay: (supplierRequests.length + index) * 0.05 }}
                                                 key={supplier.id}
                                                 className="bg-white rounded-3xl p-1 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group"
                                             >
@@ -1980,12 +2066,17 @@ const StoreOwnerDashboard: React.FC = () => {
                                             </span>
                                         </div>
                                         <Select value={reorderSupplierId} onValueChange={setReorderSupplierId} disabled={!data?.lists?.suppliers?.length}>
-                                            <SelectTrigger className="w-full !bg-slate-900 border-none h-12 rounded-xl text-white shadow-lg shadow-slate-900/10 focus:ring-0">
-                                                <SelectValue placeholder="Select a supplier..." />
+                                            <SelectTrigger className="w-full !bg-slate-900 border-none h-12 rounded-xl !text-white shadow-lg shadow-slate-900/10 focus:ring-0">
+                                                <span className="text-white font-bold truncate">
+                                                    {reorderSupplierId
+                                                        ? data?.lists?.suppliers?.find(s => s.id === reorderSupplierId)?.name
+                                                        : <span className="text-slate-400 font-normal">Select a supplier...</span>
+                                                    }
+                                                </span>
                                             </SelectTrigger>
-                                            <SelectContent className="rounded-xl border-slate-200 shadow-xl p-1">
+                                            <SelectContent className="bg-white rounded-xl border-slate-200 shadow-xl p-1 z-50">
                                                 {data?.lists?.suppliers?.map((s) => (
-                                                    <SelectItem key={s.id} value={s.id} className="rounded-lg cursor-pointer focus:bg-slate-50 py-3">
+                                                    <SelectItem key={s.id} value={s.id} textValue={s.name} className="rounded-lg cursor-pointer focus:bg-slate-50 py-3">
                                                         <div className="font-bold text-slate-800">{s.name}</div>
                                                         <div className="text-xs text-slate-400">{s.email}</div>
                                                     </SelectItem>
@@ -2000,7 +2091,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </div>
 
                                     {/* Cart Items */}
-                                    <div className="flex-1 bg-slate-50 rounded-2xl p-4 border border-slate-100 relative min-h-[120px]">
+                                    <div className="flex-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 relative min-h-[120px]">
                                         <div className="absolute top-0 right-0 p-2 opacity-5">
                                             <ClipboardList className="w-24 h-24" />
                                         </div>
@@ -2624,56 +2715,7 @@ const StoreOwnerDashboard: React.FC = () => {
                 )}
             </AnimatePresence>
 
-            {/* Reorder Confirmation Modal */}
-            <AnimatePresence>
-                {showReorderConfirm && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setShowReorderConfirm(false)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className={`w-16 h-16 rounded-2xl ${theme.light} flex items-center justify-center mb-2`}>
-                                    <Send className={`w-8 h-8 ${theme.text} translate-x-0.5`} />
-                                </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">Confirm Reorder</h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to send this request for <span className="font-bold text-slate-700">{cart.size} items</span>?
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
-                                        onClick={() => setShowReorderConfirm(false)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className={`h-12 rounded-xl ${theme.primary} hover:opacity-90 text-white border-none shadow-lg ${theme.shadow} font-semibold`}
-                                        onClick={() => {
-                                            executeReorder();
-                                            setShowReorderConfirm(false);
-                                        }}
-                                    >
-                                        Confirm
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+
 
             {/* POS Confirmation Modal */}
             <AnimatePresence>
@@ -2836,13 +2878,21 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </Button>
                                     <Button
                                         className={`h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white border-none shadow-lg shadow-red-200 font-semibold`}
+                                        disabled={isDisconnectLoading}
                                         onClick={() => {
                                             if (disconnectSupplierId) {
                                                 executeDisconnectSupplier();
                                             }
                                         }}
                                     >
-                                        Disconnect
+                                        {isDisconnectLoading ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Disconnecting...
+                                            </>
+                                        ) : (
+                                            "Disconnect"
+                                        )}
                                     </Button>
                                 </div>
                             </div>
