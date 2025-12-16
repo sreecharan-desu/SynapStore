@@ -252,7 +252,7 @@ router.post(
       // check duplicates via deterministic encryption lookups
       const existingEmail = await findUserByEmail(email);
       if (existingEmail) {
-        return sendError(res, "User with this email already exists", 409, { code: "user_exists" });
+        return sendError(res, "It looks like this email is already registered with us.", 409, { code: "user_exists" });
       }
 
       // check username duplicate (deterministic)
@@ -262,7 +262,7 @@ router.post(
         select: { id: true },
       });
       if (existingUsernameRow) {
-        return sendError(res, "Username is already taken", 409, { code: "username_taken" });
+        return sendError(res, "That username is already taken. Please try another one.", 409, { code: "username_taken" });
       }
 
       // prepare data
@@ -353,9 +353,9 @@ router.post(
       const email = parsed.data.email.toLowerCase();
 
       const user = await findUserByEmail(email);
-      if (!user) return sendError(res, "User not found", 404);
+      if (!user) return sendError(res, "We couldn't find an account with that email address.", 404);
       if (user.isverified) {
-        return sendError(res, "Email is already verified", 400, { code: "email_already_verified" });
+        return sendError(res, "Your email is already all set and verified!", 400, { code: "email_already_verified" });
       }
       // Strict server-side rate limit per email:
       // allow only one unused OTP created per 60 seconds.
@@ -450,14 +450,14 @@ router.post(
       }
 
       const user = await findUserByEmail(email);
-      if (!user) return sendError(res, "Account does not exist", 404, { code: "user_not_found" });
+      if (!user) return sendError(res, "It looks like you don't have an account with us yet.", 404, { code: "user_not_found" });
 
       if (!user.isverified) {
-        return sendError(res, "Email not verified", 403, { code: "email_not_verified" });
+        return sendError(res, "Please check your inbox to verify your email before signing in.", 403, { code: "email_not_verified" });
       }
 
       if (!user.isActive) {
-        return sendError(res, "This account has been temporarily disabled/suspended", 403, { code: "user_not_active" });
+        return sendError(res, "We've placed a temporary hold on this account. Please contact support.", 403, { code: "user_not_active" });
       }
 
       if (!user.passwordHash) {
@@ -466,7 +466,7 @@ router.post(
       }
 
       const ok = await comparePassword(password, user.passwordHash);
-      if (!ok) return sendError(res, "Incorrect password", 401, { code: "invalid_password" });
+      if (!ok) return sendError(res, "The password you entered doesn't match our records.", 401, { code: "invalid_password" });
 
       // Parallel fetching for speed
       const [supplier, storesEntry] = await Promise.all([
@@ -608,7 +608,7 @@ router.post(
             ),
           }).catch(e => console.error("Failed to send signin alert email", e));
 
-           return sendSuccess(res, "Signed in successfully", responseData);
+           return sendSuccess(res, "Welcome back! You're successfully signed in.", responseData);
         }
 
         // (future support) MULTIPLE STORES → frontend must show switcher
@@ -668,7 +668,7 @@ router.post(
       const email = parsed.data.email.toLowerCase();
 
       const user = await findUserByEmail(email);
-      if (!user) return sendError(res, "User not found", 404);
+      if (!user) return sendError(res, "We couldn't find an account with that email address.", 404);
 
       // fetch latest unused OTP rows for this contact (encrypted phone)
       const encPhone = crypto$.encryptCellDeterministic(email);
@@ -682,7 +682,7 @@ router.post(
       });
 
       if (!otpRow)
-        return sendError(res, "No pending OTP found or OTP has expired", 400);
+        return sendError(res, "We couldn't find a pending OTP, or it may have expired. Please request a new one.", 400);
 
       // decrypt stored otpHash then compare
       let storedOtpPlain: string | null = null;
@@ -705,7 +705,7 @@ router.post(
             data: { attempts: otpRow.attempts + 1 },
           });
         } catch (_e) { /* ignore */ }
-        return sendError(res, "Invalid OTP", 400);
+        return sendError(res, "That code doesn't look right. Please try again.", 400);
       }
 
       // mark OTP as used and set user's isverified = true
