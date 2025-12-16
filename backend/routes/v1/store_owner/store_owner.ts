@@ -1253,10 +1253,22 @@ dashboardRouter.get(
           const ds = decryptCell(m.strength, dek); if (ds) strength = ds;
         } catch (e) { }
 
+        // Decrypt batch numbers if needed
+        const decryptedBatches = m.inventory.map(b => {
+             let bn = b.batchNumber;
+             try {
+                 if (bn) {
+                    const decrypted = decryptCell(bn, dek);
+                    if (decrypted) bn = decrypted;
+                 }
+             } catch (e) {}
+             return { ...b, batchNumber: bn };
+        });
+
         const totalQty = m.inventory.reduce((sum, b) => sum + b.qtyAvailable, 0);
         const expiringSoon = m.inventory.some(b => b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
         const isLowStock = totalQty < 20;
-
+        console.log(decryptedBatches)
         return {
           ...m,
           brandName,
@@ -1265,7 +1277,7 @@ dashboardRouter.get(
           totalQty,
           expiringSoon,
           isLowStock,
-          batches: m.inventory
+          batches: decryptedBatches
         };
       }).filter(m => {
         // Filter by search query if present
@@ -1585,7 +1597,35 @@ dashboardRouter.get(
 
         } catch (e) { }
 
-        return { ...med, brandName, genericName, strength };
+        // Decrypt matches within inventory and combine same batches
+        const decryptedInventoryMap = new Map();
+
+        med.inventory.forEach(inv => {
+             let bn = inv.batchNumber;
+             try {
+                if (bn) {
+                    const d = decryptCell(bn, dek);
+                    if (d) bn = d;
+                }
+             } catch (e) {}
+             
+             // Normalize 'null' or undefined batch number to a string if needed, or keep as is.
+             // Usually batchNumber is a string. If null, we might group all nulls or keep separate.
+             // Assumption: Group by batchNumber string.
+             const key = bn || 'UnknownBatch';
+             
+             if (decryptedInventoryMap.has(key)) {
+                 const existing = decryptedInventoryMap.get(key);
+                 existing.qtyAvailable += inv.qtyAvailable;
+                 // Optionally keep newest/oldest expiry? Keeping first one found (usually oldest due to default sort order if any)
+             } else {
+                 decryptedInventoryMap.set(key, { ...inv, batchNumber: bn });
+             }
+        });
+
+        const consolidatedInventory = Array.from(decryptedInventoryMap.values());
+
+        return { ...med, brandName, genericName, strength, inventory: consolidatedInventory };
       }).filter(med => {
         if (!q) return true;
         return (
@@ -1795,7 +1835,8 @@ dashboardRouter.post(
 
 
           return { sale, receiptNo, receiptItems };
-        }
+        },
+        { timeout: 45000 }
       ); // end transaction
 
       // Generate & Stream PDF
