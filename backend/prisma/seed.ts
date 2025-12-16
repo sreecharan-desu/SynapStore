@@ -172,13 +172,13 @@ async function main() {
   console.log(`Checking ${allStores.length} stores and ${allSuppliers.length} suppliers.`);
 
   // 2. Process Per Store
-  for (const store of allStores) {
+  await Promise.all(allStores.map(async (store) => {
     console.log(`\n🏪 Simulating Store: ${store.name}`);
     const owner = store.users.find(u => u.role === "STORE_OWNER") || store.users[0];
     const ownerId = owner?.userId;
     
     // 2.1 Ensure Key Medicines Exist
-    console.log("   💊 Verifying Catalog (Bulk Mode)...");
+    // console.log("   💊 Verifying Catalog (Bulk Mode)...");
     const medicineMap = new Map<string, string>(); // Name -> ID
     
     // Fetch all existing medicines for this store
@@ -199,7 +199,7 @@ async function main() {
     }
 
     if (missingItems.length > 0) {
-        console.log(`      Creating ${missingItems.length} missing medicines...`);
+        // console.log(`      Creating ${missingItems.length} missing medicines...`);
         await prisma.medicine.createMany({
             data: missingItems.map(item => ({
                 storeId: store.id,
@@ -249,7 +249,7 @@ async function main() {
 
 
     // 3. Time Loop
-    console.log("   ⏳ Running Time Simulation...");
+    // console.log("   ⏳ Running Time Simulation...");
     let currentDate = new Date(START_DATE);
     const today = new Date();
     
@@ -257,9 +257,10 @@ async function main() {
     // We'll advance day by day
     while (currentDate <= today) {
         const dateStr = currentDate.toISOString().split('T')[0];
-        if (currentDate.getDate() % 10 === 0 || currentDate.getDate() === 1) {
-             console.log(`   🗓️  Simulating date: ${dateStr}`);
-        }
+        // if (currentDate.getDate() % 10 === 0 || currentDate.getDate() === 1) {
+        //      console.log(`   🗓️  Simulating date: ${dateStr}`);
+        // }
+        // Commenting out logs to reduce clutter in parallel mode
         
         const isWeekend = currentDate.getDay() === 0 || currentDate.getDay() === 6;
         const currentMonth = currentDate.getMonth(); // 0-11
@@ -479,7 +480,7 @@ async function main() {
         // Advance Day
         currentDate = addDays(currentDate, 1);
     }
-  }
+  }));
 
   console.log("✅ Seed Completed Successfully with Realistic Flows!");
 }
