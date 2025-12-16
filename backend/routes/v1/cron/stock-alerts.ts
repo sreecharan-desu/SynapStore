@@ -78,17 +78,45 @@ cronRouter.get("/stock-alerts", async (req: Request, res: Response) => {
         take: 20 // Limit to top 20 to prevent giant emails
       });
 
-      // b. Low Stock
-      const lowStockItems = await prisma.inventoryBatch.findMany({
+      // b. Low Stock (Aggregated by Medicine)
+      // Fixes issue where empty old batches triggered low stock alerts despite having total stock
+      const lowStockGroups = await prisma.inventoryBatch.groupBy({
+        by: ['medicineId'],
         where: {
-          storeId: store.id,
+          storeId: store.id
+        },
+        _sum: {
+          qtyAvailable: true
+        },
+        having: {
           qtyAvailable: {
-            lte: LOW_STOCK_THRESHOLD_QTY
+            _sum: {
+              lte: LOW_STOCK_THRESHOLD_QTY
+            }
           }
         },
-        include: { medicine: true },
         take: 20
       });
+
+      let lowStockItems: any[] = []; // transformed for template
+
+      if (lowStockGroups.length > 0) {
+          const medIds = lowStockGroups.map(g => g.medicineId);
+          const meds = await prisma.medicine.findMany({
+              where: { id: { in: medIds } },
+              select: { id: true, brandName: true }
+          });
+          
+          lowStockItems = lowStockGroups.map(g => {
+              const m = meds.find(x => x.id === g.medicineId);
+              return {
+                  medicine: m || { brandName: 'Unknown' },
+                  // For aggregated low stock, we show 'Total' instead of a batch number
+                  batchNumber: 'Total Stock', 
+                  qtyAvailable: g._sum.qtyAvailable || 0
+              };
+          });
+      }
 
       // 5. Send Alert if needed
       if (expiringItems.length > 0 || lowStockItems.length > 0) {
