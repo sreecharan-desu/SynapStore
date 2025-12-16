@@ -73,7 +73,8 @@ const GoogleSignInButton: React.FC<{
   googleClientId: string;
   onCredential: (credential: string) => void;
   onError: (msg: string) => void;
-}> = ({ googleClientId, onCredential, onError }) => {
+  disabled?: boolean;
+}> = ({ googleClientId, onCredential, onError, disabled }) => {
   const btnRef = useRef<HTMLDivElement>(null);
   const [rendered, setRendered] = useState(false);
 
@@ -146,6 +147,7 @@ const GoogleSignInButton: React.FC<{
   }, [googleClientId, onCredential, onError]);
 
   const manualSignIn = () => {
+    if (disabled) return;
     if (window.google?.accounts?.id) {
       window.google.accounts.id.prompt();
     } else {
@@ -154,13 +156,14 @@ const GoogleSignInButton: React.FC<{
   };
 
   return (
-    <div className="min-h-[50px] flex justify-center w-full">
+    <div className={`min-h-[50px] flex justify-center w-full transition-opacity ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
       <div ref={btnRef} className="w-full flex justify-center" />
       {!rendered && (
         <button
           onClick={manualSignIn}
           type="button"
-          className="w-[240px] flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 py-3 rounded-full font-medium hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm hover:shadow-md active:scale-[0.98]"
+          disabled={disabled}
+          className="w-[240px] flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 py-3 rounded-full font-medium hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm hover:shadow-md active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <FcGoogle className="w-5 h-5" />
           <span className="text-sm cursor-pointer">Continue with Google</span>
@@ -688,6 +691,7 @@ const Login: React.FC = () => {
                     googleClientId={googleClientId}
                     onCredential={(cred) => handleGoogleCredential(cred).catch(() => { })}
                     onError={(msg) => toast.error(msg)}
+                    disabled={loading || !isFormEnabled}
                   />
 
                   <div className="mt-8 text-center">

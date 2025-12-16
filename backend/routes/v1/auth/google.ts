@@ -71,11 +71,8 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
 
   const { idToken, captchaToken } = parsed.data;
 
-  // Verify Captcha
-  if (process.env.CLOUDFLARE_SECRET_KEY) {
-      if (!captchaToken) {
-          return sendError(res, "Please verify you are human to continue.", 400); 
-      }
+  // Verify Captcha (optional/bypassable)
+  if (process.env.CLOUDFLARE_SECRET_KEY && captchaToken) {
       const isHuman = await verifyTurnstileToken(captchaToken);
       if (!isHuman) {
           return sendError(res, "Verification failed. Please try the captcha again.", 400);
