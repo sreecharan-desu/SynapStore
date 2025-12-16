@@ -197,7 +197,6 @@ const Login: React.FC = () => {
 
   const [captchaToken, setCaptchaToken] = useState("");
   const CLOUDFLARE_SITE_KEY = import.meta.env.VITE_CLOUDFLARE_SITE_KEY || "";
-  console.log(CLOUDFLARE_SITE_KEY)
 
   const googleClientId = getGoogleClientId();
 
