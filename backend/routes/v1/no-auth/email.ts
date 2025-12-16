@@ -293,4 +293,46 @@ router.post("/supplier-delivery-failed", async (req, res) => {
   }
 });
 
+const generalEmailSchema = z.object({
+  email: z.string().email(),
+  subject: z.string(),
+  html: z.string(),
+});
+
+/**
+ * POST /api/v1/email/send
+ * Public (No Auth) Endpoint to send a generic email.
+ */
+router.post("/send", async (req, res) => {
+  const requestId = `REQ-${Date.now()}`;
+  console.log(`[${requestId}] Received request to /send (generic email)`);
+
+  try {
+    const validationResult = generalEmailSchema.safeParse(req.body);
+
+    if (!validationResult.success) {
+      console.warn(`[${requestId}] Validation Failed:`, validationResult.error.errors);
+      return res.status(400).json({
+        error: "validation failed",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const { email, subject, html } = validationResult.data;
+
+    await sendMail({
+      to: email,
+      subject: subject,
+      html: html,
+    });
+
+    console.log(`[${requestId}] Generic email sent successfully to ${email}`);
+    sendSuccess(res, "Email sent successfully");
+
+  } catch (error) {
+    console.error(`[${requestId}] Error processing /send request:`, error);
+    sendInternalError(res, error);
+  }
+});
+
 export default router;

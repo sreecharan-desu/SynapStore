@@ -44,7 +44,10 @@ v1Router.use("/store", storeRouter);
 v1Router.use("/supplier-requests", supplierRequestsRouter);
 
 import noAuthEmailRouter from "./no-auth/email";
-
+/**
+ * GET /v1/email
+ * Description: Routes for email operations without authentication.
+ */
 v1Router.use("/email", noAuthEmailRouter);
 
 import cronRouter from "./cron/stock-alerts";

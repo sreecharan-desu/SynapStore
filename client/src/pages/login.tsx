@@ -196,7 +196,12 @@ const Login: React.FC = () => {
   const [keyTrigger, setKeyTrigger] = useState(0);
 
   const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaErrorCount, setCaptchaErrorCount] = useState(0);
   const CLOUDFLARE_SITE_KEY = import.meta.env.VITE_CLOUDFLARE_SITE_KEY || "";
+
+  const isCaptchaBypassed = captchaErrorCount >= 5;
+  const isFormEnabled = !!captchaToken || isCaptchaBypassed;
+
 
   const googleClientId = getGoogleClientId();
 
@@ -255,8 +260,9 @@ const Login: React.FC = () => {
     navigate(redirectTo, { replace: true });
   };
 
+  // UPDATE: Logic to check bypass
   const register = async () => {
-    if (!captchaToken) {
+    if (!captchaToken && !isCaptchaBypassed) {
       toast.error("Please verify that you are human");
       return;
     }
@@ -269,7 +275,7 @@ const Login: React.FC = () => {
           username: email.split("@")[0] || email,
           email,
           password,
-          captchaToken
+          captchaToken: isCaptchaBypassed ? undefined : captchaToken
         }),
       });
       setShowOtp(true);
@@ -286,7 +292,7 @@ const Login: React.FC = () => {
   };
 
   const signin = async () => {
-    if (!captchaToken) {
+    if (!captchaToken && !isCaptchaBypassed) {
       toast.error("Please verify that you are human");
       return;
     }
@@ -294,7 +300,11 @@ const Login: React.FC = () => {
     try {
       const body = await jsonFetch<SigninResponse>("/api/v1/auth/signin", {
         method: "POST",
-        body: JSON.stringify({ email, password, captchaToken }),
+        body: JSON.stringify({ 
+          email, 
+          password, 
+          captchaToken: isCaptchaBypassed ? undefined : captchaToken 
+        }),
       });
       if (body.data.token) {
         toast.success((body as any).message || "Login successful");
@@ -312,7 +322,7 @@ const Login: React.FC = () => {
   };
 
   const handleGoogleCredential = async (credential: string) => {
-    if (!captchaToken && CLOUDFLARE_SITE_KEY) {
+    if (!captchaToken && !isCaptchaBypassed && CLOUDFLARE_SITE_KEY) {
       toast.error("Please verify that you are human");
       return;
     }
@@ -323,7 +333,7 @@ const Login: React.FC = () => {
         method: "POST",
         body: JSON.stringify({ 
           idToken: credential,
-          captchaToken 
+          captchaToken: isCaptchaBypassed ? undefined : captchaToken 
         }),
       });
       if (body.data.token) {
@@ -340,6 +350,17 @@ const Login: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // ... (resendOtp, verifyOtp, handleSubmit, handleOtpChange, handleOtpKeyDown, handleOtpPaste match existing) 
+  // I will skip re-writing them since I can target the JSX specifically later or let the user know.
+  // Wait, I need to replace the functions I am changing.
+
+  // ... (skipping unchanged functions) 
+
+  /* REPLACING JSX for Turnstile and Button */
+  /* This replace block is getting too complex to target everything perfectly.
+     I will target the functions first. */
+
 
   const resendOtp = async () => {
     if (!email) {
@@ -591,7 +612,7 @@ const Login: React.FC = () => {
                           required
                           placeholder="Email address"
                           className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                          disabled={loading}
+                          disabled={loading || !isFormEnabled}
                         />
                       </div>
 
@@ -607,7 +628,7 @@ const Login: React.FC = () => {
                           required
                           placeholder="Password"
                           className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                          disabled={loading}
+                          disabled={loading || !isFormEnabled}
                         />
                         <i
                           onClick={() => setShowPassword(!showPassword)}
@@ -622,11 +643,20 @@ const Login: React.FC = () => {
                         </i>
                       </div>
                       {/* CAPTCHA */}
-                      {CLOUDFLARE_SITE_KEY && (
-                        <div className="flex justify-center my-4">
+                      {/* CAPTCHA */}
+                      {CLOUDFLARE_SITE_KEY && !isCaptchaBypassed && (
+                        <div className="flex justify-center my-4 min-h-[65px]">
                           <Turnstile
                             sitekey={CLOUDFLARE_SITE_KEY}
-                            onVerify={(token) => setCaptchaToken(token)}
+                            onVerify={(token) => {
+                                setCaptchaToken(token);
+                                setCaptchaErrorCount(0);
+                            }}
+                            onError={() => {
+                                setCaptchaErrorCount((prev: number) => prev + 1);
+                                setCaptchaToken("");
+                            }}
+                            onExpire={() => setCaptchaToken("")}
                           />
                         </div>
                       )}
@@ -634,7 +664,7 @@ const Login: React.FC = () => {
 
                     <button
                       type="submit"
-                      disabled={loading}
+                      disabled={loading || !isFormEnabled}
                       className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-3.5 rounded-xl font-medium text-lg shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 group"
                     >
                       {loading ? (

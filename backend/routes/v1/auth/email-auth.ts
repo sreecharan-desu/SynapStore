@@ -438,11 +438,8 @@ router.post(
       const { password, captchaToken } = parsed.data;
       const email = parsed.data.email.toLowerCase();
 
-      // Verify Captcha
-      if (process.env.CLOUDFLARE_SECRET_KEY) {
-        if (!captchaToken) {
-           return sendError(res, "Captcha verification required", 400); 
-        }
+      // Verify Captcha (optional/bypassable)
+      if (process.env.CLOUDFLARE_SECRET_KEY && captchaToken) {
         const isHuman = await verifyTurnstileToken(captchaToken);
         if (!isHuman) {
            return sendError(res, "Captcha verification failed", 400);
