@@ -20,8 +20,35 @@ import {
 } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
 import { sendNotification } from "../../../lib/notification";
+import axios from "axios";
 
 const router = Router();
+
+// Cloudflare Turnstile Verification Helper
+async function verifyTurnstileToken(token: string): Promise<boolean> {
+  const SECRET_KEY = process.env.CLOUDFLARE_SECRET_KEY;
+  if (!SECRET_KEY) {
+      console.warn("CLOUDFLARE_SECRET_KEY not set - skipping captcha verification");
+      return true; // fail open if config missing
+  }
+
+  try {
+    const formData = new URLSearchParams();
+    formData.append('secret', SECRET_KEY);
+    formData.append('response', token);
+
+    const result = await axios.post(
+      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+      formData
+    );
+    
+    return result.data.success === true;
+  } catch (err) {
+    console.error("Turnstile verification failed:", err);
+    return false;
+  }
+}
+
 
 // encrypted fields stored with crypto$.encryptCell / encryptCellDeterministic
 const ENCRYPTED_FIELDS = ["username", "email", "imageUrl"];
@@ -31,6 +58,7 @@ const registerSchema = z.object({
   username: z.string().min(3, "username must be at least 3 characters"),
   email: z.string().email("invalid email"),
   password: z.string().min(6, "password must be at least 6 characters"),
+  captchaToken: z.string().optional(),
 });
 
 const resendSchema = z.object({
@@ -40,6 +68,7 @@ const resendSchema = z.object({
 const signinSchema = z.object({
   email: z.string().email("invalid email"),
   password: z.string().min(6, "password must be at least 6 characters"),
+  captchaToken: z.string().optional(),
 });
 
 const verifyOtpSchema = z.object({
@@ -206,8 +235,19 @@ router.post(
       if (!parsed.success) {
         return handleZodError(res, parsed.error);
       }
-      const { username, password } = parsed.data;
+      const { username, password, captchaToken } = parsed.data;
       const email = parsed.data.email.toLowerCase();
+
+      // Verify Captcha
+      if (process.env.CLOUDFLARE_SECRET_KEY) {
+        if (!captchaToken) {
+           return sendError(res, "Captcha verification required", 400); 
+        }
+        const isHuman = await verifyTurnstileToken(captchaToken);
+        if (!isHuman) {
+           return sendError(res, "Captcha verification failed", 400);
+        }
+      }
 
       // check duplicates via deterministic encryption lookups
       const existingEmail = await findUserByEmail(email);
@@ -395,8 +435,19 @@ router.post(
         return handleZodError(res, parsed.error);
       }
 
-      const { password } = parsed.data;
+      const { password, captchaToken } = parsed.data;
       const email = parsed.data.email.toLowerCase();
+
+      // Verify Captcha
+      if (process.env.CLOUDFLARE_SECRET_KEY) {
+        if (!captchaToken) {
+           return sendError(res, "Captcha verification required", 400); 
+        }
+        const isHuman = await verifyTurnstileToken(captchaToken);
+        if (!isHuman) {
+           return sendError(res, "Captcha verification failed", 400);
+        }
+      }
 
       const user = await findUserByEmail(email);
       if (!user) return sendError(res, "Account does not exist", 404, { code: "user_not_found" });

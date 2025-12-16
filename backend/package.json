@@ -33,7 +33,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.1.0",
     "@types/pdfkit": "^0.17.4",
-    "axios": "^1.7.7",
+    "axios": "^1.13.2",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.65.1",
     "compression": "^1.8.1",

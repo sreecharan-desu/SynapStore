@@ -11,9 +11,37 @@ import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternal
 
 const GoogleRouter = Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+import axios from "axios";
+
+// Cloudflare Turnstile Verification Helper
+async function verifyTurnstileToken(token: string): Promise<boolean> {
+  const SECRET_KEY = process.env.CLOUDFLARE_SECRET_KEY;
+  if (!SECRET_KEY) {
+      console.warn("CLOUDFLARE_SECRET_KEY not set - skipping captcha verification");
+      return true; // fail open if config missing
+  }
+
+  try {
+    const formData = new URLSearchParams();
+    formData.append('secret', SECRET_KEY);
+    formData.append('response', token);
+
+    const result = await axios.post(
+      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+      formData
+    );
+    
+    return result.data.success === true;
+  } catch (err) {
+    console.error("Turnstile verification failed:", err);
+    return false;
+  }
+}
+
 
 const googleSchema = z.object({
   idToken: z.string().min(20, "idToken is required"),
+  captchaToken: z.string().optional(),
 });
 
 // Helper respond removed, using standard helpers from lib/api
@@ -41,7 +69,18 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
     return handleZodError(res, parsed.error);
   }
 
-  const { idToken } = parsed.data;
+  const { idToken, captchaToken } = parsed.data;
+
+  // Verify Captcha
+  if (process.env.CLOUDFLARE_SECRET_KEY) {
+      if (!captchaToken) {
+          return sendError(res, "Please verify you are human to continue.", 400); 
+      }
+      const isHuman = await verifyTurnstileToken(captchaToken);
+      if (!isHuman) {
+          return sendError(res, "Verification failed. Please try the captcha again.", 400);
+      }
+  }
 
   try {
     const ticket = await client.verifyIdToken({
@@ -50,14 +89,14 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
     });
     const payload:any = ticket.getPayload();
     if (!payload)
-      return sendError(res, "Invalid ID token payload", 400);
+      return sendError(res, "We couldn't verify your Google account. Please try again.", 400);
 
     const email = payload.email.trim().toLowerCase();
     const name = payload.name ?? "";
     const picture = payload.picture ?? "";
 
     if (!email)
-      return sendError(res, "Google account missing email address", 400);
+      return sendError(res, "Your Google account doesn't seem to have an email address linked.", 400);
 
     const encEmail = crypto$.encryptCellDeterministic(email);
     const usernamePlain = name || email.split("@")[0];
@@ -81,7 +120,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       userRow?.globalRole &&
       RESTRICTED_GOOGLE_ROLES.includes(userRow.globalRole)
     ) {
-      return sendError(res, "Google login not allowed for this account", 403);
+      return sendError(res, "This account type needs to sign in with email and password.", 403);
     }
 
     if (userRow) {
@@ -139,7 +178,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
     }
 
     if (!userRow.isActive) {
-      return sendError(res, "This account has been temporarily disabled/suspended", 403, { code: "user_not_active" });
+      return sendError(res, "We've noticed a temporary hold on this account. Please reach out to support.", 403, { code: "user_not_active" });
     }
 
     const user = crypto$.decryptObject(userRow, [
@@ -269,7 +308,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
         responseData.role_data.supplier_id = supplierRows[0].id;
     }
 
-    return sendSuccess(res, "Google authentication successful", responseData);
+    return sendSuccess(res, "Welcome back! Google authentication successful.", responseData);
 
   } catch (err: any) {
     console.error("Google sign-in error:", err?.message ?? err);
@@ -277,9 +316,9 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
       err?.message?.includes("Token used too late") ||
       err?.message?.includes("invalid")
     ) {
-      return sendError(res, "Invalid or expired Google ID token", 400);
+      return sendError(res, "It seems your session expired. Please sign in again.", 400);
     }
-    return sendInternalError(res, err, "Failed to verify ID token with Google");
+    return sendInternalError(res, err, "We encountered a small hiccup verification with Google. Please try again.");
   }
 });
 

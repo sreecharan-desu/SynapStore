@@ -11,6 +11,7 @@ import { Mail, Lock, ArrowRight, Loader2, RefreshCw, Eye, EyeOff, ChevronLeft } 
 // Animation
 import { motion, AnimatePresence } from "framer-motion";
 import Login3DCharacter from "../components/Login3DCharacter";
+import Turnstile from "react-turnstile";
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 60;
@@ -194,6 +195,10 @@ const Login: React.FC = () => {
   const [focusedField, setFocusedField] = useState<"email" | "password" | null>(null);
   const [keyTrigger, setKeyTrigger] = useState(0);
 
+  const [captchaToken, setCaptchaToken] = useState("");
+  const CLOUDFLARE_SITE_KEY = import.meta.env.VITE_CLOUDFLARE_SITE_KEY || "";
+  console.log(CLOUDFLARE_SITE_KEY)
+
   const googleClientId = getGoogleClientId();
 
   useEffect(() => {
@@ -252,6 +257,10 @@ const Login: React.FC = () => {
   };
 
   const register = async () => {
+    if (!captchaToken) {
+      toast.error("Please verify that you are human");
+      return;
+    }
     setLoading(true);
 
     try {
@@ -261,6 +270,7 @@ const Login: React.FC = () => {
           username: email.split("@")[0] || email,
           email,
           password,
+          captchaToken
         }),
       });
       setShowOtp(true);
@@ -277,11 +287,15 @@ const Login: React.FC = () => {
   };
 
   const signin = async () => {
+    if (!captchaToken) {
+      toast.error("Please verify that you are human");
+      return;
+    }
     setLoading(true);
     try {
       const body = await jsonFetch<SigninResponse>("/api/v1/auth/signin", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, captchaToken }),
       });
       if (body.data.token) {
         toast.success((body as any).message || "Login successful");
@@ -299,11 +313,19 @@ const Login: React.FC = () => {
   };
 
   const handleGoogleCredential = async (credential: string) => {
+    if (!captchaToken && CLOUDFLARE_SITE_KEY) {
+      toast.error("Please verify that you are human");
+      return;
+    }
+
     setLoading(true);
     try {
       const body = await jsonFetch<SigninResponse>("/api/v1/oauth/google", {
         method: "POST",
-        body: JSON.stringify({ idToken: credential }),
+        body: JSON.stringify({ 
+          idToken: credential,
+          captchaToken 
+        }),
       });
       if (body.data.token) {
         toast.success((body as any).message || "Login successful");
@@ -600,6 +622,15 @@ const Login: React.FC = () => {
                           )}
                         </i>
                       </div>
+                      {/* CAPTCHA */}
+                      {CLOUDFLARE_SITE_KEY && (
+                        <div className="flex justify-center my-4">
+                          <Turnstile
+                            sitekey={CLOUDFLARE_SITE_KEY}
+                            onVerify={(token) => setCaptchaToken(token)}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <button
