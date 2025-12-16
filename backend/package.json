@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
-    "worker": "ts-node --transpile-only worker-entry.ts"
+    "worker": "ts-node --transpile-only worker-entry.ts",
+    "test:waf": "ts-node scripts/test-waf.ts"
   },
   "author": "SreeCharan Desu",
   "license": "MIT",
