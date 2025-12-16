@@ -50,8 +50,9 @@ export const ChatbotWidget = () => {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const isDraggingRef = useRef(false);
 
-    // Generate a stable thread_id for the session or user
-    const threadIdRef = useRef(user?.id || `anon-${Math.random().toString(36).substr(2, 9)}`);
+    // Strictly use the user ID as the thread ID per requirements
+    // The widget is only rendered if isAuthenticated is true, so user.id should be available.
+    const threadId = user?.id;
 
     // Theme logic integration
     const [themeName, setThemeName] = useState("green");
@@ -111,7 +112,7 @@ export const ChatbotWidget = () => {
         try {
             const data = await sendChatMessage({
                 message: userMsg.text,
-                thread_id: threadIdRef.current
+                thread_id: threadId
             }, token || "");
 
             console.log("Bot Response:", data);
@@ -419,3 +420,5 @@ export const ChatbotWidget = () => {
         </motion.div >
     );
 };
+
+
