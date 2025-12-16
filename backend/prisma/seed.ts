@@ -3,7 +3,7 @@ import prisma from "../lib/prisma";
 import { StockMovementReason } from "@prisma/client";
 
 // --- Configuration ---
-const SIMULATION_DAYS = 30; // Past 1 month (Optimized for speed)
+const SIMULATION_DAYS = 7; // Past 1 week (Super Fast)
 const START_DATE = new Date();
 START_DATE.setDate(START_DATE.getDate() - SIMULATION_DAYS);
 
