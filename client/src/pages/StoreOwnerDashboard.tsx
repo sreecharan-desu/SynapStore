@@ -388,20 +388,28 @@ const StoreOwnerDashboard: React.FC = () => {
         setForecastQuery(""); // clear search to hide dropdown
         setIsForecastLoading(true);
         try {
-            // Use auth.effectiveStore.id
-            if (!auth.effectiveStore?.id) {
-                alert("Store ID missing");
+            // Use auth.effectiveStore.id or fallback to data.store.id
+            const storeId = auth.effectiveStore?.id || data?.store?.id;
+
+            if (!storeId) {
+                console.error("Store ID missing", { authStore: auth.effectiveStore, dataStore: data?.store });
+                alert("Store ID missing. Please refresh the page.");
+                setIsForecastLoading(false);
                 return;
             }
             const res = await dashboardApi.getInventoryForecast({
-                store_id: auth.effectiveStore.id,
+                store_id: storeId,
                 medicine_id: medicine.id,
                 horizon_days: [7, 15, 30]
             });
             setForecastData(res.data);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Forecast failed", err);
-            alert("Failed to generate forecast");
+            if (err.response?.status === 400 && err.response?.data?.detail) {
+                alert(`Forecast Failed: ${err.response.data.detail}`);
+            } else {
+                alert("Failed to generate forecast");
+            }
         } finally {
             setIsForecastLoading(false);
         }
@@ -956,9 +964,9 @@ const StoreOwnerDashboard: React.FC = () => {
 
                         {/* Notifications */}
                         <div className="relative" ref={notificationRef}>
-                            <p
+                            <div
                                 onClick={() => setShowNotifications(!showNotifications)}
-                                className="p-2.5 bg-white border border-slate-200/80 rounded-xl text-slate-400 hover:text-slate-600 hover:border-slate-300 hover:shadow-md transition-all relative outline-none group"
+                                className="p-2.5 bg-white border border-slate-200/80 rounded-xl text-slate-400 hover:text-slate-600 hover:border-slate-300 hover:shadow-md transition-all relative outline-none group cursor-pointer"
                             >
                                 <motion.div
                                     animate={supplierRequests.length > 0 ? { rotate: [0, -20, 20, -20, 20, 0] } : {}}
@@ -972,7 +980,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                         {supplierRequests.length}
                                     </span>
                                 )}
-                            </p>
+                            </div>
 
                             <AnimatePresence>
                                 {showNotifications && (
@@ -1057,16 +1065,16 @@ const StoreOwnerDashboard: React.FC = () => {
                             </div>
 
                             {/* Logout Button */}
-                            <p
+                            <div
                                 onClick={handleLogout}
                                 className="w-10 h-10 flex items-center justify-center rounded-full
              bg-transparent text-slate-500 border border-slate-200 shadow-sm
              hover:bg-red-50 hover:text-red-600 hover:border-red-200
-             transition-all"
+             transition-all cursor-pointer"
                                 title="Sign out"
                             >
                                 <LogOut className="w-5 h-5" /> {/* increased size */}
-                            </p>
+                            </div>
 
                         </div>
                     </div>
@@ -1175,9 +1183,19 @@ const StoreOwnerDashboard: React.FC = () => {
                                                         className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-none flex items-center justify-between group"
                                                         onClick={() => handleRunForecast(med)}
                                                     >
-                                                        <div>
+                                                        <div className="flex-1 pr-4">
                                                             <div className="font-bold text-slate-700 text-sm group-hover:text-indigo-600 transition-colors">{med.brandName}</div>
                                                             <div className="text-xs text-slate-400">{med.genericName} • {med.strength}</div>
+                                                            <div className="flex flex-wrap gap-2 mt-1.5">
+                                                                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                    {med.inventory && med.inventory.length > 0 ? `₹${med.inventory[0].mrp}` : "Out of Stock"}
+                                                                </span>
+                                                                {med.inventory && med.inventory.length > 0 && (
+                                                                    <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100 font-medium">
+                                                                        Batch: {med.inventory[0].batchNumber} {med.inventory.length > 1 && `+${med.inventory.length - 1}`}
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                         <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
                                                     </div>
@@ -1207,9 +1225,31 @@ const StoreOwnerDashboard: React.FC = () => {
                                         {/* Top Cards */}
                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Medicine</div>
-                                                <div className="font-bold text-lg text-slate-800 line-clamp-1">{forecastData.medicine_name}</div>
-                                                <div className="text-xs text-slate-500 mt-1">Current Stock: <span className="font-bold text-slate-900">{forecastData.current_stock}</span></div>
+                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Medicine Details</div>
+                                                <div className="font-bold text-lg text-slate-800 leading-tight">{forecastData.medicine_name}</div>
+                                                {_selectedForecastMedicine && (
+                                                    <div className="text-xs text-slate-500 mt-3 space-y-1.5 border-t border-slate-200 pt-2">
+                                                        <div className="grid grid-cols-2 gap-x-2">
+                                                            <span className="text-slate-400">Generic:</span>
+                                                            <span className="font-medium text-slate-700 truncate">{_selectedForecastMedicine.genericName}</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-x-2">
+                                                            <span className="text-slate-400">Strength:</span>
+                                                            <span className="font-medium text-slate-700">{_selectedForecastMedicine.strength}</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-x-2">
+                                                            <span className="text-slate-400">Mfr:</span>
+                                                            <span className="font-medium text-slate-700 truncate">{_selectedForecastMedicine.manufacturer}</span>
+                                                        </div>
+                                                        <div className="block mt-1">
+                                                            <span className="text-slate-400 block mb-0.5">Batch Numbers:</span>
+                                                            <span className="font-medium text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded text-[10px] break-all">
+                                                                {_selectedForecastMedicine.inventory?.map((b: any) => b.batchNumber).join(", ") || "N/A"}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-200">Current Stock: <span className="font-bold text-slate-900">{forecastData.current_stock}</span></div>
                                             </div>
 
                                             <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
@@ -1399,7 +1439,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <ChartContainer config={chartConfig} className="w-full h-[300px]">
+                                        <ChartContainer config={chartConfig} className="w-full h-[300px] min-h-[300px]">
                                             <ComposedChart
                                                 data={data?.charts.salesByDay
                                                     .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0)
@@ -1439,6 +1479,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                     }
                                                 />
                                                 <Area
+                                                    tooltipType="none"
                                                     type="monotone"
                                                     dataKey="revenue"
                                                     stroke={theme.hex}
