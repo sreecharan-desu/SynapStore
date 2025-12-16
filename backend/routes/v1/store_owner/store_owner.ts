@@ -1235,7 +1235,13 @@ dashboardRouter.get(
 
       const dek = dekFromEnv();
 
-      const result = medicines.map(m => {
+      // Pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const startIndex = (page - 1) * limit;
+      const endIndex = page * limit;
+
+      const fullResults = medicines.map(m => {
         let brandName = m.brandName;
         let genericName = m.genericName;
         let strength = m.strength;
@@ -1277,7 +1283,18 @@ dashboardRouter.get(
         return scoreB - scoreA;
       });
 
-      return sendSuccess(res, "Inventory list for reorder", { inventory: result });
+      // Slice results for pagination (post-processing is required due to custom sort)
+      const paginatedResults = fullResults.slice(startIndex, endIndex);
+
+      return sendSuccess(res, "Inventory list for reorder", { 
+        inventory: paginatedResults,
+        pagination: {
+            total: fullResults.length,
+            page,
+            limit,
+            totalPages: Math.ceil(fullResults.length / limit)
+        }
+      });
     } catch (err) {
       next(err);
     }

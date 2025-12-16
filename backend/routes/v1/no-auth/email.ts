@@ -75,9 +75,7 @@ router.post("/storeowner-dispatch", async (req, res) => {
       )
       .join("");
 
-    const logo_url =
-      "https://res.cloudinary.com/dzunpdnje/image/upload/" +
-      "v1765706205/WhatsApp_Image_2025-12-14_at_15.23.36_sdfrsk.jpg";
+    const logo_url ="https://res.cloudinary.com/dzunpdnje/image/upload/v1765706720/SynapStore_Logo_g2tlah.png";
 
     const subject = `Stock Dispatched to ${store_name} | Invoice #${invoice_id}`;
     const html_body = `
@@ -206,8 +204,7 @@ router.post("/supplier-delivery-failed", async (req, res) => {
                     padding:24px;border-radius:8px;border:1px solid #e0e0e0;">
 
           <div style="text-align:center;margin-bottom:20px;">
-            <img src="${logo_url}" alt="SynapStore"
-                 style="max-width:140px;height:auto;" />
+   
           </div>
 
           <h2 style="margin-top:0;color:#d9534f;text-align:center;">

@@ -75,7 +75,7 @@ cronRouter.get("/stock-alerts", async (req: Request, res: Response) => {
           qtyAvailable: { gt: 0 } // Only check items we actually have
         },
         include: { medicine: true },
-        take: 20 // Limit to top 20 to prevent giant emails
+        take: 5 // Limit to top 5 to prevent giant emails
       });
 
       // b. Low Stock (Aggregated by Medicine)
@@ -94,6 +94,11 @@ cronRouter.get("/stock-alerts", async (req: Request, res: Response) => {
               lte: LOW_STOCK_THRESHOLD_QTY
             }
           }
+        },
+        orderBy: {
+            _sum: {
+                qtyAvailable: 'asc'
+            }
         },
         take: 20
       });
@@ -120,11 +125,25 @@ cronRouter.get("/stock-alerts", async (req: Request, res: Response) => {
 
       // 5. Send Alert if needed
       if (expiringItems.length > 0 || lowStockItems.length > 0) {
-        const storeOwners = store.users.map((u: any) => u.user.email);
+        const storeOwners = store.users
+            .map((u: any) => u.user.email?.toLowerCase())
+            .filter((e: string | undefined) => !!e);
+            
+        const normalizedAdmins = adminEmails
+            .map(e => e?.toLowerCase())
+            .filter(e => !!e);
         
         // Combine owners and admins, unique list
-        const recipients = [...new Set([...storeOwners, ...adminEmails])];
+        const recipients = [...new Set([...storeOwners, ...normalizedAdmins])];
         
+        console.log(`
+  📦 [StockAlert] Processing Store: ${store.name}
+  ───────────────────────────────────────────────
+  📧 Recipients: ${recipients.join(", ")}
+  📉 Low Stock Items: ${lowStockItems.length}
+  ⏳ Expiring Items: ${expiringItems.length}
+        `);
+
         // Map to simpler format for template
         const mappedExpiring = expiringItems.map((i: any) => ({
             name: i.medicine.brandName,
@@ -134,7 +153,7 @@ cronRouter.get("/stock-alerts", async (req: Request, res: Response) => {
 
         const mappedLowStock = lowStockItems.map((i: any) => ({
             name: i.medicine.brandName,
-            batch: i.batchNumber || 'N/A',
+            batch: i.batchNumber || 'N/A', // aggregated shows 'Total Stock'
             qty: i.qtyAvailable
         }));
 
@@ -148,6 +167,8 @@ cronRouter.get("/stock-alerts", async (req: Request, res: Response) => {
              html: emailHtml
            })
         ));
+
+        console.log(`  ✅ Emails sent to owners/admins`);
 
         // b. Send to Connected Suppliers (Only for Low Stock items - Expiring is internal concern usually)
         if (mappedLowStock.length > 0) {
@@ -176,8 +197,10 @@ cronRouter.get("/stock-alerts", async (req: Request, res: Response) => {
             });
 
             await Promise.all(supplierPromises);
-            console.log(`Notified ${supplierPromises.length} suppliers for ${store.name}`);
+            console.log(`  🚚 Notified ${supplierPromises.length} suppliers`);
         }
+        
+        console.log(`  ───────────────────────────────────────────────\n`);
 
         // Log the action so we don't spam
         await prisma.activityLog.create({
@@ -201,7 +224,11 @@ cronRouter.get("/stock-alerts", async (req: Request, res: Response) => {
 
   } catch (error) {
     console.error("Cron Job Error:", error);
-    return res.status(500).json({ success: false, error: "Internal Server Error" });
+    return res.status(500).json({ 
+        success: false, 
+        error: "Internal Server Error",
+        details: error instanceof Error ? error.message : String(error)
+    });
   }
 });
 

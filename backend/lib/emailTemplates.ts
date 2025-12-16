@@ -347,7 +347,7 @@ export function getStockAlertEmailTemplate(storeName: string, expiringItems: any
     return `
       <div style="margin-bottom: 32px;">
         <h3 style="font-size: 14px; text-transform: uppercase; color: #6b7280; font-weight: 700; border-bottom: 2px solid ${type === 'expiry' ? '#ef4444' : '#f59e0b'}; padding-bottom: 8px; margin-bottom: 12px; display: inline-block;">
-          ${type === 'expiry' ? 'Action: Expiring Items' : 'Action: Low Stock'}
+          ${type === 'expiry' ? ' Expiring Soon' : ' Running Low'}
         </h3>
         <table width="100%" border="0" cellspacing="0" cellpadding="0">
           ${rows}
@@ -360,19 +360,20 @@ export function getStockAlertEmailTemplate(storeName: string, expiringItems: any
   const lowStockSection = generateList(lowStockItems, 'stock');
 
   const content = `
-    <h1 class="h-mobile" style="${HEADING_STYLES}">Inventory Alert</h1>
+    <h1 class="h-mobile" style="${HEADING_STYLES}">Inventory Update</h1>
     <p style="${TEXT_STYLES}">
-       Attention required for <strong>${storeName}</strong>. The following items triggered system thresholds.
+       Hello <strong>${storeName}</strong>,<br/>
+       We noticed some inventory items need your attention. Restock or clear them soon to maintain smooth operations.
     </p>
 
     ${expirySection}
     ${lowStockSection}
 
     <div style="text-align: center; margin-top: 32px;">
-      <a href="${FRONTEND_URL}/inventory" style="${BUTTON_STYLES}">Review & Reorder</a>
+      <a href="${FRONTEND_URL}/inventory" style="${BUTTON_STYLES}">Manage Inventory</a>
     </div>
   `;
-  return wrapContent(content, `Action Required - ${storeName}`);
+  return wrapContent(content, `Inventory Alert - ${storeName}`);
 }
 
 export function getSupplierClientStockAlertEmailTemplate(supplierName: string, storeName: string, lowStockItems: any[]): string {
@@ -390,23 +391,26 @@ export function getSupplierClientStockAlertEmailTemplate(supplierName: string, s
   `).join('');
 
   const content = `
-    <h1 class="h-mobile" style="${HEADING_STYLES}">Client Stock Alert</h1>
+    <h1 class="h-mobile" style="${HEADING_STYLES}">Sales Opportunity 🚀</h1>
     <p style="${TEXT_STYLES}">
        Hello <strong>${supplierName}</strong>,
     </p>
     <p style="${TEXT_STYLES}">
-       Your client, <strong>${storeName}</strong>, is running low on the following items. This is a great opportunity to reach out and restock them.
+       Your partner, <strong>${storeName}</strong>, is running low on the items listed below. This is a perfect moment to reach out and offer a refill.
     </p>
 
     <div style="margin-bottom: 32px;">
+      <h3 style="font-size: 14px; text-transform: uppercase; color: #6b7280; font-weight: 700; border-bottom: 2px solid #f59e0b; padding-bottom: 8px; margin-bottom: 12px; display: inline-block;">
+        📉 Low Stock Items
+      </h3>
       <table width="100%" border="0" cellspacing="0" cellpadding="0">
         ${rows}
       </table>
     </div>
 
     <div style="text-align: center; margin-top: 32px;">
-      <a href="${FRONTEND_URL}/supplier/dashboard" style="${BUTTON_STYLES}">Go to Dashboard</a>
+      <a href="${FRONTEND_URL}/supplier/dashboard" style="${BUTTON_STYLES}">View Client Status</a>
     </div>
   `;
-  return wrapContent(content, `Client Stock Alert - ${storeName}`);
+  return wrapContent(content, `Sales Opportunity - ${storeName}`);
 }
