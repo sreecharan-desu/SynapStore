@@ -192,7 +192,7 @@ const StoreCreate = () => {
 
       <button
         onClick={handleLogout}
-        className="hidden md:flex absolute top-6 right-6 items-center gap-2 text-slate-500 hover:text-red-600 transition-colors z-50 bg-white/80 backdrop-blur-md border border-slate-200/60 px-4 py-2 rounded-full hover:bg-white shadow-sm hover:shadow group"
+        className="hidden md:flex absolute top-6 right-6 items-center gap-2 text-slate-500 hover:text-black transition-colors z-50 bg-white/80 backdrop-blur-md border border-slate-200/60 px-4 py-2 rounded-full hover:bg-white shadow-sm hover:shadow group"
       >
         <span className="text-sm font-semibold">Logout</span>
         <LogOut className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
@@ -209,7 +209,7 @@ const StoreCreate = () => {
           {/* Mobile Logout Button */}
           <button
             onClick={handleLogout}
-            className="md:hidden absolute top-4 right-4 flex items-center gap-2 text-slate-500 hover:text-red-600 transition-colors bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm text-xs border border-slate-100"
+            className="md:hidden absolute top-4 right-4 flex items-center gap-2 text-slate-500 hover:text-black transition-colors bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm text-xs border border-slate-100"
           >
             <span>Logout</span>
             <LogOut className="w-3.5 h-3.5" />
@@ -383,7 +383,7 @@ const StoreCreate = () => {
                     <button
                       type="button"
                       onClick={() => setSelectedRole(null)}
-                      className="text-xs font-bold text-slate-400 hover:text-indigo-600 bg-slate-50 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-all"
+                      className="text-xs font-bold text-slate-400 hover:text-black bg-slate-50 px-3 py-1.5 rounded-lg hover:bg-slate-200 transition-all"
                     >
                       Change Role
                     </button>
@@ -453,7 +453,7 @@ const StoreCreate = () => {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-sm shadow-xl shadow-slate-900/20 hover:shadow-2xl hover:shadow-slate-900/40 hover:-translate-y-0.5 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3 group relative overflow-hidden"
+                      className="w-full !bg-black !text-white py-4 rounded-xl font-bold text-sm shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-0.5 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3 group relative overflow-hidden"
                     >
                       <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                       {loading ? (

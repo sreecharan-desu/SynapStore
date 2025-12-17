@@ -2,7 +2,7 @@ import React from "react";
 import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Settings, LogOut, Users, Package, Calendar, Search, X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, CheckCircle, Send, History, ClipboardList, Download, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, MoreHorizontal, Loader2, RefreshCw } from "lucide-react";
+import { Bell, Settings, LogOut, Users, Package, Calendar, Search, X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, CheckCircle, XCircle, Send, History, ClipboardList, Download, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, MoreHorizontal, Loader2, RefreshCw, Filter } from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 
 import { formatDistanceToNow } from "date-fns";
@@ -183,11 +183,13 @@ const StoreOwnerDashboard: React.FC = () => {
     // Reorder State
 
     const [inventoryList, setInventoryList] = React.useState<any[]>([]);
+    const [suggestedItems, setSuggestedItems] = React.useState<any[]>([]);
     const [cart, setCart] = React.useState<Map<string, number>>(new Map()); // medicineId -> qty
     const [reorderSupplierId, setReorderSupplierId] = React.useState<string>("");
     const [reorderNote, setReorderNote] = React.useState("");
     const [isAiLoading, setIsAiLoading] = React.useState(false);
     const [reorderSearchQuery, setReorderSearchQuery] = React.useState("");
+    const [inventoryFilter] = React.useState<"all" | "in_stock" | "out_of_stock">("all");
 
     const [isReorderLoading, setIsReorderLoading] = React.useState(false);
     const [isHistoryLoading, setIsHistoryLoading] = React.useState(false);
@@ -197,6 +199,17 @@ const StoreOwnerDashboard: React.FC = () => {
     const [showReceiptPreview, setShowReceiptPreview] = React.useState(false);
     const [currentReceiptUrl, setCurrentReceiptUrl] = React.useState<string | null>(null);
     const [currentSaleId, setCurrentSaleId] = React.useState<string | null>(null);
+    const [posInventoryFilter, setPosInventoryFilter] = React.useState<"all" | "in_stock" | "out_of_stock">("all");
+
+    const [isScrolled, setIsScrolled] = React.useState(false);
+
+    React.useEffect(() => {
+        const handleScroll = () => {
+            setIsScrolled(window.scrollY > 10);
+        };
+        window.addEventListener("scroll", handleScroll);
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
     const [receiptEmail, setReceiptEmail] = React.useState("");
     const [isSendingEmail, setIsSendingEmail] = React.useState(false);
 
@@ -206,6 +219,10 @@ const StoreOwnerDashboard: React.FC = () => {
     const [isRefreshing, setIsRefreshing] = React.useState(false);
     const [selectedReorder, setSelectedReorder] = React.useState<SupplierRequest | null>(null);
     const [showReorderDetails, setShowReorderDetails] = React.useState(false);
+
+    // Send Reorder Logic
+    const [isSendingReorder, setIsSendingReorder] = React.useState(false);
+    const [reorderResult, setReorderResult] = React.useState<{ type: 'success' | 'error', message: string } | null>(null);
 
     const [activeTab, setActiveTab] = React.useState<"overview" | "reorder" | "sale" | "history" | "suppliers" | "sent_reorders">("overview");
 
@@ -222,7 +239,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const handleOpenReorder = async () => {
         setIsReorderLoading(true);
         try {
-            const res = await dashboardApi.getInventory();
+            const res = await dashboardApi.getInventory({ limit: 1000 });
             if (res.data.success) {
                 setInventoryList(res.data.data.inventory);
             }
@@ -244,11 +261,11 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const handleReorderClick = () => {
         if (!reorderSupplierId) {
-            alert("Please select a supplier.");
+            setReorderResult({ type: 'error', message: "Please select a supplier." });
             return;
         }
         if (cart.size === 0) {
-            alert("Please add items to reorder.");
+            setReorderResult({ type: 'error', message: "Please add items to reorder." });
             return;
         }
         executeReorder();
@@ -256,21 +273,21 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const executeReorder = async () => {
         if (!reorderSupplierId) {
-            alert("Please select a supplier.");
+            setReorderResult({ type: 'error', message: "Please select a supplier." });
             return;
         }
         if (cart.size === 0) {
-            alert("Please add items to reorder.");
+            setReorderResult({ type: 'error', message: "Please add items to reorder." });
             return;
         }
 
         const items = Array.from(cart.entries()).map(([medicineId, quantity]) => {
-            const medicine = inventoryList.find((m: any) => m.id === medicineId);
+            const medicine = inventoryList.find((m: any) => m.id === medicineId) || suggestedItems.find((m: any) => m.id === medicineId);
             // Default to 0 if not found or no batches. 
             // Prefer taking from first available batch or defined fields.
-            const firstBatch = medicine?.batches?.[0];
-            const purchasePrice = firstBatch?.purchasePrice ? Number(firstBatch.purchasePrice) : 0;
-            const mrp = firstBatch?.mrp ? Number(firstBatch.mrp) : 0;
+            const firstBatch = medicine?.batches?.[0] || medicine?.inventory?.[0]; // Support both structures
+            const purchasePrice = firstBatch?.purchasePrice ? Number(firstBatch.purchasePrice) : (medicine?.purchasePrice || 0);
+            const mrp = firstBatch?.mrp ? Number(firstBatch.mrp) : (medicine?.mrp || 0);
 
             return {
                 medicineId,
@@ -280,6 +297,7 @@ const StoreOwnerDashboard: React.FC = () => {
             };
         });
 
+        setIsSendingReorder(true);
         try {
             const res = await dashboardApi.reorder({
                 supplierId: reorderSupplierId,
@@ -287,17 +305,17 @@ const StoreOwnerDashboard: React.FC = () => {
                 note: reorderNote
             });
             if (res.data.success) {
-                alert("Reorder request sent successfully!");
-                setActiveTab('overview');
-                setCart(new Map());
-                setReorderNote("");
-                setReorderSupplierId("");
+                setReorderResult({ type: 'success', message: "Reorder request sent successfully!" });
+                // We keep the state until user closes modal
             }
         } catch (err: any) {
             console.error(err);
-            alert("Failed to send reorder: " + err.message);
+            setReorderResult({ type: 'error', message: "Failed to send reorder: " + (err.response?.data?.message || err.message) });
+        } finally {
+            setIsSendingReorder(false);
         }
     };
+
 
     const handleSmartFill = async () => {
         setIsAiLoading(true);
@@ -314,11 +332,14 @@ const StoreOwnerDashboard: React.FC = () => {
                     return;
                 }
 
+                setSuggestedItems(suggestions);
+
                 // Auto-fill Cart
                 setCart(() => {
                     const newCart = new Map();
                     suggestions.forEach((s: any) => {
-                        newCart.set(s.medicineId, s.suggestedQty);
+                        // Backend returns 'id' for the medicine ID in the suggestions array
+                        newCart.set(s.id || s.medicineId, s.suggestedQty);
                     });
                     return newCart;
                 });
@@ -361,6 +382,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const [forecastData, setForecastData] = React.useState<any | null>(null);
     const [isForecastLoading, setIsForecastLoading] = React.useState(false);
     const [isForecastSearching, setIsForecastSearching] = React.useState(false);
+    const [forecastError, setForecastError] = React.useState<string | null>(null);
 
     const searchForecastMedicines = async (q: string) => {
         setIsForecastSearching(true);
@@ -395,7 +417,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
             if (!storeId) {
                 console.error("Store ID missing", { authStore: auth.effectiveStore, dataStore: data?.store });
-                alert("Store ID missing. Please refresh the page.");
+                setForecastError("Store ID missing. Please refresh the page.");
                 setIsForecastLoading(false);
                 return;
             }
@@ -408,9 +430,9 @@ const StoreOwnerDashboard: React.FC = () => {
         } catch (err: any) {
             console.error("Forecast failed", err);
             if (err.response?.status === 400 && err.response?.data?.detail) {
-                alert(`Forecast Failed: ${err.response.data.detail}`);
+                setForecastError(`Forecast Failed: ${err.response.data.detail}`);
             } else {
-                alert("Failed to generate forecast");
+                setForecastError("Failed to generate forecast");
             }
         } finally {
             setIsForecastLoading(false);
@@ -487,7 +509,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const handlePOSCheckoutClick = () => {
         if (posCart.size === 0) return;
-        setShowPOSConfirm(true);
+        executeCheckout();
     };
 
     const executeCheckout = async () => {
@@ -631,6 +653,31 @@ const StoreOwnerDashboard: React.FC = () => {
             fetchData();
         }
     }, [auth.token, fetchData]);
+
+    const refreshData = async () => {
+        setIsRefreshing(true);
+
+        // Refresh only the active section
+        switch (activeTab) {
+            case 'reorder':
+                await handleOpenReorder();
+                break;
+            case 'sale':
+                await searchPOSMedicines("");
+                break;
+            case 'history':
+                await handleViewReceipts();
+                break;
+            case 'overview':
+            case 'suppliers':
+            case 'sent_reorders':
+            default:
+                await fetchData();
+                break;
+        }
+
+        setTimeout(() => setIsRefreshing(false), 500); // Min delay for visual feedback
+    };
 
     // Effect to handle tab-specific data fetching
     React.useEffect(() => {
@@ -934,13 +981,20 @@ const StoreOwnerDashboard: React.FC = () => {
         <div className="min-h-screen relative bg-slate-50/50">
 
             {/* Header */}
-            <header className="sticky top-0 z-50 bg-white/70 backdrop-blur-xl border-b border-slate-200/60 transition-all duration-300">
+            <header
+                className={`fixed top-0 left-0 w-full z-40 pl-28 pr-8
+  transition-[background-color,backdrop-filter,box-shadow,border-color]
+  duration-500 ease-out
+  ${isScrolled
+                        ? 'bg-white/60 backdrop-blur-xl border-b border-slate-200/50 shadow-sm'
+                        : 'bg-white/0 backdrop-blur-md border-b border-transparent shadow-none'
+                    }`}
+            >
                 <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between gap-8">
                     {/* Left: Brand & Store Info */}
                     <div className="flex items-center gap-4 shrink-0">
-                        <div className={`w-12 h-12 ${theme.light} rounded-2xl flex items-center justify-center shadow-lg ${theme.shadow} overflow-hidden border-2 border-white`}>
-                            {/* Avatar or Default Icon */}
-                            <Store className={`w-6 h-6 ${theme.text}`} />
+                        <div className="w-12 h-12 flex items-center justify-center">
+                            <Store className="w-8 h-8 text-black" />
                         </div>
                         <div className="flex flex-col">
                             <h1 className="font-bold text-lg text-slate-800 tracking-tight leading-none">
@@ -958,6 +1012,15 @@ const StoreOwnerDashboard: React.FC = () => {
 
                     {/* Action buttons moved to Dock */}
                     <div className="flex items-center gap-2">
+
+                        {/* Refresh Button */}
+                        <div
+                            onClick={refreshData}
+                            className={`flex items-center justify-center p-2 rounded-lg bg-white border border-slate-200/80 shadow-sm cursor-pointer hover:bg-slate-50 transition-all ${isRefreshing ? 'opacity-70 pointer-events-none' : ''}`}
+                            title="Refresh Data"
+                        >
+                            <RefreshCw className={`w-4 h-4 text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        </div>
 
                         {/* Date */}
                         <div className="hidden xl:flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white border border-slate-200/80 px-3 py-2 rounded-lg shadow-sm">
@@ -1084,7 +1147,7 @@ const StoreOwnerDashboard: React.FC = () => {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-6 py-8 space-y-8 relative z-10">
+            <main className="max-w-7xl mx-auto px-6 pt-32 pb-8 space-y-8 relative z-10">
 
                 {/* Welcome Section */}
                 {activeTab === 'overview' && (
@@ -1610,18 +1673,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                     <p className="text-sm text-slate-500">Manage your connected suppliers.</p>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <Button
-                                        variant="outline"
-                                        onClick={async () => {
-                                            setIsRefreshing(true);
-                                            await fetchData();
-                                            setIsRefreshing(false);
-                                        }}
-                                        className="h-11 w-11 p-0 rounded-xl border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-white hover:border-slate-300 transition-all bg-white"
-                                        title="Refresh List"
-                                    >
-                                        <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-                                    </Button>
+
                                     <Button
                                         onClick={() => setShowDirectory(true)}
                                         className="!bg-slate-900 text-white hover:opacity-90 shadow-lg shadow-slate-900/20 border-none rounded-xl gap-2 font-semibold h-11 px-5"
@@ -1879,7 +1931,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                     setSelectedReorder(req);
                                                                     setShowReorderDetails(true);
                                                                 }}
-                                                                className={`${theme.primary} text-white hover:opacity-90 shadow-md ${theme.shadow} border-none rounded-xl px-5 h-10 font-semibold gap-2 transition-all`}
+                                                                className="!bg-black cursor-pointer !text-white hover:!bg-slate-800 shadow-md shadow-black/10 border-none rounded-xl px-5 h-10 font-semibold gap-2 transition-all"
                                                             >
                                                                 Details <ChevronDown className="w-4 h-4 opacity-60" />
                                                             </Button>
@@ -1926,11 +1978,10 @@ const StoreOwnerDashboard: React.FC = () => {
                                         <p className="text-sm text-slate-500">Select items to reorder from suppliers</p>
                                     </div>
                                     <Button
-                                        variant="outline"
                                         size="sm"
                                         onClick={handleSmartFill}
                                         disabled={isAiLoading}
-                                        className="hidden md:flex gap-2 text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50 relative overflow-hidden group transition-all"
+                                        className="hidden cursor-pointer md:flex gap-2 !bg-black !text-white hover:!bg-slate-800 border-transparent relative overflow-hidden group transition-all"
                                     >
                                         {isAiLoading ? (
                                             <Sparkles className="w-4 h-4 animate-spin text-indigo-500" />
@@ -1940,23 +1991,27 @@ const StoreOwnerDashboard: React.FC = () => {
                                         {isAiLoading ? "Analyzing..." : "AI Auto-Fill"}
                                     </Button>
                                 </div>
-                                <div className="relative">
-                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search inventory..."
-                                        value={reorderSearchQuery}
-                                        onChange={(e) => setReorderSearchQuery(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none transition-all placeholder:text-slate-400 font-medium"
-                                    />
-                                    {reorderSearchQuery && (
-                                        <button onClick={() => setReorderSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
+                                <div className="flex gap-2">
 
+
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search inventory..."
+                                            value={reorderSearchQuery}
+                                            onChange={(e) => setReorderSearchQuery(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none transition-all placeholder:text-slate-400 font-medium"
+                                        />
+                                        {reorderSearchQuery && (
+                                            <button onClick={() => setReorderSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                            </div>
                             <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
                                 <div className="grid grid-cols-1 gap-2">
                                     {isReorderLoading ? (
@@ -1972,10 +2027,14 @@ const StoreOwnerDashboard: React.FC = () => {
                                         ))
                                     ) : (
                                         <>
-                                            {inventoryList.filter(med =>
-                                                med.brandName.toLowerCase().includes(reorderSearchQuery.toLowerCase()) ||
-                                                med.genericName.toLowerCase().includes(reorderSearchQuery.toLowerCase())
-                                            ).length === 0 && (
+                                            {inventoryList.filter(med => {
+                                                const matchesSearch = med.brandName.toLowerCase().includes(reorderSearchQuery.toLowerCase()) ||
+                                                    med.genericName.toLowerCase().includes(reorderSearchQuery.toLowerCase());
+                                                if (!matchesSearch) return false;
+                                                if (inventoryFilter === "out_of_stock") return med.qtyAvailable === 0;
+                                                if (inventoryFilter === "in_stock") return med.qtyAvailable > 0;
+                                                return true;
+                                            }).length === 0 && (
                                                     <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                                                         <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
                                                             <Search className="w-8 h-8 opacity-20" />
@@ -1983,10 +2042,14 @@ const StoreOwnerDashboard: React.FC = () => {
                                                         <p className="font-medium text-slate-500">No matching items</p>
                                                     </div>
                                                 )}
-                                            {inventoryList.filter(med =>
-                                                med.brandName.toLowerCase().includes(reorderSearchQuery.toLowerCase()) ||
-                                                med.genericName.toLowerCase().includes(reorderSearchQuery.toLowerCase())
-                                            ).map((med) => {
+                                            {inventoryList.filter(med => {
+                                                const matchesSearch = med.brandName.toLowerCase().includes(reorderSearchQuery.toLowerCase()) ||
+                                                    med.genericName.toLowerCase().includes(reorderSearchQuery.toLowerCase());
+                                                if (!matchesSearch) return false;
+                                                if (inventoryFilter === "out_of_stock") return med.qtyAvailable === 0;
+                                                if (inventoryFilter === "in_stock") return med.qtyAvailable > 0;
+                                                return true;
+                                            }).map((med) => {
                                                 const inCart = cart.get(med.id) || 0;
                                                 return (
                                                     <div
@@ -2013,25 +2076,25 @@ const StoreOwnerDashboard: React.FC = () => {
                                                             </div>
 
                                                             {inCart > 0 ? (
-                                                                <div className="flex items-center bg-slate-900 rounded-lg p-1 shadow-md shadow-slate-900/10">
-                                                                    <button
+                                                                <div className="flex items-center !bg-black rounded-lg p-1 shadow-md shadow-black/10">
+                                                                    <i
                                                                         onClick={() => handleAddToCart(med.id, inCart - 1)}
-                                                                        className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-white rounded-md hover:bg-white/10 transition-colors"
+                                                                        className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:!text-white rounded-md hover:bg-white/10 transition-colors"
                                                                     >
                                                                         -
-                                                                    </button>
-                                                                    <span className="w-8 text-center font-bold text-sm text-white">{inCart}</span>
-                                                                    <button
+                                                                    </i>
+                                                                    <span className="w-8 text-center font-bold text-sm !text-white">{inCart}</span>
+                                                                    <i
                                                                         onClick={() => handleAddToCart(med.id, inCart + 1)}
-                                                                        className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-white rounded-md hover:bg-white/10 transition-colors"
+                                                                        className="w-7 h-7 cursor-pointer flex items-center justify-center !text-white hover:!text-white rounded-md hover:bg-white/10 transition-colors"
                                                                     >
                                                                         +
-                                                                    </button>
+                                                                    </i>
                                                                 </div>
                                                             ) : (
                                                                 <button
                                                                     onClick={() => handleAddToCart(med.id, 1)}
-                                                                    className="!bg-white border border-slate-200 text-slate-700 hover:!bg-slate-50 hover:border-slate-300 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm"
+                                                                    className="!bg-black border border-transparent !text-white hover:!bg-slate-800 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md shadow-black/10"
                                                                 >
                                                                     Add
                                                                 </button>
@@ -2056,7 +2119,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </h3>
                                 </div>
 
-                                <div className="p-5 flex-1 overflow-y-auto custom-scrollbar bg-white flex flex-col gap-5">
+                                <div className="p-5 flex-1 overflow-hidden bg-white flex flex-col gap-5">
                                     {/* Supplier Select */}
                                     <div>
                                         <div className="flex justify-between items-center mb-2">
@@ -2091,7 +2154,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </div>
 
                                     {/* Cart Items */}
-                                    <div className="flex-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 relative min-h-[120px]">
+                                    <div className="flex-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 relative min-h-[120px] overflow-y-auto custom-scrollbar">
                                         <div className="absolute top-0 right-0 p-2 opacity-5">
                                             <ClipboardList className="w-24 h-24" />
                                         </div>
@@ -2102,7 +2165,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                         ) : (
                                             <ul className="space-y-3 relative z-10">
                                                 {Array.from(cart.entries()).map(([id, qty]) => {
-                                                    const m = inventoryList.find(x => x.id === id);
+                                                    const m = inventoryList.find(x => x.id === id) || suggestedItems.find(x => x.id === id);
                                                     return (
                                                         <li key={id} className="flex justify-between items-start text-sm">
                                                             <div className="flex-1 pr-2">
@@ -2134,12 +2197,16 @@ const StoreOwnerDashboard: React.FC = () => {
 
                                 <div className="p-5 border-t border-slate-100 bg-slate-50/50">
                                     <Button
-                                        className="w-full h-14 !bg-slate-900 text-white hover:opacity-95 shadow-xl shadow-slate-900/30 font-bold text-base rounded-2xl flex items-center justify-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-[0px]"
-                                        disabled={cart.size === 0 || !reorderSupplierId}
+                                        className="w-full h-14 cursor-pointer !bg-slate-900 text-white hover:opacity-95 shadow-xl shadow-slate-900/30 font-bold text-base rounded-2xl flex items-center justify-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-[0px]"
+                                        disabled={cart.size === 0 || !reorderSupplierId || isSendingReorder}
                                         onClick={handleReorderClick}
                                     >
-                                        <Send className="w-4 h-4" />
-                                        Send Request ({cart.size} Items)
+                                        {isSendingReorder ? (
+                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        ) : (
+                                            <Send className="w-4 h-4" />
+                                        )}
+                                        {isSendingReorder ? "Sending..." : `Send Request (${cart.size} Items)`}
                                     </Button>
                                 </div>
                             </div>
@@ -2166,21 +2233,41 @@ const StoreOwnerDashboard: React.FC = () => {
                                         <Search className="w-5 h-5 text-slate-400" />
                                     </div>
                                 </div>
-                                <div className="relative">
-                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search by brand or generic name..."
-                                        value={posQuery}
-                                        onChange={(e) => setPosQuery(e.target.value)}
-                                        autoFocus
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none transition-all placeholder:text-slate-400 font-medium"
-                                    />
-                                    {posQuery && (
-                                        <button onClick={() => setPosQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                                            <X className="w-4 h-4" />
+                                <div className="flex gap-2">
+                                    <div className="relative">
+                                        <button
+                                            className={`h-[46px] w-[46px] flex items-center justify-center rounded-xl border transition-all cursor-pointer !bg-white !text-black ${posInventoryFilter !== 'all' ? 'border-2 border-black' : 'border-slate-200 hover:border-slate-300'}`}
+                                            title={`Filter: ${posInventoryFilter === 'all' ? 'All' : posInventoryFilter === 'out_of_stock' ? 'Out of Stock' : 'Available'}`}
+                                        >
+                                            <Filter className="w-4 h-4" />
                                         </button>
-                                    )}
+                                        <select
+                                            value={posInventoryFilter}
+                                            onChange={(e) => setPosInventoryFilter(e.target.value as any)}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        >
+                                            <option value="all">All Items</option>
+                                            <option value="out_of_stock">Out of Stock</option>
+                                            <option value="in_stock">Available</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search by brand or generic name..."
+                                            value={posQuery}
+                                            onChange={(e) => setPosQuery(e.target.value)}
+                                            autoFocus
+                                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none transition-all placeholder:text-slate-400 font-medium"
+                                        />
+                                        {posQuery && (
+                                            <button onClick={() => setPosQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -2199,16 +2286,26 @@ const StoreOwnerDashboard: React.FC = () => {
                                         ))
                                     ) : (
                                         <>
-                                            {posResults.length === 0 && (
-                                                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                                                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                                                        <Search className="w-8 h-8 opacity-20" />
+                                            {posResults.filter((med: any) => {
+                                                const totalStock = med.inventory?.reduce((acc: any, b: any) => acc + b.qtyAvailable, 0) || 0;
+                                                if (posInventoryFilter === 'out_of_stock') return totalStock === 0;
+                                                if (posInventoryFilter === 'in_stock') return totalStock > 0;
+                                                return true;
+                                            }).length === 0 && (
+                                                    <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                                                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                                                            <Search className="w-8 h-8 opacity-20" />
+                                                        </div>
+                                                        <p className="font-medium text-slate-500">No products found</p>
+                                                        <p className="text-sm opacity-70">Try searching for a different medicine</p>
                                                     </div>
-                                                    <p className="font-medium text-slate-500">No products found</p>
-                                                    <p className="text-sm opacity-70">Try searching for a different medicine</p>
-                                                </div>
-                                            )}
-                                            {posResults.map((med: any) => {
+                                                )}
+                                            {posResults.filter((med: any) => {
+                                                const totalStock = med.inventory?.reduce((acc: any, b: any) => acc + b.qtyAvailable, 0) || 0;
+                                                if (posInventoryFilter === 'out_of_stock') return totalStock === 0;
+                                                if (posInventoryFilter === 'in_stock') return totalStock > 0;
+                                                return true;
+                                            }).map((med: any) => {
                                                 const totalStock = med.inventory?.reduce((acc: any, b: any) => acc + b.qtyAvailable, 0) || 0;
                                                 const cartItem = posCart.get(med.id);
                                                 const inCart = cartItem ? cartItem.qty : 0;
@@ -2237,25 +2334,25 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                     </div>
                                                                 </div>
                                                                 {inCart > 0 ? (
-                                                                    <div className="flex items-center bg-slate-900 rounded-lg p-1 shadow-md shadow-slate-900/10">
-                                                                        <button
+                                                                    <div className="flex items-center !bg-black rounded-lg p-1 shadow-md shadow-black/10">
+                                                                        <i
                                                                             onClick={() => handlePOSAddToCart(med, inCart - 1)}
-                                                                            className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-white rounded-md hover:bg-white/10 transition-colors"
+                                                                            className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:!text-white rounded-md hover:bg-white/10 transition-colors"
                                                                         >
                                                                             -
-                                                                        </button>
-                                                                        <span className="w-8 text-center font-bold text-sm text-white">{inCart}</span>
-                                                                        <button
+                                                                        </i>
+                                                                        <span className="w-8 text-center font-bold text-sm !text-white">{inCart}</span>
+                                                                        <i
                                                                             onClick={() => handlePOSAddToCart(med, inCart + 1)}
-                                                                            className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-white rounded-md hover:bg-white/10 transition-colors"
+                                                                            className="w-7 h-7 cursor-pointer flex items-center justify-center !text-white hover:!text-white rounded-md hover:bg-white/10 transition-colors"
                                                                         >
                                                                             +
-                                                                        </button>
+                                                                        </i>
                                                                     </div>
                                                                 ) : (
                                                                     <button
                                                                         onClick={() => handlePOSAddToCart(med, 1)}
-                                                                        className="!bg-white border border-slate-200 !text-slate-900 hover:!bg-slate-50 hover:border-slate-300 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm"
+                                                                        className="!bg-black border border-transparent !text-white hover:!bg-slate-800 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md shadow-black/10"
                                                                     >
                                                                         Add
                                                                     </button>
@@ -2283,7 +2380,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-slate-900">Current Sale</h3>
-                                            <p className="text-xs text-slate-500 font-medium">#{Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}</p>
+
                                         </div>
                                     </div>
                                     <div className="text-xs font-bold bg-white border border-slate-200 px-2 py-1 rounded-lg text-slate-600">
@@ -2335,19 +2432,22 @@ const StoreOwnerDashboard: React.FC = () => {
                                 {/* Payment Section */}
                                 <div className="p-5 bg-slate-50 border-t border-slate-100">
                                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Payment Method</label>
-                                    <div className="grid grid-cols-2 gap-2 mb-4">
+                                    <div className="grid grid-cols-2 gap-2 mb-2">
                                         {[
-                                            { id: "CASH", icon: Banknote, label: "Cash" },
-                                            { id: "CARD", icon: CreditCard, label: "Card" },
-                                            { id: "UPI", icon: Smartphone, label: "UPI" },
-                                            { id: "OTHER", icon: MoreHorizontal, label: "Other" }
+                                            { id: "CASH", icon: Banknote, label: "Cash", disabled: false },
+                                            { id: "CARD", icon: CreditCard, label: "Card", disabled: true },
+                                            { id: "UPI", icon: Smartphone, label: "UPI", disabled: true },
+                                            { id: "OTHER", icon: MoreHorizontal, label: "Other", disabled: true }
                                         ].map((item) => (
                                             <button
                                                 key={item.id}
-                                                onClick={() => setPosPaymentMethod(item.id)}
-                                                className={`flex items-center justify-center gap-2 py-3 px-2 rounded-xl text-xs font-bold border transition-all duration-200 ${posPaymentMethod === item.id
-                                                    ? "!bg-slate-900 !text-white !border-slate-900 shadow-md shadow-slate-900/20 scale-[1.02]"
-                                                    : "!bg-white !text-slate-600 !border-slate-200 hover:!bg-slate-50 hover:!border-slate-300"
+                                                disabled={item.disabled}
+                                                onClick={() => !item.disabled && setPosPaymentMethod(item.id)}
+                                                className={`flex items-center cursor-pointer justify-center gap-2 py-3 px-2 rounded-xl text-xs font-bold border transition-all duration-200 
+                                                    ${item.disabled ? 'cursor-not-allowed !bg-white !text-black border-slate-200 opacity-60' : ''}
+                                                    ${!item.disabled && posPaymentMethod === item.id
+                                                        ? "!bg-slate-900 !text-white !border-slate-900 shadow-md shadow-slate-900/20 scale-[1.02]"
+                                                        : (!item.disabled ? "!bg-white !text-slate-600 !border-slate-200 hover:!bg-slate-50 hover:!border-slate-300" : "")
                                                     }`}
                                             >
                                                 <item.icon className="w-3.5 h-3.5" />
@@ -2355,9 +2455,12 @@ const StoreOwnerDashboard: React.FC = () => {
                                             </button>
                                         ))}
                                     </div>
+                                    <p className="text-[10px] text-amber-600 font-medium text-center mb-4 flex items-center justify-center gap-1">
+                                        <Activity className="w-3 h-3" /> Only Cash payments accepted at this time
+                                    </p>
 
                                     <Button
-                                        className="w-full h-14 !bg-slate-900 text-white hover:opacity-95 shadow-xl shadow-slate-900/30 font-bold text-base rounded-2xl flex items-center justify-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-[0px]"
+                                        className="w-full h-14 !bg-slate-900 cursor-pointer text-white hover:opacity-95 shadow-xl shadow-slate-900/30 font-bold text-base rounded-2xl flex items-center justify-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-[0px]"
                                         disabled={posCart.size === 0 || isCheckoutLoading}
                                         onClick={handlePOSCheckoutClick}
                                     >
@@ -2488,10 +2591,9 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                     <Download className="w-4 h-10 cursor-pointer" />
                                                                 </i>
                                                                 <Button
-                                                                    variant="outline"
                                                                     size="sm"
                                                                     onClick={() => viewReceiptPDF(receipt.id)}
-                                                                    className={`gap-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 ${theme.text}`}
+                                                                    className="gap-2 cursor-pointer !bg-black !text-white hover:!bg-slate-800 shadow-md shadow-black/10 border-transparent"
                                                                 >
                                                                     <FileText className="w-3.5 h-3.5" /> View PDF
                                                                 </Button>
@@ -2528,8 +2630,8 @@ const StoreOwnerDashboard: React.FC = () => {
                             >
                                 <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                                     <h3 className="text-xl font-bold text-slate-800">Supplier Directory</h3>
-                                    <button onClick={() => setShowDirectory(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
-                                        <X className="w-5 h-5" />
+                                    <button onClick={() => setShowDirectory(false)} className="p-2 cursor-pointer !bg-black hover:!bg-slate-800 rounded-full transition-colors shadow-md shadow-black/10">
+                                        <X className="w-5 h-5 !text-white" />
                                     </button>
                                 </div>
 
@@ -2649,13 +2751,13 @@ const StoreOwnerDashboard: React.FC = () => {
                                 <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                     <Button
                                         variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                         onClick={() => setShowDisconnectConfirm(false)}
                                     >
                                         Cancel
                                     </Button>
                                     <Button
-                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                        className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                         onClick={executeDisconnectSupplier}
                                     >
                                         Yes, Disconnect
@@ -2695,15 +2797,15 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </p>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                    <button
+
+                                        className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                         onClick={() => setShowLogoutConfirm(false)}
                                     >
                                         Cancel
-                                    </Button>
+                                    </button>
                                     <Button
-                                        className="h-12 rounded-xl bg-red-500 hover:bg-red-600 text-white border-none shadow-lg shadow-red-500/20 font-semibold"
+                                        className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                         onClick={logout}
                                     >
                                         Yes, Sign Out
@@ -2747,13 +2849,13 @@ const StoreOwnerDashboard: React.FC = () => {
                                 <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                     <Button
                                         variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                        className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
                                         onClick={() => setShowPOSConfirm(false)}
                                     >
                                         Cancel
                                     </Button>
                                     <Button
-                                        className={`h-12 rounded-xl ${theme.primary} hover:opacity-90 text-white border-none shadow-lg ${theme.shadow} font-semibold`}
+                                        className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
                                         onClick={() => {
                                             executeCheckout();
                                             setShowPOSConfirm(false);
@@ -2779,12 +2881,17 @@ const StoreOwnerDashboard: React.FC = () => {
                             className="bg-white rounded-2xl shadow-2xl w-full max-w-lg md:max-w-4xl flex flex-col overflow-hidden h-[90vh]"
                         >
                             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
-                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                    <CheckCircle className="w-5 h-5 text-emerald-600" />
-                                    Receipt Generated
-                                </h3>
-                                <button onClick={() => setShowReceiptPreview(false)} className="p-1 hover:bg-slate-200 rounded-full">
-                                    <X className="w-5 h-5 text-slate-500" />
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                                        <CheckCircle className="w-6 h-6 text-emerald-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-emerald-600 text-lg leading-tight">Transaction Successful</h3>
+                                        <p className="text-xs text-slate-500 font-medium">Receipt Generated</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowReceiptPreview(false)} className="p-2 cursor-pointer !bg-black hover:bg-slate-800 rounded-lg transition-colors shadow-md shadow-black/10">
+                                    <X className="w-5 h-5 !text-white" />
                                 </button>
                             </div>
 
@@ -2810,12 +2917,12 @@ const StoreOwnerDashboard: React.FC = () => {
                                                 placeholder="customer@example.com"
                                                 value={receiptEmail}
                                                 onChange={(e) => setReceiptEmail(e.target.value)}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                                                className="w-full px-3 py-2 border border-black rounded-lg text-sm focus:ring-2 focus:ring-black outline-none"
                                             />
                                             <Button
                                                 onClick={handleSendReceipt}
                                                 disabled={isSendingEmail || !receiptEmail}
-                                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
+                                                className="w-full cursor-pointer !bg-black hover:!bg-slate-800 !text-white shadow-lg shadow-black/20"
                                                 size="sm"
                                             >
                                                 {isSendingEmail ? "Sending..." : "Send Email"}
@@ -2828,7 +2935,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                         <a
                                             href={currentReceiptUrl}
                                             download={`Receipt-${Date.now()}.pdf`}
-                                            className="block w-full text-center py-2 px-4 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition-colors"
+                                            className="block w-full bg-black text-white text-center py-2 px-4 border border-black rounded-lg font-medium hover:bg-black transition-colors"
                                         >
                                             Download PDF
                                         </a>
@@ -2935,9 +3042,9 @@ const StoreOwnerDashboard: React.FC = () => {
                                 </div>
                                 <button
                                     onClick={() => setShowReorderDetails(false)}
-                                    className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+                                    className="p-2 !bg-black cursor-pointer hover:bg-slate-800 rounded-lg transition-colors shadow-md shadow-black/10"
                                 >
-                                    <X className="w-5 h-5 text-slate-500" />
+                                    <X className="w-5 h-5 !text-white" />
                                 </button>
                             </div>
 
@@ -3010,11 +3117,87 @@ const StoreOwnerDashboard: React.FC = () => {
                             <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end">
                                 <Button
                                     onClick={() => setShowReorderDetails(false)}
-                                    className="px-6 rounded-xl font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+                                    className="px-6 rounded-xl cursor-pointer font-bold !bg-black border border-transparent !text-white hover:!bg-slate-800 shadow-lg shadow-black/10"
                                 >
                                     Close
                                 </Button>
                             </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+
+            {/* Reorder Result Modal */}
+            <AnimatePresence>
+                {reorderResult && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center relative overflow-hidden"
+                        >
+                            <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 ${reorderResult.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                                {reorderResult.type === 'success' ? <CheckCircle className="w-8 h-8" /> : <XCircle className="w-8 h-8" />}
+                            </div>
+
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">
+                                {reorderResult.type === 'success' ? 'Success!' : 'Something went wrong'}
+                            </h3>
+                            <p className="text-slate-500 mb-8 leading-relaxed">
+                                {reorderResult.message}
+                            </p>
+
+                            <Button
+                                onClick={() => {
+                                    if (reorderResult.type === 'success') {
+                                        // Reset form on success close
+                                        setActiveTab('overview');
+                                        setCart(new Map());
+                                        setReorderNote("");
+                                        setReorderSupplierId("");
+                                        setSuggestedItems([]);
+                                    }
+                                    setReorderResult(null);
+                                }}
+                                className="w-full h-12 cursor-pointer rounded-xl font-bold !bg-black !text-white hover:!bg-slate-800"
+                            >
+                                {reorderResult.type === 'success' ? 'Done' : 'Try Again'}
+                            </Button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+
+            {/* Forecast Error Modal */}
+            <AnimatePresence>
+                {forecastError && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center relative overflow-hidden"
+                        >
+                            <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 bg-red-100 text-red-600">
+                                <XCircle className="w-8 h-8" />
+                            </div>
+
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">
+                                Forecast Failed
+                            </h3>
+                            <p className="text-slate-500 mb-8 leading-relaxed">
+                                {forecastError}
+                            </p>
+
+                            <Button
+                                onClick={() => setForecastError(null)}
+                                className="w-full h-12 cursor-pointer rounded-xl font-bold !bg-black !text-white hover:!bg-slate-800"
+                            >
+                                Close
+                            </Button>
                         </motion.div>
                     </div>
                 )}
