@@ -23,7 +23,7 @@ CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'CARD', 'UPI', 'INSURANCE', 'OTHER'
 CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'PAID', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED');
 
 -- CreateEnum
-CREATE TYPE "SupplierRequestStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED');
+CREATE TYPE "SupplierRequestStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'FULFILLED');
 
 -- CreateTable
 CREATE TABLE "Store" (
@@ -204,6 +204,17 @@ CREATE TABLE "Sale" (
 );
 
 -- CreateTable
+CREATE TABLE "Receipt" (
+    "id" TEXT NOT NULL,
+    "saleId" TEXT NOT NULL,
+    "receiptNo" TEXT,
+    "data" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Receipt_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "SaleItem" (
     "id" TEXT NOT NULL,
     "saleId" TEXT NOT NULL,
@@ -331,6 +342,9 @@ CREATE INDEX "AuditLog_storeId_actorId_idx" ON "AuditLog"("storeId", "actorId");
 CREATE INDEX "Sale_storeId_paymentStatus_idx" ON "Sale"("storeId", "paymentStatus");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Receipt_saleId_key" ON "Receipt"("saleId");
+
+-- CreateIndex
 CREATE INDEX "SaleItem_saleId_idx" ON "SaleItem"("saleId");
 
 -- CreateIndex
@@ -410,6 +424,9 @@ ALTER TABLE "Sale" ADD CONSTRAINT "Sale_createdById_fkey" FOREIGN KEY ("createdB
 
 -- AddForeignKey
 ALTER TABLE "Sale" ADD CONSTRAINT "Sale_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Receipt" ADD CONSTRAINT "Receipt_saleId_fkey" FOREIGN KEY ("saleId") REFERENCES "Sale"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "SaleItem" ADD CONSTRAINT "SaleItem_inventoryBatchId_fkey" FOREIGN KEY ("inventoryBatchId") REFERENCES "InventoryBatch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
