@@ -299,9 +299,6 @@ async function main() {
 
                 // 2. Fulfill (Create Batches)
                 // We do this manually to simulate the "Service" logic but allow setting custom 'createdAt' dates
-                const batchInserts = [];
-                const movementInserts = [];
-                const newSimBatches = [];
 
                 for (const item of itemsToReorder) {
                     const expiry = addDays(currentDate, 365); // 1 year expiry
@@ -389,34 +386,33 @@ async function main() {
                 batches.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime());
 
                 let qtyRemaining = qtyNeeded;
-                let cost = 0;
-                const deductions: Deduction[] = [];
+                // const deductions: Deduction[] = []; // Removed aggregator
 
                 for (const batch of batches) {
                     if (qtyRemaining <= 0) break;
                     const take = Math.min(batch.qtyAvailable, qtyRemaining);
                     batch.qtyAvailable -= take;
                     qtyRemaining -= take;
-                    cost += (take * batch.mrp);
                     
-                    deductions.push({ batchId: batch.id, amount: take, mrp: batch.mrp });
+                    const lineCost = (take * batch.mrp);
+                    
+                    // Create a distinct line item per batch interaction
+                    // This ensures the unit price on the receipt matches the batch MRP
+                    // and allows strict linking to the inventory batch.
+                    lineItems.push({
+                        medicineId: medId,
+                        qty: take,
+                        unitPrice: batch.mrp,
+                        lineTotal: lineCost,
+                        deductions: [{ batchId: batch.id, amount: take, mrp: batch.mrp }]
+                    });
+
+                    saleTotal += lineCost;
                 }
 
                 // Cleanup empty batches from state
                 const validBatches = batches.filter(b => b.qtyAvailable > 0);
                 inventoryState.set(medId, validBatches);
-
-                if (deductions.length > 0) {
-                    const fulfilledQty = qtyNeeded - qtyRemaining;
-                    lineItems.push({
-                        medicineId: medId,
-                        qty: fulfilledQty,
-                        unitPrice: deductions[0].mrp, // simplified unit pricing for line item display
-                        lineTotal: cost,
-                        deductions // Store for post-processing
-                    });
-                    saleTotal += cost;
-                }
             }
 
             if (lineItems.length > 0) {
@@ -441,7 +437,7 @@ async function main() {
                                     qty: l.qty,
                                     unitPrice: l.unitPrice,
                                     lineTotal: l.lineTotal,
-                                    inventoryBatchId: l.deductions[0].batchId // simple link to primary batch
+                                    inventoryBatchId: l.deductions[0].batchId // Correctly links to the specific batch
                                 }))
                             }
                         },
@@ -451,7 +447,7 @@ async function main() {
                     // Create Stock Movements & Update API Batches
                     for (let i = 0; i < lineItems.length; i++) {
                         const line = lineItems[i];
-                        const saleItem = sale.items[i]; // trusting order preservation or map by ID if needed
+                        const saleItem = sale.items[i]; // trusting order preservation
 
                         for (const ded of line.deductions) {
                            await tx.inventoryBatch.update({

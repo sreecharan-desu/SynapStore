@@ -8,6 +8,7 @@ export type RequestWithUser = Request & {
     username: string;
     id: string;
     email?: string;
+    imageUrl?: string | null;
     globalRole?: Role | null;
   };
   store?: Partial<Store> | null | any;

@@ -380,9 +380,11 @@ const StoreOwnerDashboard: React.FC = () => {
     const [forecastResults, setForecastResults] = React.useState<any[]>([]);
     const [_selectedForecastMedicine, setSelectedForecastMedicine] = React.useState<any | null>(null);
     const [forecastData, setForecastData] = React.useState<any | null>(null);
+    const [topForecasts, setTopForecasts] = React.useState<{ medicine: any, forecast: any }[]>([]);
     const [isForecastLoading, setIsForecastLoading] = React.useState(false);
     const [isForecastSearching, setIsForecastSearching] = React.useState(false);
     const [forecastError, setForecastError] = React.useState<string | null>(null);
+    const [expandedForecastId, setExpandedForecastId] = React.useState<string | null>(null);
 
     const searchForecastMedicines = async (q: string) => {
         setIsForecastSearching(true);
@@ -427,6 +429,7 @@ const StoreOwnerDashboard: React.FC = () => {
                 horizon_days: [7, 15, 30]
             });
             setForecastData(res.data);
+            setTopForecasts([]); // Clear top forecasts when selecting a single one
         } catch (err: any) {
             console.error("Forecast failed", err);
             if (err.response?.status === 400 && err.response?.data?.detail) {
@@ -438,6 +441,62 @@ const StoreOwnerDashboard: React.FC = () => {
             setIsForecastLoading(false);
         }
     };
+
+    // Auto-fetch top forecasts
+    React.useEffect(() => {
+        const fetchTopForecasts = async () => {
+            if (activeTab === 'overview' && topForecasts.length === 0 && (data?.overview?.recentSalesCount ?? 0) > 0 && !forecastData && !isForecastLoading) {
+                // Get top medicines from sales or just random for now if no dedicated top list
+                // Since we assume simple data structure, we can try to search for "popular" or just get initial medicines
+                try {
+                    // Try to get some medicines
+                    let medicinesToForecast: any[] = [];
+                    // Option 1: Use medicines from low stock list if available (critical)
+                    if (data?.lists?.lowStock && data.lists.lowStock.length > 0) {
+                        medicinesToForecast = data.lists.lowStock.slice(0, 5);
+                    } 
+                    
+                    // Option 2: If no low stock, try to get from recent sales if we had that detail, or just search generic
+                    if (medicinesToForecast.length === 0) {
+                         const searchRes = await dashboardApi.searchMedicines("");
+                         if (searchRes.data.success) {
+                             medicinesToForecast = searchRes.data.data.medicines.slice(0, 5);
+                         }
+                    }
+
+                    if (medicinesToForecast.length > 0) {
+                        setIsForecastLoading(true);
+                        const storeId = auth.effectiveStore?.id || data?.store?.id;
+                        if (!storeId) return;
+
+                        const promises = medicinesToForecast.map(med => 
+                             dashboardApi.getInventoryForecast({
+                                store_id: storeId,
+                                medicine_id: med.id,
+                                horizon_days: [30] // Only need 30 days for overview
+                            }).then(res => ({ medicine: med, forecast: res.data }))
+                              .catch(err => null) // Ignore failed ones
+                        );
+
+                        const results = await Promise.all(promises);
+                        const validResults = results.filter(Boolean) as { medicine: any, forecast: any }[];
+                        setTopForecasts(validResults);
+                        if (validResults.length > 0) {
+                            setExpandedForecastId(validResults[0].medicine.id);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch top forecasts", err);
+                } finally {
+                    setIsForecastLoading(false);
+                }
+            }
+        };
+
+        if (activeTab === 'overview' && !forecastData) {
+            fetchTopForecasts();
+        }
+    }, [activeTab, data, topForecasts.length, forecastData]);
 
     // Debounced search for POS
 
@@ -582,37 +641,33 @@ const StoreOwnerDashboard: React.FC = () => {
                 dashboardApi.getSupplierRequests(),
             ]);
 
-            // Role Update Check
+            // Role & Store Update Check
             if (storeRes.data.success) {
                 const fetchedUser = storeRes.data.data.user;
+                const fetchedStore = storeRes.data.data.store;
+                
+                let shouldUpdate = false;
+                let newAuth: any = { ...auth };
+
+                // 1. Check Role
                 if (auth.user && fetchedUser.globalRole !== auth.user.globalRole) {
-
-                    // Update Auth State
-                    setAuth((prev: any) => ({
-                        ...prev,
-                        user: { ...prev.user, globalRole: fetchedUser.globalRole }
-                    }));
-
+                    newAuth.user = { ...newAuth.user, globalRole: fetchedUser.globalRole };
+                    shouldUpdate = true;
+                    
                     if (fetchedUser.globalRole === "SUPPLIER") {
-                        setShowFeedback(true); // Re-using FeedbackToast for now, or we can use alert or a custom toast
-                        // Since FeedbackToast is "Action Success", maybe we should trigger a "Role Updated" toast.
-                        // For now, let's assume the user wants the UI to change. 
-                        // With React state update, simple redirect logic in App.tsx might trigger if we force re-render, 
-                        // but we are inside the dashboard.
-
-                        // We can create a temporary notification for the user
-                        // Or simply use alert for immediate feedback if toast isn't flexible enough.
-                        // The user asked for "a toast saying access updated congats you are now a supplier".
-
-                        // I will set a custom message if possible, but FeedbackToast message is hardcoded usually.
-                        // Let's modify FeedbackToast logic locally or just alert.
-                        // Better: Use a simple div toast or `alert` for minimal changes.
-                        // Wait, user said "implement this with minimal changes".
+                        setShowFeedback(true);
                         alert("Access Updated: Congrats you are now a SUPPLIER!");
-                    } else {
-                        // Simply update without specific toast if it's not the requested role
-                        // Or generic toast
                     }
+                }
+
+                // 2. Check Store (Fix for missing store name on first login)
+                if (fetchedStore && (!auth.effectiveStore || auth.effectiveStore.id !== fetchedStore.id || auth.effectiveStore.name !== fetchedStore.name)) {
+                     newAuth.effectiveStore = fetchedStore;
+                     shouldUpdate = true;
+                }
+
+                if (shouldUpdate) {
+                    setAuth(newAuth);
                 }
             }
 
@@ -692,8 +747,9 @@ const StoreOwnerDashboard: React.FC = () => {
 
 
     // Directory State
-    const [showDirectory, setShowDirectory] = React.useState(false);
     const [directorySuppliers, setDirectorySuppliers] = React.useState<any[]>([]);
+    const [searchQuery, setSearchQuery] = React.useState("");
+    const [imgError, setImgError] = React.useState(false);
 
     const fetchSuppliersDirectory = React.useCallback(async (q?: string) => {
         try {
@@ -707,8 +763,13 @@ const StoreOwnerDashboard: React.FC = () => {
     }, []);
 
     React.useEffect(() => {
-        if (showDirectory) fetchSuppliersDirectory();
-    }, [showDirectory, fetchSuppliersDirectory]);
+        if (activeTab === 'suppliers') {
+            const timer = setTimeout(() => {
+                fetchSuppliersDirectory(searchQuery);
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [activeTab, searchQuery, fetchSuppliersDirectory]);
 
     const handleLogout = () => {
         setShowLogoutConfirm(true);
@@ -770,35 +831,6 @@ const StoreOwnerDashboard: React.FC = () => {
     };
 
 
-
-    const handleDirectoryAccept = async (requestId: string) => {
-        try {
-            // Optimistic update
-            setDirectorySuppliers(prev => prev.map(s => s.requestId === requestId ? { ...s, connectionStatus: "CONNECTED" } : s));
-            await dashboardApi.acceptSupplierRequest(requestId);
-            setShowFeedback(true);
-            fetchData();
-        } catch (err) {
-            console.error(err);
-            alert("Failed to accept request");
-            // Revert on error? Or just reload
-            fetchSuppliersDirectory();
-        }
-    };
-
-    const handleDirectoryReject = async (requestId: string) => {
-        if (!confirm("Reject this request?")) return;
-        try {
-            setDirectorySuppliers(prev => prev.map(s => s.requestId === requestId ? { ...s, connectionStatus: "NONE", requestId: null } : s));
-            await dashboardApi.rejectSupplierRequest(requestId);
-            setShowFeedback(true);
-            fetchData();
-        } catch (err) {
-            console.error(err);
-            alert("Failed to reject request");
-            fetchSuppliersDirectory();
-        }
-    };
 
     const handleConnectRequest = async (supplierId: string) => {
         try {
@@ -1111,23 +1143,37 @@ const StoreOwnerDashboard: React.FC = () => {
                         <div className="h-8 w-[1px] bg-slate-200 hidden sm:block mx-1"></div>
 
                         {/* User Profile & Logout */}
-                        <div className="flex items-center gap-3 pl-1">
+                        <div className="flex items-center gap-4 pl-2">
 
                             {/* User Info */}
-                            <div className="hidden sm:flex flex-col items-end leading-tight">
-                                <span className="text-sm font-semibold text-slate-800">
+                            <div className="hidden sm:flex flex-col items-end leading-tight mr-1">
+                                <span className="text-sm font-bold text-slate-800">
                                     {auth.user?.username}
                                 </span>
-                                <span className="text-[11px] font-medium text-slate-400 capitalize">
-                                    {auth.user?.globalRole?.toLowerCase()}
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                                    {auth.user?.globalRole?.toLowerCase().replace('_', ' ')}
                                 </span>
                             </div>
 
                             {/* Avatar */}
-                            <div className="flex items-center justify-center w-10 h-10 rounded-full 
-                  bg-gradient-to-br from-slate-100 to-white text-slate-700 
-                  font-semibold shadow-inner border border-slate-200">
-                                {auth.user?.username?.charAt(0)?.toUpperCase()}
+                            <div className="relative group">
+                                <div className="flex items-center justify-center w-11 h-11 rounded-full 
+                      bg-white text-slate-700 
+                      font-bold shadow-md border-[2px] border-white ring-1 ring-slate-100 overflow-hidden transition-transform group-hover:scale-105">
+                                    {auth.user?.imageUrl && !imgError ? (
+                                        <img
+                                            src={auth.user.imageUrl}
+                                            alt="Profile"
+                                            className="w-full h-full object-cover"
+                                            onError={() => setImgError(true)}
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-slate-600">
+                                            {auth.user?.username?.charAt(0)?.toUpperCase()}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
                             </div>
 
                             {/* Logout Button */}
@@ -1454,13 +1500,111 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </div>
                                 )}
 
-                                {!isForecastLoading && !forecastData && (
+                                {!isForecastLoading && !forecastData && topForecasts.length === 0 && (
                                     <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-2xl">
                                         <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                                             <Sparkles className="w-8 h-8 text-slate-300" />
                                         </div>
                                         <h4 className="font-bold text-slate-600">No Forecast Generated</h4>
                                         <p className="text-slate-400 text-sm mt-1 max-w-sm mx-auto">Search and select a medicine above to generate an AI-powered demand forecast.</p>
+                                    </div>
+                                )}
+
+                                {/* Top Forecast List (when no specific search selected) */}
+                                {!forecastData && topForecasts.length > 0 && (
+                                    <div className="space-y-4">
+                                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                            <Sparkles className="w-4 h-4 text-indigo-500" /> AI Recommendations
+                                        </h4>
+                                        {topForecasts.map(({ medicine, forecast }) => (
+                                            <div key={medicine.id} className="bg-white border boundary-slate-200 rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md">
+                                                <div 
+                                                    className="p-4 flex items-center justify-between cursor-pointer bg-slate-50/50 hover:bg-slate-50"
+                                                    onClick={() => setExpandedForecastId(expandedForecastId === medicine.id ? null : medicine.id)}
+                                                >
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold
+                                                            ${forecast.reorder_now ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                            {medicine.name.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-bold text-slate-800">{medicine.name}</div>
+                                                            <div className="text-xs text-slate-500 flex items-center gap-2">
+                                                                <span className={forecast.reorder_now ? 'text-amber-600 font-semibold' : 'text-emerald-600 font-semibold'}>
+                                                                    {forecast.reorder_now ? 'High Demand Expected' : 'Stock Healthy'}
+                                                                </span>
+                                                                <span>•</span>
+                                                                <span>Current: {forecast.current_stock}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="text-right hidden sm:block">
+                                                            <div className="text-[10px] font-bold text-slate-400 uppercase">Forecast (30d)</div>
+                                                            <div className="font-bold text-indigo-600">{forecast.demand_forecast["30"] || 0} units</div>
+                                                        </div>
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform duration-300 ${expandedForecastId === medicine.id ? 'rotate-180 bg-slate-200' : 'bg-slate-100'}`}>
+                                                           <ChevronDown className="w-4 h-4 text-slate-600" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Expanded Content */}
+                                                <AnimatePresence>
+                                                    {expandedForecastId === medicine.id && (
+                                                        <motion.div
+                                                            initial={{ height: 0, opacity: 0 }}
+                                                            animate={{ height: 'auto', opacity: 1 }}
+                                                            exit={{ height: 0, opacity: 0 }}
+                                                            className="overflow-hidden bg-white border-t border-slate-100"
+                                                        >
+                                                            <div className="p-6">
+                                                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                                                                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Medicine Details</div>
+                                                                           <div className="grid grid-cols-2 gap-2 text-xs">
+                                                                            <span className="text-slate-500">Generic:</span>
+                                                                            <span className="font-medium text-slate-800 truncate">{medicine.genericName || "N/A"}</span>
+                                                                            <span className="text-slate-500">Mfr:</span>
+                                                                            <span className="font-medium text-slate-800 truncate">{medicine.manufacturer || "N/A"}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className={`rounded-xl p-4 border ${forecast.reorder_now ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'} lg:col-span-2 flex items-center justify-between`}>
+                                                                         <div>
+                                                                            <div className={`text-xs font-bold uppercase tracking-wider mb-1 ${forecast.reorder_now ? 'text-amber-500' : 'text-emerald-500'}`}>Action</div>
+                                                                            <div className={`text-lg font-bold flex items-center gap-2 ${forecast.reorder_now ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                                                                {forecast.reorder_now ? <><Zap className="w-5 h-5" /> Reorder Suggested</> : <><CheckCircle className="w-5 h-5" /> Stock Sufficient</>}
+                                                                            </div>
+                                                                         </div>
+                                                                         {forecast.reorder_now && (
+                                                                             <div className="text-right">
+                                                                                 <div className="text-xs text-amber-600/70 font-semibold mb-1">Suggested Qty</div>
+                                                                                 <div className="text-2xl font-bold text-amber-700">{forecast.reorder_quantity?.["30"] || 0}</div>
+                                                                             </div>
+                                                                         )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Mini Chart */}
+                                                                <div className="h-64 w-full">
+                                                                     <ResponsiveContainer width="100%" height="100%">
+                                                                        <ComposedChart data={forecast.plot_data}>
+                                                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                                                <XAxis dataKey="date" tickFormatter={(val) => new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                                                                                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                                                                                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                                                <Area type="monotone" dataKey="confHigh" stroke="none" fill="#e0e7ff" fillOpacity={0.4} />
+                                                                                <Line type="monotone" dataKey="historyQty" stroke="#334155" strokeWidth={2} dot={false} connectNulls />
+                                                                                <Line type="monotone" dataKey="forecastQty" stroke="#6366f1" strokeWidth={2} strokeDasharray="4 4" dot={false} connectNulls />
+                                                                        </ComposedChart>
+                                                                     </ResponsiveContainer>
+                                                                </div>
+                                                            </div>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                             </div>
@@ -1672,20 +1816,85 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </h2>
                                     <p className="text-sm text-slate-500">Manage your connected suppliers.</p>
                                 </div>
-                                <div className="flex items-center gap-3">
-
-                                    <Button
-                                        onClick={() => setShowDirectory(true)}
-                                        className="!bg-slate-900 text-white hover:opacity-90 shadow-lg shadow-slate-900/20 border-none rounded-xl gap-2 font-semibold h-11 px-5"
-                                    >
-                                        <Search className="w-4 h-4" />
-                                        Find New Suppliers
-                                    </Button>
+                                <div className="flex items-center gap-3 w-full max-w-sm">
+                                    <div className="relative w-full">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search directory..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                                {(supplierRequests.length > 0 || (data?.lists.suppliers && data.lists.suppliers.length > 0)) ? (
+                                
+                                {/* Recommended/Search Suppliers */}
+                                {(searchQuery || (directorySuppliers && directorySuppliers.filter(s => s.connectionStatus === 'NONE' && !data?.lists?.suppliers?.some(conn => conn.id === s.id)).length > 0)) && (
+                                    <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                                {searchQuery ? (
+                                                     <><Search className="w-5 h-5 text-indigo-500" /> Search Results</>
+                                                ) : (
+                                                     <><Sparkles className="w-5 h-5 text-indigo-500 fill-indigo-100" /> Recommended Suppliers</>
+                                                )}
+                                            </h3>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {directorySuppliers
+                                                .filter(s => s.connectionStatus === 'NONE' && !data?.lists?.suppliers?.some(conn => conn.id === s.id))
+                                                .slice(0, searchQuery ? 100 : 5)
+                                                .map((supplier) => (
+                                                    <div key={supplier.id} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group relative overflow-hidden">
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 flex items-center justify-center text-lg font-bold text-indigo-600 shadow-sm">
+                                                                    {supplier.name.charAt(0).toUpperCase()}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-bold text-slate-800">{supplier.name}</div>
+                                                                    <div className="text-xs text-slate-500 flex items-center gap-1">
+                                                                        <Users className="w-3 h-3" /> Supplier
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() => handleConnectRequest(supplier.id)}
+                                                                className="h-8 px-3 text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-none relative z-10"
+                                                            >
+                                                                Connect
+                                                            </Button>
+                                                        </div>
+                                                        
+                                                        <div className="mt-4 pt-3 border-t border-slate-50 grid grid-cols-2 gap-2">
+                                                            <div className="max-w-full overflow-hidden">
+                                                                <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Email</div>
+                                                                <div className="text-xs font-medium text-slate-700 truncate" title={supplier.email || supplier.user?.email}>{supplier.email || supplier.user?.email}</div>
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Role</div>
+                                                                <div className="text-xs font-medium text-slate-700">Global Supplier</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="mb-4">
+                                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                        <Link className="w-5 h-5 text-slate-500" />
+                                        Connected Network
+                                    </h3>
+                                </div>
+
+                                {(supplierRequests.length > 0 || (data?.lists?.suppliers && data.lists.suppliers.length > 0)) ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                         {/* Pending Requests */}
                                         {supplierRequests.map((req, index) => (
@@ -1837,28 +2046,21 @@ const StoreOwnerDashboard: React.FC = () => {
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-6">
-                                        <div className="w-24 h-24 rounded-full bg-white shadow-sm flex items-center justify-center">
-                                            <Users className={`w-10 h-10 ${theme.text} opacity-50`} />
+                                    <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-4">
+                                        <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center">
+                                            <Users className={`w-8 h-8 ${theme.text} opacity-50`} />
                                         </div>
-                                        <div className="text-center space-y-2">
-                                            <h3 className="text-lg font-bold text-slate-700">No Suppliers Connected</h3>
-                                            <p className="max-w-xs mx-auto text-sm">Start building your network by connecting with trusted medicine suppliers.</p>
+                                        <div className="text-center space-y-1">
+                                            <h3 className="text-base font-bold text-slate-600">No Connected Suppliers</h3>
+                                            <p className="max-w-xs mx-auto text-xs opacity-70">Connect with suppliers from the recommended list above to start ordering.</p>
                                         </div>
-                                        <Button
-                                            onClick={() => setShowDirectory(true)}
-                                            className="!bg-slate-900 text-white hover:opacity-90 shadow-lg shadow-slate-900/20 border-none font-bold rounded-xl"
-                                        >
-                                            Browse Directory
-                                        </Button>
                                     </div>
                                 )}
-                            </div>
+                        </div>
                         </div>
                     </motion.div>
                 )}
 
-                {/* --- SENT REORDERS TAB --- */}
                 {/* --- SENT REORDERS TAB --- */}
                 {activeTab === 'sent_reorders' && (
                     <motion.div
@@ -2612,105 +2814,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
 
                 {/* Suppliers Directory Modal */}
-                <AnimatePresence>
-                    {showDirectory && (
-                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-                                onClick={() => setShowDirectory(false)}
-                            />
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                                className="bg-white rounded-3xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl relative z-10 overflow-hidden"
-                            >
-                                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                                    <h3 className="text-xl font-bold text-slate-800">Supplier Directory</h3>
-                                    <button onClick={() => setShowDirectory(false)} className="p-2 cursor-pointer !bg-black hover:!bg-slate-800 rounded-full transition-colors shadow-md shadow-black/10">
-                                        <X className="w-5 h-5 !text-white" />
-                                    </button>
-                                </div>
 
-                                <div className="p-6 overflow-y-auto custom-scrollbar space-y-8">
-                                    {/* Connected Suppliers Section */}
-
-
-                                    {/* All Suppliers Section */}
-                                    <div>
-                                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">Discover Suppliers</h4>
-                                        <div className="space-y-3">
-                                            {directorySuppliers.filter(s => s.connectionStatus !== "CONNECTED").length === 0 ? (
-                                                <div className="text-center py-8 bg-slate-50 rounded-2xl border border-slate-100 border-dashed">
-                                                    <p className="text-slate-400 text-sm">No new suppliers found.</p>
-                                                </div>
-                                            ) : (
-                                                directorySuppliers.filter(s => s.connectionStatus !== "CONNECTED").map(supplier => (
-                                                    <div key={supplier.id} className="p-4 rounded-2xl border border-slate-100 bg-white hover:border-indigo-100 hover:shadow-md transition-all flex items-center justify-between group">
-                                                        <div>
-                                                            <h4 className="font-bold text-slate-800 text-base">{supplier.name}</h4>
-                                                            <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
-                                                                <span>{supplier.contactName || "No Contact"}</span>
-                                                                {supplier.phone && <span>• {supplier.phone}</span>}
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            {supplier.connectionStatus === "PENDING_OUTBOUND" ? (
-                                                                <div className="flex flex-col items-end gap-1">
-                                                                    <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold flex items-center gap-1 border border-slate-200">
-                                                                        <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
-                                                                        Request Sent
-                                                                    </span>
-                                                                    {supplier.requestDate && <span className="text-[10px] text-slate-400 font-medium">
-                                                                        {new Date(supplier.requestDate).toLocaleDateString()}
-                                                                    </span>}
-                                                                </div>
-                                                            ) : supplier.connectionStatus === "PENDING_INBOUND" ? (
-                                                                <div className="flex flex-col items-end gap-2">
-                                                                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 flex items-center gap-1">
-                                                                        <Activity className="w-3 h-3" /> Action Required
-                                                                    </span>
-                                                                    <div className="flex gap-1">
-                                                                        <Button
-                                                                            size="sm"
-                                                                            className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-                                                                            onClick={() => handleDirectoryAccept(supplier.requestId!)}
-                                                                        >
-                                                                            Accept
-                                                                        </Button>
-                                                                        <Button
-                                                                            size="sm"
-                                                                            variant="outline"
-                                                                            className="h-7 text-xs border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
-                                                                            onClick={() => handleDirectoryReject(supplier.requestId!)}
-                                                                        >
-                                                                            Reject
-                                                                        </Button>
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <Button
-                                                                    size="sm"
-                                                                    onClick={() => handleConnectRequest(supplier.id)}
-                                                                    className={`bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 rounded-full px-5`}
-                                                                >
-                                                                    Connect
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        </div>
-                    )}
-                </AnimatePresence>
 
 
             </main >

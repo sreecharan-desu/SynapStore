@@ -24,6 +24,7 @@ type AuthRequest = Request & {
     id: string;
     username?: string | null;
     email?: string | null;
+    imageUrl?: string | null;
     globalRole?: RoleEnum | null;
   };
   store?: any;
@@ -111,6 +112,7 @@ dashboardRouter.get(
           id: user.id,
           username: user.username ?? null,
           email: user.email ?? null,
+          imageUrl: user.imageUrl ?? null,
           globalRole: user.globalRole ?? null,
         },
         store: {
@@ -506,6 +508,7 @@ dashboardRouter.get(
           id: user.id,
           username: user.username ?? null,
           email: user.email ?? null,
+          imageUrl: user.imageUrl ?? null,
           globalRole: user.globalRole ?? null,
         },
         store: {

@@ -312,7 +312,8 @@ router.post(
         user: {
           id: userRow.id,
           username: userRow.username, // decent chance this is already decrypted by the extension
-          email: email, 
+          email: email,
+          imageUrl: null, 
         },
       }, 201);
 
@@ -511,6 +512,7 @@ router.post(
           id: user.id,
           username: user.username,
           email,
+          imageUrl: user.imageUrl || null,
           globalRole: user.globalRole,
         },
         effectiveStore: null,

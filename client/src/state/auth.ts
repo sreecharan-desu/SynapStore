@@ -5,6 +5,7 @@ export type AuthUser = {
   username: string;
   email: string;
   globalRole?: string | null;
+  imageUrl?: string | null;
 };
 
 export type EffectiveStore = {
@@ -19,7 +20,7 @@ export type EffectiveStore = {
 
 export type AuthState = {
   token: string | null;
-  user: AuthUser | null;
+  user: AuthUser | null ;
   effectiveStore: EffectiveStore | null;
   needsStoreSetup: boolean;
   needsStoreSelection?: boolean;

@@ -59,6 +59,7 @@ const SupplierDashboard: React.FC = () => {
     const [stores, setStores] = useState<Store[]>([]);
     const [requests, setRequests] = useState<SupplierRequest[]>([]);
     const [connectedStores, setConnectedStores] = useState<Store[]>([]);
+    const [imgError, setImgError] = useState(false);
 
     // Profile form state
     const [profileForm, setProfileForm] = useState({
@@ -592,10 +593,19 @@ const SupplierDashboard: React.FC = () => {
                                             Supplier
                                         </span>
                                     </div>
-                                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-white shadow-md shadow-slate-200/50">
-                                        <span className="text-slate-600 font-bold text-sm">
-                                            {(currentSupplier?.name?.charAt(0) || auth.user?.username?.charAt(0) || "S").toUpperCase()}
-                                        </span>
+                                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-white shadow-md shadow-slate-200/50 overflow-hidden">
+                                        {auth.user?.imageUrl && !imgError ? (
+                                            <img
+                                                src={auth.user.imageUrl}
+                                                alt="Profile"
+                                                className="w-full h-full object-cover"
+                                                onError={() => setImgError(true)}
+                                            />
+                                        ) : (
+                                            <span className="text-slate-600 font-bold text-sm">
+                                                {(currentSupplier?.name?.charAt(0) || auth.user?.username?.charAt(0) || "S").toUpperCase()}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
 

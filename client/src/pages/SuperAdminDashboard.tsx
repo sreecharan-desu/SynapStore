@@ -1,7 +1,7 @@
 // src/pages/SuperAdminDashboard.tsx
 import React, { useEffect, useState } from "react";
 
-import { useSetRecoilState } from "recoil";
+import { useSetRecoilState, useRecoilValue } from "recoil";
 import { authState, clearAuthState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -9,7 +9,7 @@ import {
     Package, Truck, LogOut, Trash2,
     PieChart as PieChartIcon,
     Bell, Lock, X, ArrowRightLeft,
-    Send, Mail, MessageSquare, CheckCircle2, RefreshCw, ShoppingCart, Share2, Filter, Calendar
+    Send, Mail, MessageSquare, CheckCircle2, RefreshCw, ShoppingCart, Share2, Filter, Calendar, AlertCircle
 } from "lucide-react";
 import { format } from 'date-fns';
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
@@ -221,6 +221,7 @@ const getLayoutedElements = (nodes: any[], edges: any[], direction = 'TB') => {
 
 const SuperAdminDashboard: React.FC = () => {
     const setAuth = useSetRecoilState(authState);
+    const auth = useRecoilValue(authState);
     const navigate = useNavigate();
 
     const NAV_ITEMS = [
@@ -242,7 +243,8 @@ const SuperAdminDashboard: React.FC = () => {
         message: "",
     });
     const [sending, setSending] = useState(false);
-    const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [notificationResult, setNotificationResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [showNotificationResultModal, setShowNotificationResultModal] = useState(false);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
     // Data State
@@ -510,11 +512,14 @@ const SuperAdminDashboard: React.FC = () => {
         setSending(true);
         try {
             const res: any = await adminApi.sendNotification(notifyForm);
+            
             if (res.data?.success) {
-                setShowSuccessModal(true);
+                setNotificationResult({ success: true, message: "Your broadcast message has been queued for delivery." });
+                setShowNotificationResultModal(true);
                 setNotifyForm({ ...notifyForm, subject: "", message: "" });
             } else {
-                throw new Error(res.data?.error || "Failed to send notification.");
+                 setNotificationResult({ success: false, message: res.data?.error || "Failed to send notification." });
+                 setShowNotificationResultModal(true);
             }
         } catch (err: any) {
             console.error("Error sending notification:", err);
@@ -573,6 +578,21 @@ const SuperAdminDashboard: React.FC = () => {
                                 transition={{ delay: 0.6, type: "spring" }}
                                 className="flex items-center gap-3"
                             >
+                                {/* User Profile */}
+                                <div className="hidden md:flex flex-col items-end">
+                                    <span className="text-sm font-semibold text-slate-700">
+                                        Admin
+                                    </span>
+                                </div>
+                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-white shadow-md shadow-slate-200/50 overflow-hidden">
+                                     {auth.user?.imageUrl ? (
+                                        <img src={auth.user.imageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <span className="text-slate-600 font-bold text-sm">
+                                            {auth.user?.username?.charAt(0)?.toUpperCase() || "A"}
+                                        </span>
+                                    )}
+                                </div>
 
                                 <motion.div
                                     whileHover={{ scale: 1.05 }}
@@ -665,8 +685,8 @@ const SuperAdminDashboard: React.FC = () => {
                                             </div>
                                             <div>
                                                 <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total Users</p>
-                                                <p className="text-xl font-black text-slate-800">
-                                                    {analytics.overview.users.total} <span className="text-sm font-normal text-slate-400">({analytics.overview.users.verified} Verified)</span>
+                                                <p className="text-xl font-black text-slate-800"> 
+                                                    {analytics.overview.users.total} <span className="text-sm font-normal text-slate-400">({analytics.overview.users.total} Verified)</span>
                                                 </p>
                                             </div>
                                         </div>
@@ -1538,17 +1558,17 @@ const SuperAdminDashboard: React.FC = () => {
                 </AnimatePresence>
             </main>
 
-            {/* Notification Success Modal */}
+            {/* Notification Result Modal */}
             <AnimatePresence>
                 {
-                    showSuccessModal && (
+                    showNotificationResultModal && notificationResult && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                             <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                                onClick={() => setShowSuccessModal(false)}
+                                onClick={() => setShowNotificationResultModal(false)}
                             />
                             <motion.div
                                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -1557,21 +1577,27 @@ const SuperAdminDashboard: React.FC = () => {
                                 className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
                             >
                                 <div className="flex flex-col items-center text-center gap-4">
-                                    <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-2">
-                                        <CheckCircle2 className="w-8 h-8 text-emerald-500 translate-x-0.5" />
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${notificationResult.success ? "bg-emerald-50" : "bg-red-50"}`}>
+                                        {notificationResult.success ? (
+                                            <CheckCircle2 className="w-8 h-8 text-emerald-500 translate-x-0.5" />
+                                        ) : (
+                                            <AlertCircle className="w-8 h-8 text-red-500" />
+                                        )}
                                     </div>
                                     <div>
-                                        <h3 className="text-xl font-bold text-slate-800">Success!</h3>
+                                        <h3 className="text-xl font-bold text-slate-800">
+                                            {notificationResult.success ? "Success!" : "Notice"}
+                                        </h3>
                                         <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                            Your broadcast message has been queued for delivery to all selected recipients.
+                                            {notificationResult.message}
                                         </p>
                                     </div>
                                     <div className="w-full mt-4">
                                         <Button
                                             className="w-full h-12 rounded-xl !bg-black hover:!bg-slate-800 text-white border-none shadow-lg shadow-slate-900/20 font-semibold"
-                                            onClick={() => setShowSuccessModal(false)}
+                                            onClick={() => setShowNotificationResultModal(false)}
                                         >
-                                            Done
+                                            {notificationResult.success ? "Done" : "Close"}
                                         </Button>
                                     </div>
                                 </div>

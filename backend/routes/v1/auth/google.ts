@@ -279,6 +279,7 @@ GoogleRouter.post("/", async (req: Request, res: Response) => {
         id: user.id,
         username: user.username,
         email: user.email,
+        imageUrl: user.imageUrl || null,
         globalRole: user.globalRole ?? null,
       },
       effectiveStore: effectiveStore ?? null,

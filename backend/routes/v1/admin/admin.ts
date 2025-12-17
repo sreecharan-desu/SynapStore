@@ -1029,7 +1029,7 @@ router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, r
      } else if (targetRole) {
         if (targetRole === 'ALL') {
              users = await prisma.user.findMany({
-                where: { globalRole: { not: "SUPERADMIN" } },
+                where: { globalRole: { notIn: ["SUPERADMIN", "ADMIN"] } },
                 select: { id: true, email: true }
              });
         } else if (targetRole === 'SUPPLIER') {
@@ -1040,7 +1040,7 @@ router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, r
         } else if (targetRole === 'STORE_OWNER') {
              users = await prisma.user.findMany({
                 where: { 
-                   globalRole: { not: "SUPERADMIN" }, // Exclude SUPERADMIN
+                   globalRole: { notIn: ["SUPERADMIN", "ADMIN"] }, // Exclude SUPERADMIN & ADMIN
                    OR: [
                      { globalRole: 'STORE_OWNER' },
                      { stores: { some: { role: 'STORE_OWNER' } } }
@@ -1051,7 +1051,13 @@ router.post("/notifications/send", requireRole("SUPERADMIN"), async (req: any, r
         }
      }
 
-     if (users.length === 0) return sendError(res, "No users found for criteria", 404);
+     if (users.length === 0) {
+        return res.status(200).json({
+            success: false,
+            error: "No users found for criteria",
+            details: null
+        });
+     }
 
      // 2. Send
      const dispatchPromises = users.map(async (u) => {
