@@ -53,7 +53,7 @@ export const SuppliersPage = () => {
                 <h1 className="text-2xl font-bold text-slate-900">Suppliers</h1>
                 <button
                     onClick={() => setShowAdd(true)}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                    className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-black flex items-center gap-2"
                 >
                     <Plus size={18} />
                     Add Supplier
@@ -82,7 +82,7 @@ export const SuppliersPage = () => {
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">Cancel</button>
-                        <button onClick={handleCreate} className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Create Supplier</button>
+                        <button onClick={handleCreate} className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-black">Create Supplier</button>
                     </div>
                 </div>
             )}

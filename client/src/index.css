@@ -2,6 +2,19 @@
 @import "tw-animate-css";
 @import "./styles/theme.css";
 
+@theme inline {
+  --color-destructive-foreground: var(--destructive-foreground);
+}
+
+:root {
+  --destructive-foreground: oklch(0.572 0.259 25.061); /* Example red color for destructive */
+}
+
+.dark {
+  --destructive-foreground: oklch(0.672 0.259 25.061);
+}
+
+
 @keyframes marquee {
   from {
     transform: translateX(0);

@@ -275,10 +275,29 @@ const SupplierDashboard: React.FC = () => {
                 const maxAttempts = 60;
 
                 // Simple inline polling
+                // We utilize the detailed status object: { status, progressPercent, processedRows, totalRows, phase }
                 while (status !== "APPLIED" && status !== "FAILED" && attempts < maxAttempts) {
                     await new Promise(r => setTimeout(r, 2000)); // Wait 2s
-                    status = await SupplierService.getUploadStatus(uploadId);
-                    console.log(`Upload ${uploadId} status: ${status}`);
+                    
+                    const statusObj = await SupplierService.getUploadStatus(uploadId);
+                    
+                    // Extract status string
+                    status = statusObj.status; 
+                    
+                    // Update UI Feedback
+                    if (typeof statusObj.progressPercent === 'number') {
+                        setUploadProgress(statusObj.progressPercent);
+                    }
+                    
+                    // Construct a helpful message
+                    let msg = `Status: ${status}`;
+                    if (statusObj.phase) msg += ` - ${statusObj.phase}`;
+                    if (statusObj.totalRows > 0) {
+                        msg += ` (${statusObj.processedRows} / ${statusObj.totalRows} rows)`;
+                    }
+                    setUploadStatusMessage(msg);
+
+                    console.log(`Upload ${uploadId} poll:`, statusObj);
                     attempts++;
                 }
 
