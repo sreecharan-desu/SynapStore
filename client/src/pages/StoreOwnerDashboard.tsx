@@ -39,6 +39,7 @@ import {
 } from "../components/ui/select";
 import { FaRupeeSign } from "react-icons/fa";
 import type { Supplier, SupplierRequest } from "@/lib/types";
+import { capitalize } from "lodash";
 
 const Skeleton = ({ className }: { className?: string }) => (
     // @ts-ignore
@@ -1203,7 +1204,7 @@ const StoreOwnerDashboard: React.FC = () => {
                             {/* User Info */}
                             <div className="hidden sm:flex flex-col items-end leading-tight mr-1">
                                 <span className="text-sm font-bold text-slate-800">
-                                    {auth.user?.username}
+                                    {capitalize(auth.user?.username)}
                                 </span>
                                 <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
                                     {auth.user?.globalRole?.toLowerCase().replace('_', ' ')}
@@ -1259,7 +1260,7 @@ const StoreOwnerDashboard: React.FC = () => {
                     >
                         <div>
                             <h2 className="text-3xl font-bold text-slate-800">
-                                {getGreeting()}, <span className={`bg-gradient-to-r ${theme.gradient} bg-clip-text text-transparent`}>{auth.user?.username.split(' ')[0]}</span>
+                                {getGreeting()}, <span className={`bg-gradient-to-r ${theme.gradient} bg-clip-text text-transparent`}>{capitalize(auth.user?.username.split(' ')[0])}</span>
                             </h2>
                             <p className="text-slate-500 mt-1">Here's what's happening in your store today.</p>
                         </div>
@@ -1466,7 +1467,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                             <MetricCard className="h-full border-slate-100 shadow-sm rounded-3xl overflow-hidden bg-white">
                                                 <MetricCardHeader className="flex flex-row items-center justify-between pb-2">
                                                     <div className="space-y-1">
-                                                        <MetricCardTitle className="text-xl font-bold text-slate-800">Forecast Trend</MetricCardTitle>
+                                                        <MetricCardTitle className="text-xl mt-2 font-bold text-slate-800">Forecast Trend</MetricCardTitle>
                                                         <MetricCardDescription className="text-slate-500 font-medium">
                                                             AI-generated demand prediction
                                                         </MetricCardDescription>
@@ -1584,7 +1585,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                 <MetricCard className="h-full border-slate-100 shadow-sm rounded-3xl overflow-hidden bg-white">
                                     <MetricCardHeader className="flex flex-row items-center justify-between pb-2">
                                         <div className="space-y-1">
-                                            <MetricCardTitle className="text-xl font-bold text-slate-800">Sales Trend</MetricCardTitle>
+                                            <MetricCardTitle className="text-xl mt-3 font-bold text-slate-800">Sales Trend</MetricCardTitle>
                                             <MetricCardDescription className="text-slate-500 font-medium">
                                                 Revenue performance over time
                                             </MetricCardDescription>
