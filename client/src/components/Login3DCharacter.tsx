@@ -211,9 +211,9 @@ const CharacterModel = ({ focusedField, keyTrigger }: { focusedField: FieldType,
     );
 };
 
-export default function Login3DCharacter({ focusedField, keyTrigger }: Login3DCharacterProps) {
+export default function Login3DCharacter({ focusedField, keyTrigger, className }: Login3DCharacterProps & { className?: string }) {
     return (
-        <div className="w-full h-full min-h-[400px] flex items-center justify-center bg-transparent">
+        <div className={`w-full h-full flex items-center justify-center bg-transparent ${className || "min-h-[400px]"}`}>
             <Canvas shadows camera={{ position: [0, 0, 8], fov: 35 }}>
                 <ambientLight intensity={0.8} />
                 <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} castShadow />

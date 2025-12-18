@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuthContext } from "../context/AuthContext";
-import { X, Send, Loader2, Sparkles } from "lucide-react";
+import { X, Send, Loader2, Sparkles, Mic, Volume2, VolumeX, StopCircle } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -14,41 +14,92 @@ interface Message {
     text: string;
 }
 
-const OrbWithEyes = () => {
-    return (
-        <div className="relative w-20 h-20 flex items-center justify-center">
-            {/* Bouncing Wrapper */}
-            <motion.div
-                className="w-full h-full relative flex items-center justify-center"
-                animate={{ y: [0, -6, 0, -3, 0] }}
-                transition={{ duration: 4, repeat: Infinity, repeatDelay: 1, ease: "easeInOut" }}
-            >
-                {/* Rotating/Wiggling Character Image */}
-                <motion.img
-                    src="/chatbot-icon.jpg"
-                    alt="SynapBot"
-                    draggable={false}
-                    onDragStart={(e) => e.preventDefault()}
-                    className="w-full h-full object-cover rounded-full shadow-2xl border-4 border-white/20 select-none"
-                    animate={{ rotate: [0, -5, 5, -5, 5, 0] }}
-                    transition={{ duration: 3, repeat: Infinity, repeatDelay: 2, ease: "easeInOut" }}
-                />
-            </motion.div>
-        </div>
-    );
-};
+import Login3DCharacter from "./Login3DCharacter";
+
+
 
 export const ChatbotWidget = () => {
     const { isAuthenticated, user } = useAuthContext();
     const { token } = useRecoilValue(authState);
     const [isOpen, setIsOpen] = useState(false);
+    const BOT_NAME = import.meta.env.VITE_BOT_NAME || "Dose";
     const [messages, setMessages] = useState<Message[]>([
-        { id: "welcome", role: "bot", text: "Hello! I'm SynapBot. How can I help you manage your store today?" }
+        { id: "welcome", role: "bot", text: `Hello! I'm ${BOT_NAME}. How can I help you manage your store today?` }
     ]);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const isDraggingRef = useRef(false);
+
+    // 3D Character integration
+    const [focusedField, setFocusedField] = useState<"email" | "password" | null>(null);
+    const [keyTrigger, setKeyTrigger] = useState(0);
+
+    // TTS & STT State
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [isListening, setIsListening] = useState(false);
+    const [voiceEnabled, setVoiceEnabled] = useState(true);
+    const synthRef = useRef<SpeechSynthesis | null>(window.speechSynthesis);
+    const recognitionRef = useRef<any>(null);
+
+    useEffect(() => {
+        if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) return;
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = false;
+        recognitionRef.current.interimResults = false;
+        recognitionRef.current.lang = "en-US";
+
+        recognitionRef.current.onresult = (event: any) => {
+            const transcript = event.results[0][0].transcript;
+            setInputValue(transcript);
+            handleVoiceCommand(transcript);
+        };
+
+        recognitionRef.current.onend = () => {
+            setIsListening(false);
+        };
+    }, []);
+
+    const speak = (text: string) => {
+        if (!voiceEnabled || !synthRef.current) return;
+        synthRef.current.cancel(); // Stop previous
+        const utterance = new SpeechSynthesisUtterance(text);
+
+        // Select a good voice if possible (prefer Google US English or similar)
+        const voices = synthRef.current.getVoices();
+        const preferredVoice = voices.find(v => v.name.includes("Google US English") || v.name.includes("Samantha"));
+        if (preferredVoice) utterance.voice = preferredVoice;
+
+        utterance.onstart = () => setIsSpeaking(true);
+        utterance.onend = () => setIsSpeaking(false);
+        synthRef.current.speak(utterance);
+    };
+
+    const toggleListening = () => {
+        if (isListening) {
+            recognitionRef.current?.stop();
+            setIsListening(false);
+        } else {
+            recognitionRef.current?.start();
+            setIsListening(true);
+        }
+    };
+
+    const handleVoiceCommand = (text: string) => {
+        // "Make sure it responds to the keyword 'Hey Dose'"
+        // If the user spoke, we assume they want to talk. 
+        // We can optionally check if text starts with "Hey Dose" if we want to be strict,
+        // but typically voice mode implies intent. 
+        // We'll proceed to send automatically if it sounds like a command.
+
+        // Simple logic: Auto-send if voice mode was used.
+        // Or if strictly "Hey Dose" is required:
+        // if (text.toLowerCase().includes(BOT_NAME.toLowerCase())) { ... }
+
+        // Let's implement auto-send for better UX, assuming the user clicked the mic.
+        setTimeout(() => handleSendMessage(text), 500);
+    };
 
     // Strictly use the user ID as the thread ID per requirements
     // The widget is only rendered if isAuthenticated is true, so user.id should be available.
@@ -89,22 +140,14 @@ export const ChatbotWidget = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isOpen]);
 
-    const [isWet, setIsWet] = useState(false);
 
-    useEffect(() => {
-        if (isWet) {
-            const timer = setTimeout(() => setIsWet(false), 4000); // "Drying" takes 4 seconds
-            return () => clearTimeout(timer);
-        }
-    }, [isWet]);
 
-    const handleSendMessage = async () => {
-        if (!inputValue.trim()) return;
+    const handleSendMessage = async (manualText?: string) => {
+        const textToSend = manualText || inputValue;
+        if (!textToSend.trim()) return;
 
         // Trigger splash effect
-        setIsWet(true);
-
-        const userMsg: Message = { id: Date.now().toString(), role: "user", text: inputValue };
+        const userMsg: Message = { id: Date.now().toString(), role: "user", text: textToSend };
         setMessages(prev => [...prev, userMsg]);
         setInputValue("");
         setIsLoading(true);
@@ -122,6 +165,7 @@ export const ChatbotWidget = () => {
 
             const botMsg: Message = { id: (Date.now() + 1).toString(), role: "bot", text: botText };
             setMessages(prev => [...prev, botMsg]);
+            speak(botText);
 
         } catch (error) {
             console.error("Request failed:", error);
@@ -203,60 +247,53 @@ export const ChatbotWidget = () => {
                                     <div className="relative flex items-center justify-center"
                                         style={{ background: "transparent", width: 44, height: 44 }}>
 
-                                        <motion.img
+                                        <img
                                             src="/chatbot-icon.jpg"
                                             alt="Bot"
                                             draggable={false}
                                             onDragStart={(e) => e.preventDefault()}
                                             className="w-full h-full object-cover rounded-full border-2 border-white/20 shadow-md relative z-10 select-none"
-                                            animate={isWet ? {
-                                                filter: ["brightness(1) saturate(1)", "brightness(1.3) saturate(1.5) drop-shadow(0 0 8px rgba(96, 165, 250, 0.8))", "brightness(1) saturate(1)"],
-                                                scale: [1, 1.1, 1]
-                                            } : {}}
-                                            transition={{ duration: 4, ease: "easeOut" }} // Drying duration
                                         />
-
-                                        {/* Water Splash Effects */}
-                                        <AnimatePresence>
-                                            {isWet && (
-                                                <>
-                                                    {/* Impact Splash */}
-                                                    <motion.div
-                                                        initial={{ opacity: 0, scale: 0.5 }}
-                                                        animate={{ opacity: [0, 0.8, 0], scale: 1.8 }}
-                                                        exit={{ opacity: 0 }}
-                                                        transition={{ duration: 0.6, ease: "easeOut" }}
-                                                        className="absolute inset-0 bg-blue-400/40 rounded-full z-20 pointer-events-none mix-blend-screen"
-                                                    />
-
-                                                    {/* Droplets running down (Drying) */}
-                                                    {[...Array(3)].map((_, i) => (
-                                                        <motion.div
-                                                            key={i}
-                                                            initial={{ y: -5, x: (i - 1) * 8, opacity: 0, scale: 0 }}
-                                                            animate={{ y: 25, opacity: [0, 1, 0], scale: [0, 1, 0.5] }}
-                                                            transition={{ duration: 2, delay: 0.2 + (i * 0.3), ease: "easeIn" }}
-                                                            className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-blue-300 rounded-full z-20 pointer-events-none shadow-[0_0_5px_rgba(147,197,253,0.8)]"
-                                                            style={{ marginLeft: -3, marginTop: -3 }}
-                                                        />
-                                                    ))}
-                                                </>
-                                            )}
-                                        </AnimatePresence>
                                     </div>
 
                                     <div className="flex flex-col">
-                                        <h3 className="font-bold text-lg leading-tight tracking-tight">SynapBot</h3>
+                                        <h3 className="font-bold text-lg leading-tight tracking-tight">{BOT_NAME}</h3>
 
                                         <p className="text-xs text-blue-50 font-medium flex items-center gap-1.5 opacity-90">
-                                            {/* subtle online indicator — no box */}
-                                            <span className="relative flex h-2 w-2">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400"></span>
-                                            </span>
-                                            Always online
+                                            {isSpeaking ? (
+                                                <span className="flex gap-0.5">
+                                                    <span className="w-0.5 h-2 bg-green-300 animate-[bounce_0.5s_infinite]" />
+                                                    <span className="w-0.5 h-3 bg-green-300 animate-[bounce_0.4s_infinite]" />
+                                                    <span className="w-0.5 h-2 bg-green-300 animate-[bounce_0.6s_infinite]" />
+                                                    <span className="ml-1">Speaking...</span>
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <span className="relative flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400"></span>
+                                                    </span>
+                                                    Always online
+                                                </>
+                                            )}
                                         </p>
                                     </div>
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => {
+                                            if (isSpeaking) {
+                                                synthRef.current?.cancel();
+                                                setIsSpeaking(false);
+                                            }
+                                            setVoiceEnabled(!voiceEnabled)
+                                        }}
+                                        className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white/80"
+                                        title={voiceEnabled ? "Mute Voice" : "Enable Voice"}
+                                    >
+                                        {voiceEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+                                    </button>
 
                                 </div>
 
@@ -371,13 +408,24 @@ export const ChatbotWidget = () => {
                                     type="text"
                                     value={inputValue}
                                     onChange={(e) => setInputValue(e.target.value)}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder="Type your message..."
+                                    onFocus={() => setFocusedField("email")}
+                                    onBlur={() => setFocusedField(null)}
+                                    onKeyDown={(e) => {
+                                        setKeyTrigger(prev => prev + 1);
+                                        handleKeyDown(e);
+                                    }}
+                                    placeholder={`Message ${BOT_NAME}...`}
                                     className="flex-1 bg-transparent px-3 py-1.5 text-sm outline-none text-slate-800 placeholder:text-slate-400 placeholder:font-medium"
-                                    disabled={isLoading}
+                                    disabled={isLoading || isListening}
                                 />
                                 <button
-                                    onClick={handleSendMessage}
+                                    onClick={toggleListening}
+                                    className={`p-2 rounded-xl transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:bg-slate-100'}`}
+                                >
+                                    {isListening ? <StopCircle className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                                </button>
+                                <button
+                                    onClick={() => handleSendMessage()}
                                     disabled={!inputValue.trim() || isLoading}
                                     className={`p-2.5 rounded-xl ${inputValue.trim() ? theme.bg : "bg-slate-200"} ${inputValue.trim() ? "text-white" : "text-slate-400 cursor-not-allowed"} shadow-sm transition-all duration-200 hover:scale-105 active:scale-95`}
                                 >
@@ -401,16 +449,20 @@ export const ChatbotWidget = () => {
                     }
                     setIsOpen(!isOpen);
                 }}
-                className="relative w-24 h-24 flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-300 z-50 group cursor-grab active:cursor-grabbing !bg-transparent"
+                className="relative w-48 h-48 flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-300 z-50 group cursor-grab active:cursor-grabbing !bg-transparent"
                 role="button"
                 aria-label="Toggle Chatbot"
             >
-                <OrbWithEyes />
+                {/* 3D Character Animation */}
+                <div className="w-full h-full pointer-events-none">
+                    <Login3DCharacter focusedField={focusedField} keyTrigger={keyTrigger} className="min-h-0" />
+                </div>
+
                 {!isOpen && (
                     <motion.span
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        className="absolute top-0 right-0 flex h-5 w-5"
+                        className="absolute top-0 right-0 flex h-5 w-5 pointer-events-none"
                     >
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-5 w-5 bg-red-500 border-2 border-white items-center justify-center text-[10px] font-bold text-white shadow-sm">1</span>
