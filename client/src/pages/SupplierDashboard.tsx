@@ -97,24 +97,27 @@ const SupplierDashboard: React.FC = () => {
 
     // Helper to open fulfill modal
     const openFulfillModal = (req: SupplierRequest) => {
-        if (req.payload?.type === 'REORDER' && req.payload.items) {
-            setRequestToFulfill(req);
-            // Pre-fill items from request, defaulting quantity to requested
-            // We need to allow user to add batch numbers/expiry
-            setFulfillItems(req.payload.items.map((i: any) => ({
-                medicineId: i.medicineId,
-                medicineName: i.medicineName || "Unknown Item",
-                quantity: i.quantity,
-                batchNumber: "", // Supplier must input
-                expiryDate: "",
-                purchasePrice: 0,
-                mrp: 0
-            })));
-            setFulfillModalOpen(true);
-        } else {
-            alert("This request does not contain reorder items or is malformed.");
-        }
-    };
+    // Determine request type
+    const isReorder = req.payload?.type === 'REORDER';
+    const isReturn = req.payload?.type === 'RETURN';
+
+    if ((isReorder || isReturn) && req.payload.items) {
+        setRequestToFulfill(req);
+        // Pre-fill items from request
+        setFulfillItems(req.payload.items.map((i: any) => ({
+            medicineId: i.medicineId,
+            medicineName: i.medicineName || "Unknown Item",
+            quantity: i.quantity,
+            batchNumber: i.batchNumber || "", // Use provided batch for Returns if available
+            expiryDate: i.expiryDate || "",
+            purchasePrice: i.purchasePrice || 0,
+            mrp: i.mrp || 0
+        })));
+        setFulfillModalOpen(true);
+    } else {
+        alert("This request does not contain items or is malformed.");
+    }
+};
 
     const [historyDetailRequest, setHistoryDetailRequest] = useState<SupplierRequest | null>(null);
     const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string; subtext?: string } | null>(null);
@@ -134,38 +137,45 @@ const SupplierDashboard: React.FC = () => {
     const [rejectionReason, setRejectionReason] = useState("");
 
     const handleSubmitFulfillment = async () => {
-        if (!requestToFulfill) return;
-        try {
-            // Validate
-            if (fulfillItems.some(i => !i.batchNumber || !i.expiryDate)) {
-                alert("Please provide Batch Number and Expiry Date for all items.");
-                return;
-            }
+    if (!requestToFulfill) return;
+    try {
+        const isReturn = requestToFulfill.payload?.type === 'RETURN';
 
-            setActionLoading("FULFILL");
-            const res = await suppliersApi.fulfillRequest(requestToFulfill.id, { items: fulfillItems });
-            if (res.data.success) {
-                setFulfillModalOpen(false);
-                setRequestToFulfill(null);
-                setFulfillItems([]);
-                setActionResult({
-                    type: 'success',
-                    title: 'Order Accepted',
-                    message: 'The order has been successfully accepted and inventory is being processed.'
-                });
-                refreshData();
-            }
-        } catch (err: any) {
-            console.error(err);
-            setActionResult({
-                type: 'error',
-                title: 'Submission Failed',
-                message: err.message || "Failed to fulfill order."
-            });
-        } finally {
-            setActionLoading(null);
+        // Validate only if REORDER
+        if (!isReturn && fulfillItems.some(i => !i.batchNumber || !i.expiryDate)) {
+            alert("Please provide Batch Number and Expiry Date for all items.");
+            return;
         }
-    };
+
+        setActionLoading("FULFILL");
+        // For Returns, we can send empty items or just the items as confirmation.
+        // The backend schema allows optional items.
+        const res = await suppliersApi.fulfillRequest(requestToFulfill.id, { items: fulfillItems });
+        
+        if (res.data.success) {
+            setFulfillModalOpen(false);
+            setRequestToFulfill(null);
+            setFulfillItems([]);
+            setActionResult({
+                type: 'success',
+                title: isReturn ? 'Return Processed' : 'Order Accepted',
+                message: isReturn 
+                    ? 'The return request has been marked as processed.' 
+                    : 'The order has been successfully accepted and inventory is being processed.'
+            });
+            refreshData();
+        }
+    } catch (err: any) {
+        console.error(err);
+        setActionResult({
+            type: 'error',
+            title: 'Submission Failed',
+            message: err.message || "Failed to fulfill request."
+        });
+    } finally {
+        setActionLoading(null);
+    }
+};
 
     // --- REFACTORED DATA FETCHING ---
     // This replaces fetchData to center data handling and cache response
@@ -613,8 +623,9 @@ const SupplierDashboard: React.FC = () => {
                                         </span>
                                     </div>
                                     <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-white shadow-md shadow-slate-200/50 overflow-hidden">
-                                        {auth.user?.imageUrl && !imgError ? (
+                                    {auth.user?.imageUrl && !imgError ? (
                                             <img
+                                                key={auth.user.imageUrl}
                                                 src={auth.user.imageUrl}
                                                 alt="Profile"
                                                 className="w-full h-full object-cover"
@@ -1129,8 +1140,8 @@ const SupplierDashboard: React.FC = () => {
                                                     }
                                                 }
 
-                                                // Only show Reorders AND Pending
-                                                if (type !== 'REORDER') return false;
+                                                // Only show Reorders OR Returns AND Pending
+                                                if (type !== 'REORDER' && type !== 'RETURN') return false;
                                                 if (req.status !== 'PENDING') return false;
 
                                                 if (!searchQuery) return true;
@@ -1160,7 +1171,14 @@ const SupplierDashboard: React.FC = () => {
                                                                             {req.store?.name?.[0] || "S"}
                                                                         </div>
                                                                         <div>
-                                                                            <h3 className="font-bold text-slate-800 text-lg">{req.store?.name || "Unknown Store"}</h3>
+                                                                            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                                                                {req.store?.name || "Unknown Store"}
+                                                                                {req.payload?.type === 'RETURN' && (
+                                                                                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold border border-red-200 uppercase tracking-wide">
+                                                                                        Return
+                                                                                    </span>
+                                                                                )}
+                                                                            </h3>
                                                                             <div className="flex items-center gap-3 text-xs text-slate-500 font-medium font-mono mt-0.5">
                                                                                 <span>#{req.id.slice(0, 8)}</span>
                                                                                 <span className="w-1 h-1 rounded-full bg-slate-300" />
@@ -1200,7 +1218,12 @@ const SupplierDashboard: React.FC = () => {
 
                                                                     <div className="flex items-center justify-between mb-4">
                                                                         <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                                                                            <Package className="w-5 h-5 text-slate-400" /> Requested Items <span className="text-slate-400 font-normal">({req.payload?.items?.length || 0})</span>
+                                                                            {req.payload?.type === 'RETURN' ? (
+                                                                                 <><RefreshCw className="w-5 h-5 text-red-400" /> Return Items</>
+                                                                            ) : (
+                                                                                 <><Package className="w-5 h-5 text-slate-400" /> Requested Items</>
+                                                                            )}
+                                                                             <span className="text-slate-400 font-normal">({req.payload?.items?.length || 0})</span>
                                                                         </h4>
                                                                     </div>
 
@@ -1242,8 +1265,8 @@ const SupplierDashboard: React.FC = () => {
                                                                                 </Button>
                                                                             </>
                                                                         ) : isAccepted ? (
-                                                                            <Button onClick={() => openFulfillModal(req)} className="!bg-black hover:!bg-slate-800 !text-white px-8 shadow-lg shadow-black/20">
-                                                                                Fulfill Order
+                                                                            <Button onClick={() => openFulfillModal(req)} className={`!bg-black hover:!bg-slate-800 !text-white px-8 shadow-lg shadow-black/20 ${req.payload?.type === 'RETURN' ? '!bg-red-600 hover:!bg-red-700 shadow-red-600/20' : ''}`}>
+                                                                                {req.payload?.type === 'RETURN' ? 'Process Return' : 'Fulfill Order'}
                                                                             </Button>
                                                                         ) : (
                                                                             <div className="text-slate-400 italic text-sm">No actions available</div>
@@ -1308,7 +1331,7 @@ const SupplierDashboard: React.FC = () => {
                                                     } catch (e) { }
                                                 }
 
-                                                if (type !== 'REORDER') return false;
+                                                if (type !== 'REORDER' && type !== 'RETURN') return false;
 
                                                 if (!searchQuery) return true;
                                                 const q = searchQuery.toLowerCase();
@@ -1338,7 +1361,14 @@ const SupplierDashboard: React.FC = () => {
                                                                             {req.store?.name?.[0] || "S"}
                                                                         </div>
                                                                         <div>
-                                                                            <h3 className="font-bold text-slate-800 text-lg">{req.store?.name || "Unknown Store"}</h3>
+                                                                            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                                                                {req.store?.name || "Unknown Store"}
+                                                                                {req.payload?.type === 'RETURN' && (
+                                                                                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold border border-red-200 uppercase tracking-wide">
+                                                                                        Return
+                                                                                    </span>
+                                                                                )}
+                                                                            </h3>
                                                                             <div className="flex items-center gap-3 text-xs text-slate-500 font-medium font-mono mt-0.5">
                                                                                 <span>#{req.id.slice(0, 8)}</span>
                                                                                 <span className="w-1 h-1 rounded-full bg-slate-300" />
@@ -1362,9 +1392,14 @@ const SupplierDashboard: React.FC = () => {
                                                                 {/* Order Body - Simplified for History */}
                                                                 <div className="px-6 py-4 flex items-center justify-between">
                                                                     <div className="text-sm text-slate-600">
-                                                                        Requested <span className="font-bold text-slate-900">{req.payload?.items?.length || 0} items</span>
+                                                                        {req.payload?.type === 'RETURN' ? (
+                                                                             <span className="font-bold text-slate-900 capitalize flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Return Request</span>
+                                                                        ) : (
+                                                                             <>Requested <span className="font-bold text-slate-900">{req.payload?.items?.length || 0} items</span></>
+                                                                        )}
+                                                                        
                                                                         {isAccepted ? (
-                                                                            <span className="text-emerald-600 font-medium ml-2 inline-flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Fulfilled</span>
+                                                                            <span className="text-emerald-600 font-medium ml-2 inline-flex items-center gap-1"><CheckCircle className="w-3 h-3" /> {req.payload?.type === 'RETURN' ? 'Processed' : 'Fulfilled'}</span>
                                                                         ) : isPending ? (
                                                                             <span className="text-amber-600 font-medium ml-2">Pending</span>
                                                                         ) : (
@@ -2165,74 +2200,81 @@ const SupplierDashboard: React.FC = () => {
                                                     {isPartial && <span className="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded h-fit">Partial Fill</span>}
                                                 </div>
 
-                                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                                    <div>
-                                                        <label className="text-xs font-medium text-slate-500 block mb-1">Sending Qty</label>
-                                                        <input
-                                                            type="number"
-                                                            value={item.quantity}
-                                                            onChange={(e) => {
-                                                                const newItems = [...fulfillItems];
-                                                                newItems[idx].quantity = parseInt(e.target.value) || 0;
-                                                                setFulfillItems(newItems);
-                                                            }}
-                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                        />
+                                                {requestToFulfill?.payload?.type === 'RETURN' ? (
+                                                    <div className="text-sm text-slate-600 italic">
+                                                        Verify receipt of <span className="font-bold text-slate-900">{item.quantity}</span> units.
+                                                        <div className="mt-1 text-xs text-slate-400">Batch: {item.batchNumber || "N/A"}</div>
                                                     </div>
-                                                    <div>
-                                                        <label className="text-xs font-medium text-slate-500 block mb-1">Batch #</label>
-                                                        <input
-                                                            type="text"
-                                                            value={item.batchNumber}
-                                                            onChange={(e) => {
-                                                                const newItems = [...fulfillItems];
-                                                                newItems[idx].batchNumber = e.target.value;
-                                                                setFulfillItems(newItems);
-                                                            }}
-                                                            placeholder="e.g. B123"
-                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                        />
+                                                ) : (
+                                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                                        <div>
+                                                            <label className="text-xs font-medium text-slate-500 block mb-1">Sending Qty</label>
+                                                            <input
+                                                                type="number"
+                                                                value={item.quantity}
+                                                                onChange={(e) => {
+                                                                    const newItems = [...fulfillItems];
+                                                                    newItems[idx].quantity = parseInt(e.target.value) || 0;
+                                                                    setFulfillItems(newItems);
+                                                                }}
+                                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs font-medium text-slate-500 block mb-1">Batch #</label>
+                                                            <input
+                                                                type="text"
+                                                                value={item.batchNumber}
+                                                                onChange={(e) => {
+                                                                    const newItems = [...fulfillItems];
+                                                                    newItems[idx].batchNumber = e.target.value;
+                                                                    setFulfillItems(newItems);
+                                                                }}
+                                                                placeholder="e.g. B123"
+                                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs font-medium text-slate-500 block mb-1">Expiry</label>
+                                                            <input
+                                                                type="date"
+                                                                value={item.expiryDate}
+                                                                onChange={(e) => {
+                                                                    const newItems = [...fulfillItems];
+                                                                    newItems[idx].expiryDate = e.target.value;
+                                                                    setFulfillItems(newItems);
+                                                                }}
+                                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs font-medium text-slate-500 block mb-1">Price</label>
+                                                            <input
+                                                                type="number"
+                                                                value={item.purchasePrice}
+                                                                onChange={(e) => {
+                                                                    const newItems = [...fulfillItems];
+                                                                    newItems[idx].purchasePrice = parseFloat(e.target.value) || 0;
+                                                                    setFulfillItems(newItems);
+                                                                }}
+                                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs font-medium text-slate-500 block mb-1">MRP</label>
+                                                            <input
+                                                                type="number"
+                                                                value={item.mrp}
+                                                                onChange={(e) => {
+                                                                    const newItems = [...fulfillItems];
+                                                                    newItems[idx].mrp = parseFloat(e.target.value) || 0;
+                                                                    setFulfillItems(newItems);
+                                                                }}
+                                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <label className="text-xs font-medium text-slate-500 block mb-1">Expiry</label>
-                                                        <input
-                                                            type="date"
-                                                            value={item.expiryDate}
-                                                            onChange={(e) => {
-                                                                const newItems = [...fulfillItems];
-                                                                newItems[idx].expiryDate = e.target.value;
-                                                                setFulfillItems(newItems);
-                                                            }}
-                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-xs font-medium text-slate-500 block mb-1">Price</label>
-                                                        <input
-                                                            type="number"
-                                                            value={item.purchasePrice}
-                                                            onChange={(e) => {
-                                                                const newItems = [...fulfillItems];
-                                                                newItems[idx].purchasePrice = parseFloat(e.target.value) || 0;
-                                                                setFulfillItems(newItems);
-                                                            }}
-                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-xs font-medium text-slate-500 block mb-1">MRP</label>
-                                                        <input
-                                                            type="number"
-                                                            value={item.mrp}
-                                                            onChange={(e) => {
-                                                                const newItems = [...fulfillItems];
-                                                                newItems[idx].mrp = parseFloat(e.target.value) || 0;
-                                                                setFulfillItems(newItems);
-                                                            }}
-                                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
-                                                        />
-                                                    </div>
-                                                </div>
+                                                )}
                                             </div>
                                         )
                                     })}
@@ -2240,9 +2282,9 @@ const SupplierDashboard: React.FC = () => {
 
                                 <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
                                     <Button variant="outline" className="cursor-pointer !border-black !text-black hover:!bg-slate-50 !bg-white" onClick={() => setFulfillModalOpen(false)}>Cancel</Button>
-                                    <Button onClick={handleSubmitFulfillment} disabled={actionLoading === "FULFILL"} className="cursor-pointer !bg-black hover:!bg-slate-800 min-w-[150px] !text-white border-none shadow-lg shadow-black/20">
+                                    <Button onClick={handleSubmitFulfillment} disabled={actionLoading === "FULFILL"} className={`cursor-pointer min-w-[150px] !text-white border-none shadow-lg shadow-black/20 ${requestToFulfill?.payload?.type === 'RETURN' ? '!bg-red-600 hover:!bg-red-700' : '!bg-black hover:!bg-slate-800'}`}>
                                         {actionLoading === "FULFILL" ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
-                                        Confirm & Send Items
+                                        {requestToFulfill?.payload?.type === 'RETURN' ? 'Confirm Return Processed' : 'Confirm & Send Items'}
                                     </Button>
                                 </div>
                             </motion.div>

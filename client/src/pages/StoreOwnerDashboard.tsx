@@ -216,6 +216,13 @@ const StoreOwnerDashboard: React.FC = () => {
     const [isReorderLoading, setIsReorderLoading] = React.useState(false);
     const [isHistoryLoading, setIsHistoryLoading] = React.useState(false);
 
+    // Returns State
+    const [returnList, setReturnList] = React.useState<any[]>([]);
+    const [returnCart, setReturnCart] = React.useState<Map<string, number>>(new Map()); // Key: medicineId_batchNumber -> qty
+    const [returnSupplierId, setReturnSupplierId] = React.useState<string>("");
+    const [returnNote, setReturnNote] = React.useState("");
+    const [isSendingReturn, setIsSendingReturn] = React.useState(false);
+
     // POS Payment & Receipt Preview State
     const [posPaymentMethod, setPosPaymentMethod] = React.useState<string>("CASH");
     const [showReceiptPreview, setShowReceiptPreview] = React.useState(false);
@@ -251,6 +258,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const NAV_ITEMS = [
         { label: "Overview", icon: Store, tab: "overview", color: "text-blue-500" },
         { label: "New Reorder", icon: Zap, tab: "reorder", color: "text-amber-500" },
+        { label: "Returns", icon: RefreshCw, tab: "return", color: "text-red-500" },
         { label: "Sent Reorders", icon: Package, tab: "sent_reorders", color: "text-indigo-500" },
         { label: "New Sale", icon: ShoppingCart, tab: "sale", color: "text-emerald-500" },
         { label: "Sales History", icon: HistoryIcon, tab: "history", color: "text-slate-500" },
@@ -338,6 +346,60 @@ const StoreOwnerDashboard: React.FC = () => {
         }
     };
 
+    const handleReturnAddToCart = (key: string, qty: number) => {
+        setReturnCart(prev => {
+            const newCart = new Map(prev);
+            if (qty <= 0) newCart.delete(key);
+            else newCart.set(key, qty);
+            return newCart;
+        });
+    };
+
+    const executeReturn = async () => {
+        if (!returnSupplierId) {
+            alert("Please select a supplier.");
+            return;
+        }
+        if (returnCart.size === 0) {
+            alert("Please add items to return.");
+            return;
+        }
+
+        const items = Array.from(returnCart.entries()).map(([key, quantity]) => {
+            const [medicineId, batchNumber] = key.split('_');
+            const item = returnList.find((r: any) => r.id === medicineId && r.batchNumber === batchNumber);
+            
+            return {
+                medicineId,
+                quantity,
+                batchNumber,
+                purchasePrice: item?.purchasePrice || 0,
+                mrp: 0 // Not needed for return?
+            };
+        });
+
+        setIsSendingReturn(true);
+        try {
+            const res = await dashboardApi.reorder({
+                supplierId: returnSupplierId,
+                items,
+                note: returnNote,
+                type: "RETURN"
+            });
+            if (res.data.success) {
+                alert("Return request sent successfully!");
+                setReturnCart(new Map());
+                setReturnList([]);
+                setActiveTab('sent_reorders');
+            }
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to send return request: " + (err.response?.data?.message || err.message));
+        } finally {
+            setIsSendingReturn(false);
+        }
+    };
+
 
     const handleSmartFill = async () => {
         setIsAiLoading(true);
@@ -356,15 +418,33 @@ const StoreOwnerDashboard: React.FC = () => {
 
                 setSuggestedItems(suggestions);
 
-                // Auto-fill Cart
+                // Auto-fill Reorder Cart
                 setCart(() => {
                     const newCart = new Map();
                     suggestions.forEach((s: any) => {
-                        // Backend returns 'id' for the medicine ID in the suggestions array
                         newCart.set(s.id || s.medicineId, s.suggestedQty);
                     });
                     return newCart;
                 });
+
+                // Handle Returns Suggestion
+                const returns = res.data.data.returns || [];
+                if (returns.length > 0) {
+                     setReturnList(returns);
+                     // Auto-fill Return Cart
+                     setReturnCart(() => {
+                        const rCart = new Map();
+                        returns.forEach((r: any) => {
+                            const key = `${r.id}_${r.batchNumber}`;
+                            rCart.set(key, r.suggestedQty);
+                        });
+                        return rCart;
+                     });
+                     
+                     if (returns.length > 0 && !activeTab.includes('return') && !activeTab.includes('reorder')) {
+                         // alert("AI detected expired items. Check the Returns tab.");
+                     }
+                }
 
                 // Auto-select Supplier (Pick first available if not set)
                 if (!reorderSupplierId && data?.lists?.suppliers?.length) {
@@ -1218,6 +1298,7 @@ const StoreOwnerDashboard: React.FC = () => {
                       font-bold shadow-md border-[2px] border-white ring-1 ring-slate-100 overflow-hidden transition-transform group-hover:scale-105">
                                     {auth.user?.imageUrl && !imgError ? (
                                         <img
+                                            key={auth.user.imageUrl}
                                             src={auth.user.imageUrl}
                                             alt="Profile"
                                             className="w-full h-full object-cover"
@@ -2397,6 +2478,160 @@ const StoreOwnerDashboard: React.FC = () => {
                 )}
 
                 {/* --- NEW SALE (POS) TAB --- */}
+                {/* --- RETURNS TAB --- */}
+                {activeTab === 'return' && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="flex flex-col md:flex-row gap-6 h-[calc(100vh-140px)] min-h-[600px]"
+                    >
+                         {/* Left: Expiring Inventory */}
+                        <div className="flex-1 bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden relative">
+                            <div className="p-5 border-b border-slate-100 bg-white z-10 flex flex-col gap-4">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-red-600 tracking-tight flex items-center gap-2">
+                                            <RefreshCw className="w-5 h-5" /> Returns Management
+                                        </h2>
+                                        <p className="text-sm text-slate-500">Expiring or damaged items to return to suppliers</p>
+                                    </div>
+                                    <Button
+                                         size="sm"
+                                         onClick={handleSmartFill}
+                                         disabled={isAiLoading}
+                                         className="cursor-pointer gap-2 !bg-red-50 !text-red-600 hover:!bg-red-100 border-red-200"
+                                    >
+                                        <Sparkles className="w-4 h-4" /> Refresh Suggestions
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+                                <div className="grid grid-cols-1 gap-2">
+                                    {returnList.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                                                <CheckCircle className="w-8 h-8 text-red-200" />
+                                            </div>
+                                            <p className="font-medium text-slate-500">No expiring items found</p>
+                                            <p className="text-sm opacity-70">Your inventory looks healthy!</p>
+                                        </div>
+                                    ) : (
+                                        returnList.map((item) => {
+                                            const key = `${item.id}_${item.batchNumber}`;
+                                            const inCart = returnCart.get(key) || 0;
+                                            return (
+                                                <div key={key} className="group flex items-center p-3 rounded-2xl border border-red-50 bg-white hover:border-red-200 hover:shadow-sm transition-all duration-200">
+                                                    <div className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center mr-4">
+                                                        <Clock className="w-5 h-5" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0 mr-4">
+                                                        <h4 className="font-bold text-slate-800 truncate">{item.brandName}</h4>
+                                                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                                                            <span className="font-mono bg-slate-100 px-1 rounded">Batch: {item.batchNumber}</span>
+                                                            <span className="w-1 h-1 rounded-full bg-slate-300" />
+                                                            <span className="text-red-500 font-bold">Expires: {new Date(item.expiryDate).toLocaleDateString()}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                         <div className="text-right mr-2 hidden sm:block">
+                                                            <div className="text-xs font-bold text-slate-500">{item.suggestedQty} Units</div>
+                                                         </div>
+                                                         {inCart > 0 ? (
+                                                                <div className="flex items-center !bg-red-600 rounded-lg p-1 shadow-md shadow-red-600/20">
+                                                                     <i onClick={() => handleReturnAddToCart(key, inCart - 1)} className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:bg-white/10 rounded-md">-</i>
+                                                                     <span className="w-8 text-center font-bold text-sm !text-white">{inCart}</span>
+                                                                     <i onClick={() => handleReturnAddToCart(key, inCart + 1)} className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:bg-white/10 rounded-md">+</i>
+                                                                </div>
+                                                         ) : (
+                                                             <button onClick={() => handleReturnAddToCart(key, item.suggestedQty)} className="!bg-red-600 border-transparent !text-white hover:!bg-red-700 px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-red-600/10">
+                                                                 Return
+                                                             </button>
+                                                         )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right: Return Summary */}
+                        <div className="w-full md:w-[400px] flex flex-col gap-4">
+                             <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-200 flex-1 flex flex-col overflow-hidden">
+                                <div className="p-5 border-b border-slate-100 bg-red-50/50">
+                                    <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                        <RefreshCw className="w-5 h-5 text-red-600" /> Return Summary
+                                    </h3>
+                                </div>
+                                <div className="p-5 flex-1 overflow-hidden bg-white flex flex-col gap-5">
+                                    <div>
+                                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Select Supplier</label>
+                                         <Select value={returnSupplierId} onValueChange={setReturnSupplierId} disabled={!data?.lists?.suppliers?.length}>
+                                            <SelectTrigger className="w-full !bg-slate-900 border-none h-12 rounded-xl !text-white shadow-lg focus:ring-0">
+                                                <span className="text-white font-bold truncate">
+                                                    {returnSupplierId ? data?.lists?.suppliers?.find(s => s.id === returnSupplierId)?.name : "Select a supplier..."}
+                                                </span>
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-white rounded-xl border-slate-200 shadow-xl p-1 z-50">
+                                                {data?.lists?.suppliers?.map((s) => (
+                                                    <SelectItem key={s.id} value={s.id} textValue={s.name} className="rounded-lg cursor-pointer py-3">
+                                                        <div className="font-bold text-slate-800">{s.name}</div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="flex-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 relative min-h-[120px] overflow-y-auto custom-scrollbar">
+                                         {returnCart.size === 0 ? (
+                                            <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+                                                <span className="text-sm font-medium">No items selected</span>
+                                            </div>
+                                         ) : (
+                                             <ul className="space-y-3">
+                                                {Array.from(returnCart.entries()).map(([key, qty]) => {
+                                                    const [medId, batch] = key.split('_');
+                                                    const item = returnList.find(r => r.id === medId && r.batchNumber === batch);
+                                                    return (
+                                                        <li key={key} className="flex justify-between items-start text-sm">
+                                                            <div className="flex-1 pr-2">
+                                                                <span className="font-bold text-slate-700 block">{item?.brandName}</span>
+                                                                <span className="text-xs text-slate-400">Batch: {batch}</span>
+                                                            </div>
+                                                            <div className="bg-white px-2 py-1 rounded border border-slate-200 font-mono font-bold text-slate-800 text-xs shadow-sm">
+                                                                x{qty}
+                                                            </div>
+                                                        </li>
+                                                    );
+                                                })}
+                                             </ul>
+                                         )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Note</label>
+                                        <textarea 
+                                            className="w-full p-3 text-sm bg-slate-50 border border-slate-100 rounded-xl resize-none focus:outline-none focus:bg-white focus:border-slate-300 transition-all"
+                                            rows={2}
+                                            placeholder="Reason for return..."
+                                            value={returnNote}
+                                            onChange={e => setReturnNote(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="p-5 border-t border-slate-100 bg-slate-50/50">
+                                    <Button
+                                        className="w-full h-14 cursor-pointer !bg-red-600 text-white hover:!bg-red-700 shadow-xl shadow-red-600/30 font-bold text-base rounded-2xl flex items-center justify-center gap-2 transition-all"
+                                        disabled={returnCart.size === 0 || !returnSupplierId || isSendingReturn}
+                                        onClick={executeReturn}
+                                    >
+                                        {isSendingReturn ? "Sending..." : "Submit Return Request"}
+                                    </Button>
+                                </div>
+                             </div>
+                        </div>
+                    </motion.div>
+                )}
+
                 {activeTab === 'sale' && (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.98 }}

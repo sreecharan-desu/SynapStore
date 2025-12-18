@@ -414,3 +414,25 @@ export function getSupplierClientStockAlertEmailTemplate(supplierName: string, s
   `;
   return wrapContent(content, `Sales Opportunity - ${storeName}`);
 }
+
+export function getReturnRequestEmailTemplate(supplierEmail: string, storeName: string, requestId: string, details: string, frontendUrl: string): string {
+    const content = `
+    <h1 class="h-mobile" style="${HEADING_STYLES}">Return Request</h1>
+    <p style="${TEXT_STYLES}">
+      <strong>${storeName}</strong> has requested to return expired/damaged items (Request ID: #${requestId.slice(0, 6)}).
+    </p>
+    
+    <div style="${INFO_BOX_STYLES}">
+       <pre style="font-family: inherit; font-size: 14px; white-space: pre-wrap; margin: 0;">${details}</pre>
+    </div>
+
+    <p style="${TEXT_STYLES}">
+      Please review and process this return request.
+    </p>
+
+    <div style="text-align: center; margin-top: 32px;">
+      <a href="${frontendUrl}/supplier/requests" style="${BUTTON_STYLES}">View Request</a>
+    </div>
+  `;
+  return wrapContent(content, "Return Request");
+}

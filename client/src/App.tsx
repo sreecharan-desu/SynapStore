@@ -4,18 +4,49 @@ import LandingPage from "./pages/LandingPage";
 import { useEffect, useState } from "react";
 import { SynapNotificationClient } from "./utils/NotificationClient";
 import { NotificationToastContainer } from "./components/ui/NotificationToast";
-
+import toast from "react-hot-toast";
 
 const App = () => {
   const { user, isAuthenticated } = useAuthContext();
   const [notifications, setNotifications] = useState<any[]>([]);
 
-  // Persistent permission request on Landing Page (ask until decided)
   useEffect(() => {
-    if (!isAuthenticated && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(err => console.error("Permission request failed", err));
-    }
-  }, [isAuthenticated]);
+    const handleStorageChange = (event: StorageEvent) => {
+      // Efficiently handle storage changes:
+      // 1. Only care about 'synapstore:auth'
+      // 2. Only logout if data is corrupted (invalid JSON)
+      // 3. Allow valid updates (like logging in from another tab)
+      
+      if (event.storageArea === localStorage && event.key === "synapstore:auth") {
+         if (event.newValue) {
+             try {
+                 JSON.parse(event.newValue);
+                 // Data is valid JSON. Assume valid session update. 
+                 // Optionally force reload to sync state if needed, but avoiding it prevents disruption.
+             } catch (e) {
+                 console.error("Storage corruption detected", e);
+                 toast.error("Session data corrupted. Please login again.");
+               localStorage.removeItem("synapstore:auth");
+              
+                 window.location.href = "/";
+             }
+         } else {
+             // Key removed (Logout action) - Redirect to login
+             window.location.href = "/";
+         }
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+
+
+
+
+
+
 
   useEffect(() => {
     // Determine Service URL (Env Var > Default)

@@ -49,37 +49,32 @@ const isTokenExpired = (token: string | null) => {
   return payload.exp < nowSeconds;
 };
 
-const getStorage = () => {
-  if (typeof window === "undefined") return null;
-  return window.localStorage;
-};
 
 const persistenceEffect =
   (key: string) =>
     ({ setSelf, onSet }: any) => {
-      const storage = getStorage();
-      if (storage) {
-        const stored = storage.getItem(key);
+      try {
+        const stored = localStorage.getItem(key);
         if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            setSelf(parsed);
-          } catch {
-            storage.removeItem(key);
-          }
+          // Attempt to parse. If it fails (e.g. old encrypted data), catch block handles it.
+          const parsed = JSON.parse(stored);
+          setSelf(parsed);
         }
+      } catch (e) {
+        console.warn("Failed to retrieve/parse auth state from localStorage:", e);
+        // Optional: clear it if it's invalid so next time we start fresh?
+        // localStorage.removeItem(key);
       }
 
       onSet((newValue: AuthState, _: AuthState, isReset: boolean) => {
-        const s = getStorage();
-        if (!s) return;
         if (isReset) {
-          s.removeItem(key);
+          localStorage.removeItem(key);
         } else {
-          s.setItem(key, JSON.stringify(newValue));
+          localStorage.setItem(key, JSON.stringify(newValue));
         }
       });
     };
+
 
 export const authState = atom<AuthState>({
   key: "authState",

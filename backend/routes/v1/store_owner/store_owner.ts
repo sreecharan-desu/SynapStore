@@ -8,7 +8,7 @@ import prisma from "../../../lib/prisma";
 import { requireRole } from "../../../middleware/requireRole";
 import { crypto$ } from "../../../lib/crypto";
 import { sendMail } from "../../../lib/mailer";
-import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getStoreConnectionRequestEmailTemplate, getSupplierRequestEmailTemplate, getDisconnectionEmailTemplate, getReorderRequestEmailTemplate, getCustomerReceiptEmailTemplate } from "../../../lib/emailTemplates";
+import { getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getStoreConnectionRequestEmailTemplate, getSupplierRequestEmailTemplate, getDisconnectionEmailTemplate, getReorderRequestEmailTemplate, getCustomerReceiptEmailTemplate, getReturnRequestEmailTemplate } from "../../../lib/emailTemplates";
 // import router from "../auth/email-auth"; 
 import { sendSuccess, sendError, handlePrismaError, sendInternalError, handleZodError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
@@ -1318,9 +1318,11 @@ dashboardRouter.get(
 
 const reorderSchema = z.object({
   supplierId: z.string().uuid(),
+  type: z.enum(["REORDER", "RETURN"]).optional().default("REORDER"),
   items: z.array(z.object({
     medicineId: z.string().uuid(),
     quantity: z.number().int().positive(),
+    batchNumber: z.string().optional(),
     purchasePrice: z.number().optional(),
     mrp: z.number().optional(),
   })).min(1),
@@ -1379,7 +1381,7 @@ dashboardRouter.post(
       const payloadData = {
         items: enhancedItems,
         note: note || "",
-        type: "REORDER"
+        type: parsed.data.type
       };
 
       const request = await prisma.supplierRequest.create({
@@ -1397,17 +1399,33 @@ dashboardRouter.post(
       if (supplier.userId) {
         const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
         if (supUser?.email) {
-          sendMail({
-            to: supUser.email,
-            subject: `New Reorder Request from ${store.name}`,
-            html: getReorderRequestEmailTemplate(
-              supUser.email,
-              store.name,
-              request.id,
-              details,
-              process.env.FRONTEND_URL || "http://localhost:5173"
-            ),
-          });
+          const reqType = parsed.data.type;
+          
+          if (reqType === "RETURN") {
+             sendMail({
+              to: supUser.email,
+              subject: `Return Request from ${store.name}`,
+              html: getReturnRequestEmailTemplate(
+                supUser.email,
+                store.name,
+                request.id,
+                details,
+                process.env.FRONTEND_URL || "http://localhost:5173"
+              ),
+            });
+          } else {
+             sendMail({
+              to: supUser.email,
+              subject: `New Reorder Request from ${store.name}`,
+              html: getReorderRequestEmailTemplate(
+                supUser.email,
+                store.name,
+                request.id,
+                details,
+                process.env.FRONTEND_URL || "http://localhost:5173"
+              ),
+            });
+          }
         }
       }
 
@@ -1491,11 +1509,18 @@ dashboardRouter.get(
         brandName: true, 
         strength: true, 
         genericName: true,
-        // Fetch latest batch to estimate price
+        // Fetch inventory for checking returns and price
         inventory: {
-            take: 1,
-            orderBy: { createdAt: 'desc' },
-            select: { purchasePrice: true, mrp: true }
+            where: { qtyAvailable: { gt: 0 } },
+            orderBy: { expiryDate: 'asc' },
+            select: { 
+                id: true,
+                batchNumber: true, 
+                qtyAvailable: true,
+                expiryDate: true,
+                purchasePrice: true, 
+                mrp: true 
+            }
         }
       }
     });
@@ -1503,7 +1528,13 @@ dashboardRouter.get(
     const dek = dekFromEnv();
 
     // 4. Calculate suggestions
-    const suggestions = medicines.map(m => {
+    const suggestions: any[] = [];
+    const returns: any[] = [];
+
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+
+    medicines.forEach(m => {
       let brandName = m.brandName;
       try {
         const db = decryptCell(m.brandName, dek);
@@ -1512,39 +1543,58 @@ dashboardRouter.get(
 
       const current = currentStockMap.get(m.id) || 0;
       const isLow = current < lowStockThreshold;
-      // @ts-ignore
-      const isExpiring = expiringIds.includes(m.id);
+      
+      // Decrypt batches for return checking
+      const batches = m.inventory.map(b => {
+          let bn = b.batchNumber;
+          try {
+              if (bn) {
+                  const d = decryptCell(bn, dek);
+                  if (d) bn = d;
+              }
+          } catch(e) {}
+          return { ...b, batchNumber: bn };
+      });
 
-      let reason = "Low Stock";
-      let suggestedQty = 50 - current;
+      // 1. Check for Expiring Batches (for Returns)
+      batches.forEach((b:any) => {
+         if (b.expiryDate && new Date(b.expiryDate).getTime() < nowMs + ninetyDaysMs) {
+             returns.push({
+                id: m.id,
+                brandName,
+                strength: m.strength,
+                genericName: m.genericName,
+                reason: "Expiring Soon",
+                action: "RETURN",
+                suggestedQty: b.qtyAvailable,
+                batchNumber: b.batchNumber,
+                expiryDate: b.expiryDate,
+                purchasePrice: Number(b.purchasePrice || 0)
+             });
+         }
+      });
 
-      if (isExpiring) {
-        if (isLow) reason = "Low Stock & Expiring";
-        else {
-          reason = "Expiring Soon";
-          suggestedQty = 30; // Suggest replacement stock
-        }
+      // 2. Check for Low Stock (for Reorder)
+      if (isLow) { // Always suggest reorder if low, regardless of expiry status of remaining stock
+          const latestBatch = m.inventory?.[0]; // Use latest for price estimation
+          const purchasePrice = latestBatch?.purchasePrice ? Number(latestBatch.purchasePrice) : 0;
+          const mrp = latestBatch?.mrp ? Number(latestBatch.mrp) : 0;
+          
+          suggestions.push({
+            id: m.id,
+            brandName,
+            strength: m.strength,
+            genericName: m.genericName,
+            reason: "Low Stock",
+            action: "REORDER",
+            suggestedQty: Math.max(50 - current, 10), // Target stock 50
+            purchasePrice,
+            mrp
+          });
       }
-
-      if (suggestedQty < 10) suggestedQty = 10; // Min order
-
-      const latestBatch = m.inventory?.[0];
-      const purchasePrice = latestBatch?.purchasePrice ? Number(latestBatch.purchasePrice) : 0;
-      const mrp = latestBatch?.mrp ? Number(latestBatch.mrp) : 0;
-
-      return {
-        id: m.id,
-        brandName,
-        strength: m.strength,
-        genericName: m.genericName,
-        reason,
-        suggestedQty,
-        purchasePrice, // Included for reorder context
-        mrp
-      };
     });
 
-    return sendSuccess(res, "Suggestions generated", { suggestions });
+    return sendSuccess(res, "Suggestions generated", { suggestions, returns });
   }
 );
 

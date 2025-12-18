@@ -766,6 +766,7 @@ router.post(
   }
 );
 
+
 const fulfillSchema = z.object({
   message: z.string().optional(),
   items: z.array(z.object({
@@ -775,7 +776,7 @@ const fulfillSchema = z.object({
     expiryDate: z.string().optional(), // ISO string preferred
     purchasePrice: z.number().optional(),
     mrp: z.number().optional(),
-  })).min(1)
+  })).optional().default([])
 });
 
 /**
@@ -805,8 +806,48 @@ router.post(
         const parsed = fulfillSchema.safeParse(req.body);
         if (!parsed.success) return handleZodError(res, parsed.error);
 
-        // Convert expiryDate string to Date object
-        const fulfilledItems = parsed.data.items.map(i => ({
+        // @ts-ignore
+        const requestType = request.payload?.type || "REORDER";
+
+        // Logic for RETURN requests
+        if (requestType === "RETURN") {
+            await prisma.supplierRequest.update({
+                where: { id: requestId },
+                data: { status: "FULFILLED" }
+            });
+
+             // Notify Store Owner
+            const store = await prisma.store.findUnique({ 
+                 where: { id: request.storeId },
+                 include: { users: { include: { user: true } } }
+            });
+            if (store) {
+                 const owners = await prisma.userStoreRole.findMany({
+                     where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
+                     include: { user: true }
+                 });
+                 for (const owner of owners) {
+                     if (owner.user.email) {
+                         sendMail({
+                             to: owner.user.email,
+                             subject: `Return Processed: ${supplier.name}`,
+                             html: getNotificationEmailTemplate(
+                                "Return Processed",
+                                `Your return request #${request.id.slice(0,6)} has been processed by <strong>${supplier.name}</strong>.`
+                             )
+                         }).catch(e => console.error("Email failed", e));
+                     }
+                 }
+            }
+            return sendSuccess(res, "Return request processed", {});
+        }
+
+        // Logic for REORDER requests
+        if (parsed.data.items.length === 0) {
+            return sendError(res, "Items required for reorder fulfillment", 400);
+        }
+
+        const fulfilledItems = parsed.data.items.map((i: any) => ({
             ...i,
             expiryDate: i.expiryDate ? new Date(i.expiryDate) : undefined
         }));
@@ -829,12 +870,6 @@ router.post(
                </div>
              `;
         }
-
-        let missingItemsHtml = "";
-        // @ts-ignore
-        const requestedItems = request.payload?.items || [];
-        
-        if (Array.isArray(requestedItems) && requestedItems.length > 0) {}
         
         // Notify Store Owner
         const store = await prisma.store.findUnique({ 
