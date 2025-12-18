@@ -1220,20 +1220,27 @@ dashboardRouter.get(
     try {
       const store = req.store!;
       const q = (req.query.q as string || "").toLowerCase();
+      const filter = (req.query.filter as string || "all").toLowerCase();
+      const isReturn = req.query.return === "true";
+
+      // Inventory Filter Logic
+      // If return=true, fetch expired/expiring items.
+      // Else, fetch all available items (filtering happens in memory or via query params later)
+      const inventoryWhere = isReturn
+        ? { qtyAvailable: { gt: 0 }, expiryDate: { lte: new Date() } }
+        : { qtyAvailable: { gte: 0 } };
 
       // Fetch all active medicines for store (filtering in memory after decryption)
       const medicines = await prisma.medicine.findMany({
         where: { storeId: store.id, isActive: true },
         include: {
           inventory: {
-            where: { qtyAvailable: { gt: 0 } },
-            orderBy: { expiryDate: 'asc' }
+            where: inventoryWhere,
           },
           suppliers: {
             select: { id: true, name: true, contactName: true }
           }
         },
-        orderBy: { createdAt: 'desc' }
       });
 
       const dek = dekFromEnv();
@@ -1270,7 +1277,7 @@ dashboardRouter.get(
 
         const totalQty = m.inventory.reduce((sum, b) => sum + b.qtyAvailable, 0);
         const expiringSoon = m.inventory.some(b => b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
-        const isLowStock = totalQty < 20;
+        const isLowStock = totalQty < 50;
         console.log(decryptedBatches)
         return {
           ...m,
@@ -1283,7 +1290,11 @@ dashboardRouter.get(
           batches: decryptedBatches
         };
       }).filter(m => {
-        // Filter by search query if present
+        // 1. Status Filter
+        if (filter === 'low_stock' && !m.isLowStock) return false;
+        if (filter === 'healthy' && m.isLowStock) return false;
+
+        // 2. Search Query Filter
         if (!q) return true;
         return (
           (m.brandName && m.brandName.toLowerCase().includes(q)) ||
@@ -1323,6 +1334,7 @@ const reorderSchema = z.object({
     medicineId: z.string().uuid(),
     quantity: z.number().int().positive(),
     batchNumber: z.string().optional(),
+    inventoryBatchId: z.string().uuid().optional(),
     purchasePrice: z.number().optional(),
     mrp: z.number().optional(),
   })).min(1),
@@ -1374,14 +1386,12 @@ dashboardRouter.post(
           medicineName: name
         };
       });
-      console.log(enhancedItems)
-
       if (note) details += `\nNote: ${note}`;
 
       const payloadData = {
         items: enhancedItems,
         note: note || "",
-        type: parsed.data.type
+        type: "REORDER"
       };
 
       const request = await prisma.supplierRequest.create({
@@ -1395,25 +1405,12 @@ dashboardRouter.post(
         }
       });
 
+
+
       // Notify Supplier
       if (supplier.userId) {
         const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
         if (supUser?.email) {
-          const reqType = parsed.data.type;
-          
-          if (reqType === "RETURN") {
-             sendMail({
-              to: supUser.email,
-              subject: `Return Request from ${store.name}`,
-              html: getReturnRequestEmailTemplate(
-                supUser.email,
-                store.name,
-                request.id,
-                details,
-                process.env.FRONTEND_URL || "http://localhost:5173"
-              ),
-            });
-          } else {
              sendMail({
               to: supUser.email,
               subject: `New Reorder Request from ${store.name}`,
@@ -1425,7 +1422,6 @@ dashboardRouter.post(
                 process.env.FRONTEND_URL || "http://localhost:5173"
               ),
             });
-          }
         }
       }
 
@@ -1451,155 +1447,278 @@ dashboardRouter.post(
 );
 
 
+
+
+
 /**
- * GET /v1/dashboard/suggestions
- * Desc: Get automated reorder suggestions based on low stock
+ * GET /v1/dashboard/reorder-suggestions
+ * Desc: Get automated reorder suggestions based on low stock (< 50)
  */
 dashboardRouter.get(
-  "/suggestions",
+  "/reorder-suggestions",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
-    const { user } = req;
-    if (!user) return sendError(res, "Unauthenticated", 401);
+    try {
+        const { user } = req;
+        if (!user) return sendError(res, "Unauthenticated", 401);
 
-    const store = req.store;
-    if (!store) return sendError(res, "Store context not found", 404);
+        const store = req.store;
+        if (!store) return sendError(res, "Store context not found", 404);
 
-    // 1. Group inventory by medicine for distinct counts (Low Stock Check)
-    const inventory = await prisma.inventoryBatch.groupBy({
-      by: ['medicineId'],
-      where: { storeId: store.id },
-      _sum: { qtyAvailable: true }
-    });
+        // --- REORDER SUGGESTIONS (Low Stock) ---
+        const inventory = await prisma.inventoryBatch.groupBy({
+            by: ['medicineId'],
+            where: { storeId: store.id },
+            _sum: { qtyAvailable: true }
+        });
 
-    const lowStockThreshold = 20;
-    const currentStockMap = new Map<string, number>();
-    inventory.forEach(i => currentStockMap.set(i.medicineId, i._sum.qtyAvailable || 0));
-
-    const lowStockIds = inventory
-      .filter(i => (i._sum.qtyAvailable || 0) < lowStockThreshold)
-      .map(i => i.medicineId);
-
-    // 2. Find Expiring Batches (within 90 days)
-    const ninetyDays = new Date();
-    ninetyDays.setDate(ninetyDays.getDate() + 90);
-
-    const expiringBatches = await prisma.inventoryBatch.findMany({
-      where: {
-        storeId: store.id,
-        qtyAvailable: { gt: 0 },
-        expiryDate: { lte: ninetyDays, gt: new Date() }
-      },
-      select: { medicineId: true },
-      distinct: ['medicineId']
-    });
-    const expiringIds = Array.from(new Set(expiringBatches.map(b => b.medicineId)));
-
-    // 3. Combine Target IDs
-    // @ts-ignore
-    const targetIds = Array.from(new Set([...lowStockIds, ...expiringIds]));
-
-    if (targetIds.length === 0) {
-      return sendSuccess(res, "No suggestions", { suggestions: [] });
-    }
-
-    const medicines = await prisma.medicine.findMany({
-      where: { id: { in: targetIds } },
-      select: { 
-        id: true, 
-        brandName: true, 
-        strength: true, 
-        genericName: true,
-        // Fetch inventory for checking returns and price
-        inventory: {
-            where: { qtyAvailable: { gt: 0 } },
-            orderBy: { expiryDate: 'asc' },
+        const lowStockThreshold = 300;
+        const lowStockIds = inventory
+        // Fetch ALL Active Medicines
+        const allMedicines = await prisma.medicine.findMany({
+            where: { storeId: store.id, isActive: true },
             select: { 
-                id: true,
-                batchNumber: true, 
-                qtyAvailable: true,
-                expiryDate: true,
-                purchasePrice: true, 
-                mrp: true 
+                    id: true, brandName: true, strength: true, genericName: true,
+                    inventory: {
+                        where: { qtyAvailable: { gt: 0 } }, 
+                        orderBy: { createdAt: 'desc' }, 
+                        take: 1
+                    }
             }
+        });
+
+        const currentStockMap = new Map<string, number>();
+        inventory.forEach(i => currentStockMap.set(i.medicineId, i._sum.qtyAvailable || 0));
+
+        const dek = dekFromEnv();
+        const suggestions: any[] = [];
+
+        for (const m of allMedicines) {
+             const current = currentStockMap.get(m.id) || 0;
+             if (current < lowStockThreshold) {
+                let brandName = m.brandName;
+                try {
+                    const db = decryptCell(m.brandName, dek);
+                    if (db) brandName = db;
+                } catch (e) { }
+
+                const latestBatch = m.inventory?.[0];
+                // If purchase price is missing (no batches ever), default to 0. 
+                // In future, Medicine model should definitely have a default MRP/PurchasePrice field.
+                const purchasePrice = latestBatch?.purchasePrice ? Number(latestBatch.purchasePrice) : 0;
+                const mrp = latestBatch?.mrp ? Number(latestBatch.mrp) : 0;
+
+                suggestions.push({
+                    id: m.id,
+                    brandName,
+                    strength: m.strength,
+                    genericName: m.genericName,
+                    reason: current === 0 ? "Out of Stock" : "Low Stock",
+                    action: "REORDER",
+                    suggestedQty: Math.max(50 - current, 10),
+                    purchasePrice,
+                    mrp
+                });
+             }
         }
-      }
-    });
 
-    const dek = dekFromEnv();
-
-    // 4. Calculate suggestions
-    const suggestions: any[] = [];
-    const returns: any[] = [];
-
-    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-    const nowMs = Date.now();
-
-    medicines.forEach(m => {
-      let brandName = m.brandName;
-      try {
-        const db = decryptCell(m.brandName, dek);
-        if (db) brandName = db;
-      } catch (e) { }
-
-      const current = currentStockMap.get(m.id) || 0;
-      const isLow = current < lowStockThreshold;
-      
-      // Decrypt batches for return checking
-      const batches = m.inventory.map(b => {
-          let bn = b.batchNumber;
-          try {
-              if (bn) {
-                  const d = decryptCell(bn, dek);
-                  if (d) bn = d;
-              }
-          } catch(e) {}
-          return { ...b, batchNumber: bn };
-      });
-
-      // 1. Check for Expiring Batches (for Returns)
-      batches.forEach((b:any) => {
-         if (b.expiryDate && new Date(b.expiryDate).getTime() < nowMs + ninetyDaysMs) {
-             returns.push({
-                id: m.id,
-                brandName,
-                strength: m.strength,
-                genericName: m.genericName,
-                reason: "Expiring Soon",
-                action: "RETURN",
-                suggestedQty: b.qtyAvailable,
-                batchNumber: b.batchNumber,
-                expiryDate: b.expiryDate,
-                purchasePrice: Number(b.purchasePrice || 0)
-             });
-         }
-      });
-
-      // 2. Check for Low Stock (for Reorder)
-      if (isLow) { // Always suggest reorder if low, regardless of expiry status of remaining stock
-          const latestBatch = m.inventory?.[0]; // Use latest for price estimation
-          const purchasePrice = latestBatch?.purchasePrice ? Number(latestBatch.purchasePrice) : 0;
-          const mrp = latestBatch?.mrp ? Number(latestBatch.mrp) : 0;
-          
-          suggestions.push({
-            id: m.id,
-            brandName,
-            strength: m.strength,
-            genericName: m.genericName,
-            reason: "Low Stock",
-            action: "REORDER",
-            suggestedQty: Math.max(50 - current, 10), // Target stock 50
-            purchasePrice,
-            mrp
-          });
-      }
-    });
-
-    return sendSuccess(res, "Suggestions generated", { suggestions, returns });
+        return sendSuccess(res, "Reorder suggestions generated", { suggestions });
+    } catch (err) {
+        next(err);
+    }
   }
 );
 
 
+/**
+ * POST /v1/dashboard/return
+ * Description: Create a return request for a supplier (deducts inventory).
+ */
+dashboardRouter.post(
+  "/return",
+  authenticate,
+  storeContext,
+  requireStore,
+  requireRole(["STORE_OWNER", "MANAGER"]),
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      // Reuse reorder schema but enforce type="RETURN" or just ignore type and assume RETURN
+      const parsed = reorderSchema.safeParse({ ...req.body, type: "RETURN" }); 
+      if (!parsed.success) {
+        // @ts-ignore
+        return handleZodError(res, parsed.error);
+      }
 
+      const store = req.store!;
+      const user = req.user!;
+      const { supplierId, items, note } = parsed.data;
+
+      // Verify supplier exists
+      const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+      if (!supplier) return sendError(res, "Supplier not found", 404);
+
+      // Fetch medicine names for the email/message details
+      const medIds = items.map(i => i.medicineId);
+      const meds = await prisma.medicine.findMany({
+        where: { id: { in: medIds } },
+        select: { id: true, brandName: true, strength: true }
+      });
+      const medMap = new Map(meds.map(m => [m.id, m]));
+
+      // Construct readable message and enhanced items for payload
+      let details = "Items to Return:\n";
+      const enhancedItems = items.map(item => {
+        const m = medMap.get(item.medicineId);
+        const name = m ? `${m.brandName} ${m.strength || ''}` : "Unknown Item";
+        details += `- ${name}: ${item.quantity} units\n`;
+        return {
+          ...item,
+          medicineName: name
+        };
+      });
+
+      if (note) details += `\nReason/Note: ${note}`;
+
+      const payloadData = {
+        items: enhancedItems,
+        note: note || "",
+        type: "RETURN"
+      };
+
+      const request = await prisma.supplierRequest.create({
+        data: {
+          storeId: store.id,
+          supplierId,
+          message: JSON.stringify(payloadData),
+          payload: payloadData,
+          status: "PENDING",
+          createdById: user.id
+        }
+      });
+
+      // Handle Inventory Deduction for Returns IMMEDIATELY
+      for (const item of items) {
+        if (item.inventoryBatchId && item.quantity > 0) {
+          try {
+             await prisma.inventoryBatch.update({
+               where: { id: item.inventoryBatchId },
+               data: { qtyAvailable: { decrement: item.quantity } }
+             });
+          } catch (e) {
+             console.error(`Failed to deduct inventory for refund item ${item.medicineId}`, e);
+          }
+        }
+      }
+
+      // Notify Supplier
+      if (supplier.userId) {
+        const supUser = await prisma.user.findUnique({ where: { id: supplier.userId } });
+        if (supUser?.email) {
+             sendMail({
+              to: supUser.email,
+              subject: `Return Request from ${store.name}`,
+              html: getReturnRequestEmailTemplate(
+                supUser.email,
+                store.name,
+                request.id,
+                details,
+                process.env.FRONTEND_URL || "http://localhost:5173"
+              ),
+            });
+        }
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          storeId: store.id,
+          userId: user.id,
+          action: "return_created",
+          payload: { requestId: request.id, supplierId, itemCount: items.length }
+        }
+      });
+
+      return sendSuccess(res, "Return request sent and inventory updated", { request });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /v1/dashboard/return-suggestions
+ * Desc: Get automated return suggestions based on expiry (Expired + Expiring in 90 days)
+ */
+dashboardRouter.get(
+  "/return-suggestions",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const { user } = req;
+        if (!user) return sendError(res, "Unauthenticated", 401);
+
+        const store = req.store;
+        if (!store) return sendError(res, "Store context not found", 404);
+
+        const dek = dekFromEnv();
+        const returns: any[] = [];
+        const ninetyDays = new Date();
+        ninetyDays.setDate(ninetyDays.getDate() + 90);
+        
+        // Fetch items that are expired (lte now) OR expiring soon (lte 90 days)
+        // AND have some quantity available to return
+        const expiringBatches = await prisma.inventoryBatch.findMany({
+            where: {
+                storeId: store.id,
+                qtyAvailable: { gt: 0 },
+                expiryDate: { lte: ninetyDays }
+            },
+            include: {
+                medicine: { select: { id: true, brandName: true, strength: true, genericName: true } }
+            },
+            orderBy: { expiryDate: 'asc' }
+        });
+
+        const processedBatchIds = new Set<string>();
+
+        expiringBatches.forEach(b => {
+            if (processedBatchIds.has(b.id)) return;
+            processedBatchIds.add(b.id);
+
+            let brandName = b.medicine.brandName;
+            try {
+                const db = decryptCell(b.medicine.brandName, dek);
+                if (db) brandName = db;
+            } catch (e) { }
+
+            let batchNumber = b.batchNumber;
+            try {
+                if (batchNumber) {
+                    const d = decryptCell(batchNumber, dek);
+                    if (d) batchNumber = d;
+                }
+            } catch(e) {}
+
+            const isExpired = b.expiryDate && new Date(b.expiryDate) <= new Date();
+
+            returns.push({
+                id: b.medicine.id,
+                brandName,
+                strength: b.medicine.strength,
+                genericName: b.medicine.genericName,
+                reason: isExpired ? "Expired" : "Expiring Soon",
+                action: "RETURN",
+                suggestedQty: b.qtyAvailable,
+                batchNumber: batchNumber,
+                inventoryBatchId: b.id,
+                expiryDate: b.expiryDate ? new Date(b.expiryDate).toISOString().split('T')[0] : null,
+                purchasePrice: Number(b.purchasePrice || 0)
+            });
+        });
+
+        return sendSuccess(res, "Return suggestions generated", { returns });
+    } catch (err) {
+        next(err);
+    }
+  }
+);
 
 
 /**
@@ -1617,8 +1736,13 @@ dashboardRouter.get(
       // Ideally, use a search service or deterministic encryption for searchable fields.
       const allMedicines = await prisma.medicine.findMany({
         where: {
-          storeId: req.store.id,
-          isActive: true
+          storeId: req.store?.id,
+          isActive: true,
+          inventory: {
+            some: {
+              qtyAvailable: { gt: 0 }
+            }
+          }
         },
         include: {
           inventory: {

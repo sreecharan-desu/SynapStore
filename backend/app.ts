@@ -9,9 +9,7 @@ import hpp from "hpp";
 // @ts-ignore
 import xss from "xss-clean";
 import v1Router from "./routes/v1";
-import { sendError, sendSuccess, sendInternalError } from "./lib/api";
-import { Request, Response } from "express";
-import { sendMail } from "./lib/mailer";
+
 
 const app = express();
 

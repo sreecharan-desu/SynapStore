@@ -62,18 +62,131 @@ const KEY_MEDICINES: {
     category: "Gastrointestinal",
     forecast: { baseDemand: 14, weeklyPattern: false, seasonality: "steady" },
   },
+  {
+    brand: "Amlodipine",
+    generic: "Amlodipine",
+    category: "Cardiovascular",
+    forecast: { baseDemand: 20, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Omeprazole",
+    generic: "Omeprazole",
+    category: "Gastrointestinal",
+    forecast: { baseDemand: 16, weeklyPattern: true, seasonality: "steady" },
+  },
+  {
+    brand: "Atorvastatin",
+    generic: "Atorvastatin",
+    category: "Cardiovascular",
+    forecast: { baseDemand: 22, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Azithromycin",
+    generic: "Azithromycin",
+    category: "Antibiotics",
+    forecast: { baseDemand: 9, weeklyPattern: true, seasonality: "winter" },
+  },
+  {
+    brand: "Loratadine",
+    generic: "Loratadine",
+    category: "Antihistamines",
+    forecast: { baseDemand: 11, weeklyPattern: true, seasonality: "spring" },
+  },
+  {
+    brand: "Montelukast",
+    generic: "Montelukast",
+    category: "Respiratory",
+    forecast: { baseDemand: 13, weeklyPattern: true, seasonality: "spring" },
+  },
+  {
+    brand: "Albuterol",
+    generic: "Salbutamol",
+    category: "Respiratory",
+    forecast: { baseDemand: 15, weeklyPattern: true, seasonality: "winter" },
+  },
+  {
+    brand: "Gabapentin",
+    generic: "Gabapentin",
+    category: "Neurology",
+    forecast: { baseDemand: 14, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Tramadol",
+    generic: "Tramadol",
+    category: "Analgesics",
+    forecast: { baseDemand: 10, weeklyPattern: true, seasonality: "steady" },
+  },
+  {
+    brand: "Ciprofloxacin",
+    generic: "Ciprofloxacin",
+    category: "Antibiotics",
+    forecast: { baseDemand: 7, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Furosemide",
+    generic: "Furosemide",
+    category: "Cardiovascular",
+    forecast: { baseDemand: 12, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Levothyroxine",
+    generic: "Levothyroxine",
+    category: "Endocrine",
+    forecast: { baseDemand: 19, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Prednisone",
+    generic: "Prednisone",
+    category: "Immunology",
+    forecast: { baseDemand: 8, weeklyPattern: false, seasonality: "spring" },
+  },
+  {
+    brand: "Clopidogrel",
+    generic: "Clopidogrel",
+    category: "Cardiovascular",
+    forecast: { baseDemand: 14, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Aspirin",
+    generic: "Acetylsalicylic Acid",
+    category: "Cardiovascular",
+    forecast: { baseDemand: 25, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Diclofenac",
+    generic: "Diclofenac",
+    category: "Analgesics",
+    forecast: { baseDemand: 17, weeklyPattern: true, seasonality: "steady" },
+  },
+  {
+    brand: "Ranitidine",
+    generic: "Ranitidine",
+    category: "Gastrointestinal",
+    forecast: { baseDemand: 13, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Telmisartan",
+    generic: "Telmisartan",
+    category: "Cardiovascular",
+    forecast: { baseDemand: 16, weeklyPattern: false, seasonality: "steady" },
+  },
+  {
+    brand: "Glimepiride",
+    generic: "Glimepiride",
+    category: "Diabetes",
+    forecast: { baseDemand: 15, weeklyPattern: false, seasonality: "steady" },
+  },
     ];
 
 console.log("Starting DB Cleanup...");
     const cleanDB = async () => {
-      await prisma.$transaction([
-        prisma.medicine.deleteMany(),
-        prisma.inventoryBatch.deleteMany(),
-        prisma.stockMovement.deleteMany(),
-        prisma.sale.deleteMany(),
-        prisma.saleItem.deleteMany(),
- 
-      ]);
+      await prisma.$transaction(async (tx) => {
+        await tx.medicine.deleteMany();
+        await tx.inventoryBatch.deleteMany();
+        await tx.stockMovement.deleteMany();
+        await tx.sale.deleteMany();
+        await tx.saleItem.deleteMany();
+      }, { timeout: 40000 });
         
         console.log("DB Cleaned");
     };
@@ -229,6 +342,43 @@ async function main() {
             }
         });
 
+        // --- ADD EXPIRED / EXPIRING STOCK FOR RETURNS TESTING ---
+        if (Math.random() < 0.3) {
+            // 1. Create ALREADY EXPIRED batch
+            await prisma.inventoryBatch.create({
+                data: {
+                    storeId: store.id,
+                    medicineId: med.id,
+                    batchNumber: `EXP-${rand(100, 999)}`,
+                    qtyReceived: 20,
+                    qtyAvailable: 20, // Full stock sitting there
+                    mrp: 20,
+                    purchasePrice: 15,
+                    expiryDate: addDays(new Date(), -10), // Expired 10 days ago
+                    receivedAt: addDays(new Date(), -100),
+                    createdAt: addDays(new Date(), -100)
+                }
+            });
+        }
+
+        if (Math.random() < 0.3) {
+             // 2. Create EXPIRING SOON batch (< 90 days)
+             await prisma.inventoryBatch.create({
+                data: {
+                    storeId: store.id,
+                    medicineId: med.id,
+                    batchNumber: `SOON-${rand(100, 999)}`,
+                    qtyReceived: 15,
+                    qtyAvailable: 15,
+                    mrp: 20,
+                    purchasePrice: 15,
+                    expiryDate: addDays(new Date(), 45), // Expires in 45 days
+                    receivedAt: addDays(new Date(), -60),
+                    createdAt: addDays(new Date(), -60)
+                }
+            });
+        }
+
         // 3. Generate Sales
         let salesCreated = 0;
         let currentBatchQty = 500;
@@ -287,7 +437,7 @@ async function main() {
                          createdAt: saleDate
                      }
                  });
-             });
+             }, { timeout: 20000 });
              
              salesCreated++;
              currentBatchQty -= qty;

@@ -1,10 +1,10 @@
-// @ts-nocheck
+
 
 import React from "react";
 import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Settings, LogOut, Users, Package, Calendar, Search, X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, CheckCircle, XCircle, Send, History as HistoryIcon, ClipboardList, Download, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, MoreHorizontal, Loader2, RefreshCw, Filter, Clock} from "lucide-react";
+import { Bell, Settings, LogOut, Users, Package, Calendar, Search, X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, CheckCircle, XCircle, Send, History as HistoryIcon, ClipboardList, Download, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, MoreHorizontal, Loader2, RefreshCw, Filter, Clock, AlertTriangle} from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 
 import { formatDistanceToNow } from "date-fns";
@@ -188,6 +188,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const [auth, setAuth] = useRecoilState(authState);
     const logout = useLogout();
 
+    const [activeTab, setActiveTab] = React.useState<"overview" | "reorder" | "sale" | "history" | "suppliers" | "sent_reorders" | "return">("overview");
     const [data, setData] = React.useState<DashboardData | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [supplierRequests, setSupplierRequests] = React.useState<SupplierRequest[]>([]);
@@ -196,6 +197,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const [showNotifications, setShowNotifications] = React.useState(false);
     const [showFeedback, setShowFeedback] = React.useState(false);
+    const [feedbackMessage, setFeedbackMessage] = React.useState("Request processed successfully");
     const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
     const [isActivityExpanded, setIsActivityExpanded] = React.useState(false);
     const [selectedPeriod, setSelectedPeriod] = React.useState('7d');
@@ -211,7 +213,41 @@ const StoreOwnerDashboard: React.FC = () => {
     const [reorderNote, setReorderNote] = React.useState("");
     const [isAiLoading, setIsAiLoading] = React.useState(false);
     const [reorderSearchQuery, setReorderSearchQuery] = React.useState("");
-    const [inventoryFilter] = React.useState<"all" | "in_stock" | "out_of_stock">("all");
+    const [inventoryFilter, setInventoryFilter] = React.useState<"all" | "low_stock" | "healthy" | "expired">("all");
+    const [cartMode, setCartMode] = React.useState<"reorder" | "return">("reorder");
+
+    const handleOpenReturn = async () => {
+        setIsReorderLoading(true);
+        try {
+            const res = await dashboardApi.getReturnSuggestions();
+            if (res.data.success) {
+                const returns = res.data.data.returns;
+                setReturnList(returns);
+                if (returns.length > 0) {
+                    setFeedbackMessage(`${returns.length} expiring items identified.`);
+                    setShowFeedback(true);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to load return suggestions", err);
+        } finally {
+            setIsReorderLoading(false);
+        }
+    };
+
+    React.useEffect(() => {
+        if (activeTab === 'reorder') {
+            handleOpenReorder();
+            // Clear cart when switching filters to avoid mixing types
+            setCart(new Map());
+            setCartMode(inventoryFilter === 'expired' ? 'return' : 'reorder');
+            setReorderNote("");
+        } else if (activeTab === 'return') {
+            handleOpenReturn();
+            setReturnCart(new Map());
+            setReturnNote("");
+        }
+    }, [inventoryFilter, activeTab]);
 
     const [isReorderLoading, setIsReorderLoading] = React.useState(false);
     const [isHistoryLoading, setIsHistoryLoading] = React.useState(false);
@@ -253,7 +289,6 @@ const StoreOwnerDashboard: React.FC = () => {
     const [isSendingReorder, setIsSendingReorder] = React.useState(false);
     const [reorderResult, setReorderResult] = React.useState<{ type: 'success' | 'error', message: string } | null>(null);
 
-    const [activeTab, setActiveTab] = React.useState<"overview" | "reorder" | "sale" | "history" | "suppliers" | "sent_reorders">("overview");
 
     const NAV_ITEMS = [
         { label: "Overview", icon: Store, tab: "overview", color: "text-blue-500" },
@@ -269,7 +304,12 @@ const StoreOwnerDashboard: React.FC = () => {
     const handleOpenReorder = async () => {
         setIsReorderLoading(true);
         try {
-            const res = await dashboardApi.getInventory({ limit: 1000 });
+            const isReturnMode = inventoryFilter === 'expired';
+            const res = await dashboardApi.getInventory({ 
+                limit: 1000, 
+                filter: isReturnMode ? 'all' : inventoryFilter, 
+                return: isReturnMode 
+            });
             if (res.data.success) {
                 setInventoryList(res.data.data.inventory);
             }
@@ -329,13 +369,36 @@ const StoreOwnerDashboard: React.FC = () => {
 
         setIsSendingReorder(true);
         try {
-            const res = await dashboardApi.reorder({
-                supplierId: reorderSupplierId,
-                items,
-                note: reorderNote
-            });
+            let res;
+            if (cartMode === 'return') {
+                 // REORDER TAB -> RETURN FLOW
+                 // We need to map items to include inventoryBatchId for deduction
+                 // Note: executeReorder uses 'cart' (medicineId -> qty), so we need to find the batch from inventoryList
+                 const returnItems = items.map(i => {
+                     const m = inventoryList.find(x => x.id === i.medicineId);
+                     // If expired filter is on, 'm' likely represents the batch or has batches.
+                     // The backend 'filtered' list returns medicines with 'inventory' (batches).
+                     // We should pick the first expired/relevant batch or spread across them?
+                     // For simplicity, pick the first batch available in the list which should be the expired one.
+                     const batchId = m?.batches?.[0]?.id || m?.inventory?.[0]?.id;
+                     return { ...i, inventoryBatchId: batchId };
+                 });
+
+                 res = await dashboardApi.createReturn({
+                    supplierId: reorderSupplierId,
+                    items: returnItems,
+                    note: reorderNote
+                 });
+            } else {
+                res = await dashboardApi.reorder({
+                    supplierId: reorderSupplierId,
+                    items,
+                    note: reorderNote
+                });
+            }
+
             if (res.data.success) {
-                setReorderResult({ type: 'success', message: "Reorder request sent successfully!" });
+                setReorderResult({ type: 'success', message: `Request sent successfully!` });
                 // We keep the state until user closes modal
             }
         } catch (err: any) {
@@ -373,6 +436,7 @@ const StoreOwnerDashboard: React.FC = () => {
                 medicineId,
                 quantity,
                 batchNumber,
+                inventoryBatchId: item?.inventoryBatchId,
                 purchasePrice: item?.purchasePrice || 0,
                 mrp: 0 // Not needed for return?
             };
@@ -380,12 +444,12 @@ const StoreOwnerDashboard: React.FC = () => {
 
         setIsSendingReturn(true);
         try {
-            const res = await dashboardApi.reorder({
+            const res = await dashboardApi.createReturn({
                 supplierId: returnSupplierId,
-                items,
-                note: returnNote,
-                type: "RETURN"
+                items: items.map(i => ({ ...i, quantity: Number(i.quantity) })),
+                note: returnNote
             });
+
             if (res.data.success) {
                 alert("Return request sent successfully!");
                 setReturnCart(new Map());
@@ -407,62 +471,66 @@ const StoreOwnerDashboard: React.FC = () => {
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         try {
-            const res = await dashboardApi.getSuggestions();
-            if (res.data.success) {
-                const suggestions = res.data.data.suggestions;
-                if (suggestions.length === 0) {
-                    alert("No low stock items found.");
-                    setIsAiLoading(false);
-                    return;
-                }
+            // Determine type based on current filter or tab
+            // If user is looking at "Expired (Returns)", we fetch return suggestions
+            const isReturnMode = activeTab === 'return' || inventoryFilter === 'expired';
+            
+            // Enforce mode based on suggestions
+            setCartMode(isReturnMode ? 'return' : 'reorder');
 
-                setSuggestedItems(suggestions);
-
-                // Auto-fill Reorder Cart
-                setCart(() => {
-                    const newCart = new Map();
-                    suggestions.forEach((s: any) => {
-                        newCart.set(s.id || s.medicineId, s.suggestedQty);
-                    });
-                    return newCart;
-                });
-
-                // Handle Returns Suggestion
-                const returns = res.data.data.returns || [];
-                if (returns.length > 0) {
-                     setReturnList(returns);
-                     // Auto-fill Return Cart
-                     setReturnCart(() => {
-                        const rCart = new Map();
+            if (isReturnMode) {
+                 const res = await dashboardApi.getReturnSuggestions();
+                 if (res.data.success) {
+                    const returns = res.data.data.returns || [];
+                    if (returns.length === 0) {
+                        alert("No expiring items found to return.");
+                        setIsAiLoading(false);
+                        return;
+                    }
+                    
+                    setCart(() => {
+                        const newCart = new Map();
                         returns.forEach((r: any) => {
-                            const key = `${r.id}_${r.batchNumber}`;
-                            rCart.set(key, r.suggestedQty);
+                             const current = newCart.get(r.id) || 0;
+                             newCart.set(r.id, current + r.suggestedQty);
                         });
-                        return rCart;
-                     });
-                     
-                     if (returns.length > 0 && !activeTab.includes('return') && !activeTab.includes('reorder')) {
-                         // alert("AI detected expired items. Check the Returns tab.");
-                     }
-                }
+                        return newCart;
+                    });
+                    
+                    const storeName = data?.store?.name || "Our Pharmacy";
+                    setReorderNote(`Return Request for ${returns.length} expired items from ${storeName}.`);
+                    alert(`AI identified ${returns.length} expiring batches. Auto-filled.`);
+                 }
+            } else {
+                 const res = await dashboardApi.getReorderSuggestions();
+                 if (res.data.success) {
+                    const suggestions = res.data.data.suggestions || [];
+                     if (suggestions.length === 0) {
+                        alert("No low stock items found.");
+                        setIsAiLoading(false);
+                        return;
+                    }
 
-                // Auto-select Supplier (Pick first available if not set)
-                if (!reorderSupplierId && data?.lists?.suppliers?.length) {
-                    setReorderSupplierId(data.lists.suppliers[0].id);
-                }
+                    setSuggestedItems(suggestions);
 
-                // If inventoryList happens to be empty (user went straight to AI fill without viewing reorder tab), fetch it
-                if (inventoryList.length === 0) {
-                    handleOpenReorder();
-                }
-
-                // Auto-fill Note with "AI" message
-                const storeName = data?.store?.name || "Our Pharmacy";
-                const aiNote = `Hello,\n\nI would like to place an urgent restock request for ${suggestions.length} items for ${storeName}. Please prioritize immediate dispatch.\n\nGenerated by SynapStore AI 🤖`;
-                setReorderNote(aiNote);
+                    // Auto-fill Reorder Cart
+                    setCart(() => {
+                        const newCart = new Map();
+                        suggestions.forEach((s: any) => {
+                            newCart.set(s.id || s.medicineId, s.suggestedQty);
+                        });
+                        return newCart;
+                    });
+                    
+                    const storeName = data?.store?.name || "Our Pharmacy";
+                    const aiNote = `Hello,\n\nI would like to place an urgent restock request for ${suggestions.length} items for ${storeName}. Please prioritize immediate dispatch.\n\nGenerated by SynapStore AI 🤖`;
+                    setReorderNote(aiNote);
+                    alert(`AI identified ${suggestions.length} low stock items. Auto-filled.`);
+                 }
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to get suggestions", err);
+            alert("Failed to fetch suggestions");
         } finally {
             setIsAiLoading(false);
         }
@@ -482,11 +550,13 @@ const StoreOwnerDashboard: React.FC = () => {
     const [forecastResults, setForecastResults] = React.useState<any[]>([]);
     const [_selectedForecastMedicine, setSelectedForecastMedicine] = React.useState<any | null>(null);
     const [forecastData, setForecastData] = React.useState<any | null>(null);
-    const [topForecasts, setTopForecasts] = React.useState<{ medicine: any, forecast: any }[]>([]);
+    const [_topForecasts, setTopForecasts] = React.useState<{ medicine: any, forecast: any }[]>([]);
     const [isForecastLoading, setIsForecastLoading] = React.useState(false);
     const [isForecastSearching, setIsForecastSearching] = React.useState(false);
     const [forecastError, setForecastError] = React.useState<string | null>(null);
     const [isFeaturedMedicine, setIsFeaturedMedicine] = React.useState(false);
+    const [failedForecasts, setFailedForecasts] = React.useState<Set<string>>(new Set());
+    const [hasForecastError, setHasForecastError] = React.useState(false);
 
 
     const searchForecastMedicines = async (q: string) => {
@@ -513,10 +583,18 @@ const StoreOwnerDashboard: React.FC = () => {
     }, [forecastQuery, activeTab]);
 
     const handleRunForecast = async (medicine: any, isFeatured: boolean = false) => {
+        if (hasForecastError) return;
+
+        if (failedForecasts.has(medicine.id)) {
+            setForecastError("Not enough data to forecast (Cached)");
+            return;
+        }
+
         setSelectedForecastMedicine(medicine);
         setForecastQuery(""); // clear search to hide dropdown
         setIsForecastLoading(true);
         setIsFeaturedMedicine(isFeatured);
+        setForecastError(null);
         try {
             // Use auth.effectiveStore.id or fallback to data.store.id
             const storeId = auth.effectiveStore?.id || data?.store?.id;
@@ -536,10 +614,18 @@ const StoreOwnerDashboard: React.FC = () => {
             setTopForecasts([]); // Clear top forecasts when selecting a single one
         } catch (err: any) {
             console.error("Forecast failed", err);
-            if (err.response?.status === 400 && err.response?.data?.detail) {
-                setForecastError(`Forecast Failed: ${err.response.data.detail}`);
+            const detail = err.response?.data?.detail;
+            
+            if (detail && typeof detail === "string" && (detail.toLowerCase().includes("not enough") || detail.toLowerCase().includes("data"))) {
+                setForecastError(`Forecast Failed: ${detail}`);
+                setFailedForecasts(prev => {
+                    const next = new Set(prev);
+                    next.add(medicine.id);
+                    return next;
+                });
             } else {
                 setForecastError("Failed to generate forecast");
+                setHasForecastError(true);
             }
         } finally {
             setIsForecastLoading(false);
@@ -549,20 +635,24 @@ const StoreOwnerDashboard: React.FC = () => {
     // Auto-fetch top medicine forecast on load
     React.useEffect(() => {
         const fetchTopMedicineForecast = async () => {
-            if (activeTab === 'overview' && !forecastData && !isForecastLoading && data) {
+            // Stop auto-fetching if ANY forecast has failed (to prevent spamming through the list)
+            if (activeTab === 'overview' && !forecastData && !isForecastLoading && data && !hasForecastError && failedForecasts.size === 0) {
                 try {
                     let medicineToForecast: any = null;
                     
                     // Priority 1: Use first medicine from low stock list (critical priority)
                     if (data?.lists?.lowStock && data.lists.lowStock.length > 0) {
-                        medicineToForecast = data.lists.lowStock[0];
+                        // Find first one valid that hasn't failed before
+                        const valid = data.lists.lowStock.find((m: any) => !failedForecasts.has(m.id));
+                        if (valid) medicineToForecast = valid;
                     } 
                     
                     // Priority 2: If no low stock, search for any available medicine
                     if (!medicineToForecast) {
                         const searchRes = await dashboardApi.searchMedicines("");
                         if (searchRes.data.success && searchRes.data.data.medicines.length > 0) {
-                            medicineToForecast = searchRes.data.data.medicines[0];
+                            const valid = searchRes.data.data.medicines.find((m: any) => !failedForecasts.has(m.id));
+                            if (valid) medicineToForecast = valid;
                         }
                     }
 
@@ -577,7 +667,7 @@ const StoreOwnerDashboard: React.FC = () => {
         };
 
         fetchTopMedicineForecast();
-    }, [activeTab, data, forecastData, isForecastLoading]);
+    }, [activeTab, data, forecastData, isForecastLoading, failedForecasts, hasForecastError]);
 
     const chartData = React.useMemo(() => {
         if (!forecastData?.plot_data) return [];
@@ -878,6 +968,8 @@ const StoreOwnerDashboard: React.FC = () => {
             searchPOSMedicines("");
         } else if (activeTab === 'history') {
             handleViewReceipts();
+        } else if (activeTab === 'overview' || activeTab === 'return') {
+            handleOpenReturn();
         }
     }, [activeTab]);
 
@@ -916,6 +1008,7 @@ const StoreOwnerDashboard: React.FC = () => {
         setSupplierRequests(prev => prev.filter(req => req.id !== requestId));
         try {
             await dashboardApi.acceptSupplierRequest(requestId);
+            setFeedbackMessage("Supplier connected successfully");
             setShowFeedback(true);
         } catch (err) {
             console.error(err);
@@ -931,6 +1024,7 @@ const StoreOwnerDashboard: React.FC = () => {
         setSupplierRequests(prev => prev.filter(req => req.id !== requestId));
         try {
             await dashboardApi.rejectSupplierRequest(requestId);
+            setFeedbackMessage("Request rejected");
             setShowFeedback(true);
         } catch (err) {
             console.error(err);
@@ -973,6 +1067,7 @@ const StoreOwnerDashboard: React.FC = () => {
             await dashboardApi.createSupplierRequest({ supplierId });
             // Optimistic update
             setDirectorySuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, connectionStatus: "PENDING" } : s));
+            setFeedbackMessage("Connection request sent");
             setShowFeedback(true);
         } catch (err) {
             console.error(err);
@@ -1390,8 +1485,58 @@ const StoreOwnerDashboard: React.FC = () => {
                             ))}
                         </div>
 
-                              {/* --- AI FORECAST SECTION --- */}
-                                            <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm mb-8 relative overflow-hidden">
+                        {/* --- EXPIRING STOCK ALERT --- */}
+                        {returnList.length > 0 && (
+                            <div className="bg-white border border-red-100 rounded-3xl p-6 mb-8 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+                                <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center gap-6">
+                                    <div className="flex-1">
+                                        <h3 className="text-lg font-bold text-red-700 flex items-center gap-2 mb-2">
+                                            <AlertTriangle className="w-5 h-5" />
+                                            Action Required: {returnList.length} Expiring Items
+                                        </h3>
+                                        <p className="text-slate-600 text-sm mb-4 max-w-xl">
+                                            The following items are expired or expiring within 90 days. Convert them to return requests to clear stock and claim refunds.
+                                        </p>
+                                        <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+                                            {returnList.slice(0, 3).map(item => (
+                                                <div key={`${item.id}_${item.batchNumber}`} className="flex items-center gap-3 bg-white border border-red-50 p-3 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                                                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center shadow-sm font-bold border ${item.reason === 'Expired' ? 'bg-red-600 text-white border-red-700' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
+                                                        <span className="text-[10px] uppercase leading-none">{new Date(item.expiryDate).toLocaleString('default', { month: 'short' })}</span>
+                                                        <span className="text-sm">{new Date(item.expiryDate).getDate()}</span>
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-slate-800 text-sm">{item.brandName}</div>
+                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                            <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-1 rounded">#{item.batchNumber}</span>
+                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-tighter ${item.reason === 'Expired' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                                {item.reason}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {returnList.length > 3 && (
+                                                <div className="flex items-center justify-center px-4 py-2 text-xs font-bold text-red-500 bg-red-50 rounded-2xl border border-red-100">
+                                                    +{returnList.length - 3} more
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="w-full lg:w-auto flex justify-end">
+                                        <Button
+                                            onClick={() => setActiveTab('return')}
+                                            className="bg-red-600 hover:bg-red-700 text-white border-none shadow-lg shadow-red-600/20 px-6 py-2 rounded-xl font-bold transition-all text-sm"
+                                        >
+                                            Process Returns <ArrowRight className="w-4 h-4 ml-2" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- AI FORECAST SECTION --- */}
+                        <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm mb-8 relative overflow-hidden">
                                                 {/* Background Effect */}
                                                 <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
                     
@@ -2144,7 +2289,9 @@ const StoreOwnerDashboard: React.FC = () => {
                                 {myRequests.length > 0 ? (
                                     <div className="grid grid-cols-1 gap-4">
                                         {myRequests
-                                            .filter(r => r.payload?.type === 'REORDER')
+
+                                            .filter(r => r.payload?.type === 'REORDER' || r.payload?.type === 'RETURN')
+                                            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                                             .map(req => {
                                                 const supplierName = data?.lists?.suppliers?.find(s => s.id === req.supplierId)?.name || "Unknown Supplier";
                                                 const statusConfig = req.status === 'ACCEPTED' ? { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200', icon: CheckCircle } :
@@ -2159,8 +2306,15 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                 <StatusIcon className="w-7 h-7" />
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <div className="flex items-center gap-3 mb-1.5">
-                                                                    <h4 className="font-bold text-slate-800 text-lg truncate">Order #{req.id.slice(0, 8).toUpperCase()}</h4>
+                                                                    <div className="flex items-center gap-2 mb-1.5 ">
+                                                                        <h4 className="font-bold text-slate-800 text-lg truncate flex items-center gap-2">
+                                                                            Order #{req.id.slice(0, 8).toUpperCase()}
+                                                                            {req.payload?.type === 'RETURN' && (
+                                                                                <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold border border-red-200 uppercase tracking-wide">
+                                                                                    Return
+                                                                                </span>
+                                                                            )}
+                                                                        </h4>
                                                                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1.5 shrink-0 ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
                                                                         {req.status === 'PENDING' && <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse opacity-60" />}
                                                                         {req.status}
@@ -2257,6 +2411,21 @@ const StoreOwnerDashboard: React.FC = () => {
                                 <div className="flex gap-2">
 
 
+                                    <div className="relative">
+                                        <button className={`h-[46px] w-[46px] flex items-center justify-center rounded-xl border transition-all cursor-pointer !bg-white !text-black ${inventoryFilter !== 'all' ? 'border-2 border-black' : 'border-slate-200 hover:border-slate-300'}`}>
+                                            <Filter className="w-4 h-4" />
+                                        </button>
+                                        <select
+                                            value={inventoryFilter}
+                                            onChange={(e) => setInventoryFilter(e.target.value as any)}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        >
+                                            <option value="all">All Items</option>
+                                            <option value="low_stock">Low Stock Only</option>
+                                            <option value="healthy">Healthy Stock</option>
+                                            <option value="expired">Expired (Returns)</option>
+                                        </select>
+                                    </div>
                                     <div className="relative flex-1">
                                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
@@ -2293,10 +2462,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                             {inventoryList.filter(med => {
                                                 const matchesSearch = med.brandName.toLowerCase().includes(reorderSearchQuery.toLowerCase()) ||
                                                     med.genericName.toLowerCase().includes(reorderSearchQuery.toLowerCase());
-                                                if (!matchesSearch) return false;
-                                                if (inventoryFilter === "out_of_stock") return med.qtyAvailable === 0;
-                                                if (inventoryFilter === "in_stock") return med.qtyAvailable > 0;
-                                                return true;
+                                                return matchesSearch;
                                             }).length === 0 && (
                                                     <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                                                         <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
@@ -2308,10 +2474,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                             {inventoryList.filter(med => {
                                                 const matchesSearch = med.brandName.toLowerCase().includes(reorderSearchQuery.toLowerCase()) ||
                                                     med.genericName.toLowerCase().includes(reorderSearchQuery.toLowerCase());
-                                                if (!matchesSearch) return false;
-                                                if (inventoryFilter === "out_of_stock") return med.qtyAvailable === 0;
-                                                if (inventoryFilter === "in_stock") return med.qtyAvailable > 0;
-                                                return true;
+                                                return matchesSearch;
                                             }).map((med) => {
                                                 const inCart = cart.get(med.id) || 0;
                                                 return (
@@ -3036,7 +3199,7 @@ const StoreOwnerDashboard: React.FC = () => {
             <FeedbackToast
                 visible={showFeedback}
                 onClose={() => setShowFeedback(false)}
-                message="Request processed successfully"
+                message={feedbackMessage}
                 onFeedback={(type) => console.log("Feedback:", type)}
             />
 
