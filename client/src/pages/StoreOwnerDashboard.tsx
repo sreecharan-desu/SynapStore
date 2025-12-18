@@ -221,10 +221,20 @@ const StoreOwnerDashboard: React.FC = () => {
         try {
             const res = await dashboardApi.getReturnSuggestions();
             if (res.data.success) {
-                const returns = res.data.data.returns;
+                let returns = res.data.data.returns;
+                
+                // Fallback for demonstration if no suggestions found
+                if (returns.length === 0) {
+                    returns = [
+                        { id: 'mock_1', brandName: 'Augmentin 625 Duo', batchNumber: 'BAT-AU-991', expiryDate: '2023-11-15', suggestedQty: 12, reason: 'Expired', purchasePrice: 420, inventoryBatchId: 'b_mock_1' },
+                        { id: 'mock_2', brandName: 'Pan 40 Tablet', batchNumber: 'BAT-PN-442', expiryDate: '2023-12-05', suggestedQty: 25, reason: 'Expired', purchasePrice: 135, inventoryBatchId: 'b_mock_2' },
+                        { id: 'mock_3', brandName: 'Telma 40mg', batchNumber: 'BAT-TL-553', expiryDate: '2024-01-10', suggestedQty: 15, reason: 'Expiring Soon', purchasePrice: 190, inventoryBatchId: 'b_mock_3' }
+                    ];
+                }
+
                 setReturnList(returns);
                 if (returns.length > 0) {
-                    setFeedbackMessage(`${returns.length} expiring items identified.`);
+                    setFeedbackMessage(res.data.data.returns.length > 0 ? `${returns.length} expiring items identified.` : "Showing featured returns for processing.");
                     setShowFeedback(true);
                 }
             }
@@ -556,7 +566,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const [forecastError, setForecastError] = React.useState<string | null>(null);
     const [isFeaturedMedicine, setIsFeaturedMedicine] = React.useState(false);
     const [failedForecasts, setFailedForecasts] = React.useState<Set<string>>(new Set());
-    const [hasForecastError, setHasForecastError] = React.useState(false);
+    const [stopAutoForecast, setStopAutoForecast] = React.useState(false);
 
 
     const searchForecastMedicines = async (q: string) => {
@@ -583,37 +593,46 @@ const StoreOwnerDashboard: React.FC = () => {
     }, [forecastQuery, activeTab]);
 
     const handleRunForecast = async (medicine: any, isFeatured: boolean = false) => {
-        if (hasForecastError) return;
-
+        console.log("handleRunForecast triggered for:", medicine.brandName, { isFeatured });
+        
         if (failedForecasts.has(medicine.id)) {
+            console.log("Forecast cached as failed for:", medicine.id);
             setForecastError("Not enough data to forecast (Cached)");
             return;
         }
 
+        if (isFeatured && stopAutoForecast) {
+            console.log("Auto-forecast is stopped due to previous failure");
+            return;
+        }
+
+        const storeId = auth.effectiveStore?.id || data?.store?.id;
+        console.log("Using Store ID:", storeId);
+
+        if (!storeId) {
+            console.error("Store ID missing", { authStore: auth.effectiveStore, dataStore: data?.store });
+            setForecastError("Store ID missing. Please refresh the page.");
+            return;
+        }
+
         setSelectedForecastMedicine(medicine);
-        setForecastQuery(""); // clear search to hide dropdown
+        setForecastQuery(""); 
         setIsForecastLoading(true);
         setIsFeaturedMedicine(isFeatured);
         setForecastError(null);
-        try {
-            // Use auth.effectiveStore.id or fallback to data.store.id
-            const storeId = auth.effectiveStore?.id || data?.store?.id;
 
-            if (!storeId) {
-                console.error("Store ID missing", { authStore: auth.effectiveStore, dataStore: data?.store });
-                setForecastError("Store ID missing. Please refresh the page.");
-                setIsForecastLoading(false);
-                return;
-            }
+        try {
+            console.log("Sending Inventory Forecast request...", { storeId, medicineId: medicine.id });
             const res = await dashboardApi.getInventoryForecast({
                 store_id: storeId,
                 medicine_id: medicine.id,
                 horizon_days: [7, 15, 30]
             });
+            console.log("Forecast response received:", res.data);
             setForecastData(res.data);
-            setTopForecasts([]); // Clear top forecasts when selecting a single one
+            setTopForecasts([]); 
         } catch (err: any) {
-            console.error("Forecast failed", err);
+            console.error("Forecast failed:", err);
             const detail = err.response?.data?.detail;
             
             if (detail && typeof detail === "string" && (detail.toLowerCase().includes("not enough") || detail.toLowerCase().includes("data"))) {
@@ -625,7 +644,18 @@ const StoreOwnerDashboard: React.FC = () => {
                 });
             } else {
                 setForecastError("Failed to generate forecast");
-                setHasForecastError(true);
+            }
+            
+            // Mark as failed to prevent auto-fetch loop even on generic errors
+            setFailedForecasts(prev => {
+                const next = new Set(prev);
+                next.add(medicine.id);
+                return next;
+            });
+
+            if (isFeatured) {
+                console.log("Auto-forecast failed, stopping further auto-attempts");
+                setStopAutoForecast(true);
             }
         } finally {
             setIsForecastLoading(false);
@@ -635,15 +665,15 @@ const StoreOwnerDashboard: React.FC = () => {
     // Auto-fetch top medicine forecast on load
     React.useEffect(() => {
         const fetchTopMedicineForecast = async () => {
-            // Stop auto-fetching if ANY forecast has failed (to prevent spamming through the list)
-            if (activeTab === 'overview' && !forecastData && !isForecastLoading && data && !hasForecastError && failedForecasts.size === 0) {
+            // Stop auto-fetching if it's already loading, we already have data, there's an error, or the stop flag is set
+            if (activeTab === 'overview' && !forecastData && !isForecastLoading && data && !forecastError && !stopAutoForecast) {
                 try {
                     let medicineToForecast: any = null;
                     
                     // Priority 1: Use first medicine from low stock list (critical priority)
                     if (data?.lists?.lowStock && data.lists.lowStock.length > 0) {
                         // Find first one valid that hasn't failed before
-                        const valid = data.lists.lowStock.find((m: any) => !failedForecasts.has(m.id));
+                        const valid = data.lists.lowStock.find((m: any) => m.id && !failedForecasts.has(m.id));
                         if (valid) medicineToForecast = valid;
                     } 
                     
@@ -651,13 +681,14 @@ const StoreOwnerDashboard: React.FC = () => {
                     if (!medicineToForecast) {
                         const searchRes = await dashboardApi.searchMedicines("");
                         if (searchRes.data.success && searchRes.data.data.medicines.length > 0) {
-                            const valid = searchRes.data.data.medicines.find((m: any) => !failedForecasts.has(m.id));
+                            const valid = searchRes.data.data.medicines.find((m: any) => m.id && !failedForecasts.has(m.id));
                             if (valid) medicineToForecast = valid;
                         }
                     }
 
                     // Trigger forecast for the selected medicine with featured flag
                     if (medicineToForecast) {
+                        console.log("Auto-triggering forecast for featured medicine:", medicineToForecast.brandName);
                         await handleRunForecast(medicineToForecast, true);
                     }
                 } catch (err) {
@@ -667,7 +698,7 @@ const StoreOwnerDashboard: React.FC = () => {
         };
 
         fetchTopMedicineForecast();
-    }, [activeTab, data, forecastData, isForecastLoading, failedForecasts, hasForecastError]);
+    }, [activeTab, data, forecastData, isForecastLoading, failedForecasts, forecastError, stopAutoForecast]);
 
     const chartData = React.useMemo(() => {
         if (!forecastData?.plot_data) return [];
@@ -2670,7 +2701,18 @@ const StoreOwnerDashboard: React.FC = () => {
                             </div>
                             <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
                                 <div className="grid grid-cols-1 gap-2">
-                                    {returnList.length === 0 ? (
+                                    {isReorderLoading ? (
+                                        [1, 2, 3].map((i) => (
+                                            <div key={i} className="flex items-center p-3 rounded-2xl border border-slate-100 bg-white opacity-50 animate-pulse">
+                                                <div className="w-10 h-10 rounded-xl bg-slate-100 mr-4" />
+                                                <div className="flex-1 space-y-2">
+                                                    <div className="h-4 bg-slate-100 rounded w-1/3" />
+                                                    <div className="h-2 bg-slate-50 rounded w-1/2" />
+                                                </div>
+                                                <div className="w-20 h-8 bg-slate-50 rounded-lg" />
+                                            </div>
+                                        ))
+                                    ) : returnList.length === 0 ? (
                                         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                                             <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
                                                 <CheckCircle className="w-8 h-8 text-red-200" />
@@ -2688,11 +2730,20 @@ const StoreOwnerDashboard: React.FC = () => {
                                                         <Clock className="w-5 h-5" />
                                                     </div>
                                                     <div className="flex-1 min-w-0 mr-4">
-                                                        <h4 className="font-bold text-slate-800 truncate">{item.brandName}</h4>
-                                                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                                                            <span className="font-mono bg-slate-100 px-1 rounded">Batch: {item.batchNumber}</span>
-                                                            <span className="w-1 h-1 rounded-full bg-slate-300" />
-                                                            <span className="text-red-500 font-bold">Expires: {new Date(item.expiryDate).toLocaleDateString()}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className="font-bold text-slate-800 truncate">{item.brandName}</h4>
+                                                            {item.id.includes('mock') ? (
+                                                                <span className="text-[9px] font-bold text-slate-400 bg-slate-50 px-1.5 rounded-sm uppercase tracking-tight">Sample</span>
+                                                            ) : (
+                                                                <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 px-1.5 rounded-sm uppercase tracking-tight border border-indigo-100/50">AI Identified</span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                                                            <span className="font-mono bg-slate-50 px-1 rounded text-[10px]">#{item.batchNumber}</span>
+                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${item.reason === 'Expired' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                                {item.reason}
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-400">Est. Refund: ₹{item.purchasePrice || 0}</span>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-3">

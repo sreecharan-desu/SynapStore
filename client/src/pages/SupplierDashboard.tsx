@@ -939,9 +939,9 @@ const SupplierDashboard: React.FC = () => {
                                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                             <div>
                                                 <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                                                    <Inbox className="w-6 h-6 text-indigo-500" /> Connection Requests
+                                                    <Inbox className="w-6 h-6 text-indigo-500" /> Connection Requests & Return Requests
                                                 </h2>
-                                                <p className="text-slate-500 mt-1">Manage inbound and outbound store partnerships.</p>
+                                                <p className="text-slate-500 mt-1">Manage inbound and outbound store partnerships & return requests</p>
                                             </div>
                                             <div className="flex items-center gap-3">
 
