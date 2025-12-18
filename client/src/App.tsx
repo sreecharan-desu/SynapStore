@@ -11,34 +11,61 @@ const App = () => {
   const [notifications, setNotifications] = useState<any[]>([]);
 
   useEffect(() => {
-    const handleStorageChange = (event: StorageEvent) => {
-      // Efficiently handle storage changes:
-      // 1. Only care about 'synapstore:auth'
-      // 2. Only logout if data is corrupted (invalid JSON)
-      // 3. Allow valid updates (like logging in from another tab)
-      
-      if (event.storageArea === localStorage && event.key === "synapstore:auth") {
-         if (event.newValue) {
-             try {
-                 JSON.parse(event.newValue);
-                 // Data is valid JSON. Assume valid session update. 
-                 // Optionally force reload to sync state if needed, but avoiding it prevents disruption.
-             } catch (e) {
-                 console.error("Storage corruption detected", e);
-                 toast.error("Session data corrupted. Please login again.");
-               localStorage.removeItem("synapstore:auth");
-              
-                 window.location.href = "/";
-             }
-         } else {
-             // Key removed (Logout action) - Redirect to login
-             window.location.href = "/";
-         }
+    // Super Strict Tamper Detection
+    // We monkey-patch setItem/removeItem to track legitimate app updates.
+    // Any change detected via polling that wasn't flagged as 'app-initiated' is treated as tampering.
+
+    let lastKnownValue = localStorage.getItem("synapstore:auth");
+    let isAppInitiated = false;
+
+    // Monkey-patch setItem
+    const originalSetItem = window.localStorage.setItem;
+    window.localStorage.setItem = function(key, value) {
+      if (key === "synapstore:auth") {
+        isAppInitiated = true;
+        lastKnownValue = value; 
       }
+      originalSetItem.apply(this, [key, value]);
+      if (key === "synapstore:auth") isAppInitiated = false;
     };
 
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    // Monkey-patch removeItem
+    const originalRemoveItem = window.localStorage.removeItem;
+    window.localStorage.removeItem = function(key) {
+      if (key === "synapstore:auth") {
+        isAppInitiated = true;
+        lastKnownValue = null;
+      }
+      originalRemoveItem.apply(this, [key]);
+      if (key === "synapstore:auth") isAppInitiated = false;
+    };
+
+    // Polling interval to detect DevTools/External changes
+    const intervalId = setInterval(() => {
+      const currentValue = localStorage.getItem("synapstore:auth");
+      
+      if (currentValue !== lastKnownValue) {
+        if (!isAppInitiated) {
+          console.warn("Strict Tamper Detection: Storage changed without app initiation!");
+          toast.error("Security Alert: Storage tampering detected. Logging out.");
+          
+          // Force Clean
+          originalRemoveItem.apply(window.localStorage, ["synapstore:auth"]);
+          document.cookie = "synapstore:auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+          
+          window.location.href = "/";
+        } else {
+          lastKnownValue = currentValue;
+        }
+      }
+    }, 1000); 
+
+    return () => {
+      clearInterval(intervalId);
+      // Restore originals
+      window.localStorage.setItem = originalSetItem;
+      window.localStorage.removeItem = originalRemoveItem;
+    };
   }, []);
 
 
