@@ -8,9 +8,10 @@ type FieldType = "email" | "password" | null;
 interface Login3DCharacterProps {
     focusedField: FieldType;
     keyTrigger: number; // Increment this to trigger a small "twitch"
+    disableTracking?: boolean;
 }
 
-const CharacterModel = ({ focusedField, keyTrigger }: { focusedField: FieldType, keyTrigger: number }) => {
+const CharacterModel = ({ focusedField, keyTrigger, disableTracking }: { focusedField: FieldType, keyTrigger: number, disableTracking?: boolean }) => {
     const group = useRef<THREE.Group>(null);
     const bodyRef = useRef<THREE.Group>(null);
     const rightEyeRef = useRef<THREE.Mesh>(null);
@@ -37,7 +38,9 @@ const CharacterModel = ({ focusedField, keyTrigger }: { focusedField: FieldType,
         if (!group.current) return;
 
         const time = state.clock.getElapsedTime();
-        const mouse = state.pointer; // normalized -1 to 1
+        const mouse = disableTracking
+            ? { x: Math.sin(time * 0.5) * 0.3, y: Math.cos(time * 0.4) * 0.2 } // Simulated idle looking
+            : state.pointer;
 
         // 1. DANCING (Idle State)
         if (!focusedField) {
@@ -211,7 +214,7 @@ const CharacterModel = ({ focusedField, keyTrigger }: { focusedField: FieldType,
     );
 };
 
-export default function Login3DCharacter({ focusedField, keyTrigger, className }: Login3DCharacterProps & { className?: string }) {
+export default function Login3DCharacter({ focusedField, keyTrigger, className, disableTracking }: Login3DCharacterProps & { className?: string }) {
     return (
         <div className={`w-full h-full flex items-center justify-center bg-transparent ${className || "min-h-[400px]"}`}>
             <Canvas shadows camera={{ position: [0, 0, 8], fov: 35 }}>
@@ -225,7 +228,7 @@ export default function Login3DCharacter({ focusedField, keyTrigger, className }
                     floatIntensity={focusedField ? 0.2 : 0.5}
                     floatingRange={[-0.1, 0.1]}
                 >
-                    <CharacterModel focusedField={focusedField} keyTrigger={keyTrigger} />
+                    <CharacterModel focusedField={focusedField} keyTrigger={keyTrigger} disableTracking={disableTracking} />
                 </Float>
 
                 <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2.5} far={4} />

@@ -73,8 +73,8 @@ const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 const StatusBadge = ({ isActive }: { isActive: boolean }) => (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isActive
-        ? "bg-black text-emerald-800 border border-emerald-200"
-        : "bg-red-100 text-red-800 border border-red-200"
+        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+        : "bg-red-50 text-red-700 border border-red-200"
         }`}>
         {isActive ? "Active" : "Suspended"}
     </span>
@@ -246,6 +246,7 @@ const SuperAdminDashboard: React.FC = () => {
     const [notificationResult, setNotificationResult] = useState<{ success: boolean; message: string } | null>(null);
     const [showNotificationResultModal, setShowNotificationResultModal] = useState(false);
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+    const [feedback, setFeedback] = useState<{ show: boolean, message: string }>({ show: false, message: "" });
 
     // Data State
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -420,7 +421,7 @@ const SuperAdminDashboard: React.FC = () => {
             fetchData();
         } catch (err: any) {
             console.error(err);
-            alert("Error: " + err.message);
+            setFeedback({ show: true, message: "Error: " + err.message });
         }
     };
 
@@ -439,7 +440,7 @@ const SuperAdminDashboard: React.FC = () => {
             }
         } catch (err: any) {
             console.error(err);
-            alert("Error: " + err.message);
+            setFeedback({ show: true, message: "Error: " + err.message });
         }
     };
 
@@ -455,7 +456,7 @@ const SuperAdminDashboard: React.FC = () => {
             fetchData();
         } catch (err: any) {
             console.error(err);
-            alert("Error: " + err.message);
+            setFeedback({ show: true, message: "Error: " + err.message });
         }
     };
 
@@ -473,7 +474,7 @@ const SuperAdminDashboard: React.FC = () => {
             }
         } catch (err: any) {
             console.error(err);
-            alert("Error: " + (err.message || "Failed to toggle user status"));
+            setFeedback({ show: true, message: "Error: " + (err.message || "Failed to toggle user status") });
         }
     };
 
@@ -492,7 +493,7 @@ const SuperAdminDashboard: React.FC = () => {
             fetchData();
         } catch (err: any) {
             console.error(err);
-            alert("Error: " + err.message);
+            setFeedback({ show: true, message: "Error: " + err.message });
         }
     };
 
@@ -512,18 +513,18 @@ const SuperAdminDashboard: React.FC = () => {
         setSending(true);
         try {
             const res: any = await adminApi.sendNotification(notifyForm);
-            
+
             if (res.data?.success) {
                 setNotificationResult({ success: true, message: "Your broadcast message has been queued for delivery." });
                 setShowNotificationResultModal(true);
                 setNotifyForm({ ...notifyForm, subject: "", message: "" });
             } else {
-                 setNotificationResult({ success: false, message: res.data?.error || "Failed to send notification." });
-                 setShowNotificationResultModal(true);
+                setNotificationResult({ success: false, message: res.data?.error || "Failed to send notification." });
+                setShowNotificationResultModal(true);
             }
         } catch (err: any) {
             console.error("Error sending notification:", err);
-            alert("Error sending notification: " + (err.response?.data?.message || err.message));
+            setFeedback({ show: true, message: "Error sending notification: " + (err.response?.data?.message || err.message) });
         } finally {
             setSending(false);
         }
@@ -539,7 +540,7 @@ const SuperAdminDashboard: React.FC = () => {
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <img
-                                src="/admin-shield-logo.jpg"
+                                src="/newAdmin.png"
                                 alt="Admin Logo"
                                 className="w-12 h-12 object-contain"
                             />
@@ -585,7 +586,7 @@ const SuperAdminDashboard: React.FC = () => {
                                     </span>
                                 </div>
                                 <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-white shadow-md shadow-slate-200/50 overflow-hidden">
-                                     {auth.user?.imageUrl ? (
+                                    {auth.user?.imageUrl ? (
                                         <img src={auth.user.imageUrl} alt="Profile" className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-slate-600 font-bold text-sm">
@@ -685,7 +686,7 @@ const SuperAdminDashboard: React.FC = () => {
                                             </div>
                                             <div>
                                                 <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total Users</p>
-                                                <p className="text-xl font-black text-slate-800"> 
+                                                <p className="text-xl font-black text-slate-800">
                                                     {analytics.overview.users.total} <span className="text-sm font-normal text-slate-400">({analytics.overview.users.total} Verified)</span>
                                                 </p>
                                             </div>
@@ -884,8 +885,8 @@ const SuperAdminDashboard: React.FC = () => {
                                         <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                                         <span className="text-xs text-blue-700 font-medium">User</span>
                                     </div>
-                                    <div className="flex items-center gap-2 px-3 py-1 bg-black rounded-full border border-emerald-100">
-                                        <span className="w-2 h-2 rounded-full bg-black"></span>
+                                    <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                                         <span className="text-xs text-emerald-700 font-medium">Store</span>
                                     </div>
                                     <div className="flex items-center gap-2 px-3 py-1 bg-pink-50 rounded-full border border-pink-100">
@@ -1638,7 +1639,7 @@ const SuperAdminDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-3 w-full mt-4">
                                         <Button
                                             variant="outline"
-                                            className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
+                                            className="h-12 cursor-pointer rounded-xl !bg-black !text-white hover:!bg-neutral-800 border-none font-semibold shadow-md"
                                             onClick={() => setShowLogoutConfirm(false)}
                                         >
                                             Cancel
@@ -2031,6 +2032,29 @@ const SuperAdminDashboard: React.FC = () => {
                     )
                 }
             </AnimatePresence >
+
+            {/* General Feedback / Alert Modal */}
+            <AnimatePresence>
+                {feedback.show && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full text-center"
+                        >
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Notification</h3>
+                            <p className="text-slate-500 mb-6">{feedback.message}</p>
+                            <Button
+                                onClick={() => setFeedback({ ...feedback, show: false })}
+                                className="w-full h-12 cursor-pointer rounded-xl !bg-black !text-white hover:!bg-slate-800 font-bold"
+                            >
+                                Close
+                            </Button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
 
 
