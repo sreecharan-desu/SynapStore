@@ -1351,8 +1351,11 @@ dashboardRouter.get(
       // Inventory Filter Logic
       // If return=true, fetch expired/expiring items.
       // Else, fetch all available items (filtering happens in memory or via query params later)
+      const ninetyDays = new Date();
+      ninetyDays.setDate(ninetyDays.getDate() + 90);
+
       const inventoryWhere = isReturn
-        ? { qtyAvailable: { gt: 0 }, expiryDate: { lte: new Date() } }
+        ? { qtyAvailable: { gt: 0 }, expiryDate: { lte: ninetyDays } }
         : { qtyAvailable: { gte: 0 } };
 
       // Fetch all active medicines for store (filtering in memory after decryption)
@@ -1690,10 +1693,18 @@ dashboardRouter.post(
       const medMap = new Map(meds.map(m => [m.id, m]));
 
       // Construct readable message and enhanced items for payload
+      const dek = dekFromEnv();
       let details = "Items to Return:\n";
       const enhancedItems = items.map(item => {
         const m = medMap.get(item.medicineId);
-        const name = m ? `${m.brandName} ${m.strength || ''}` : "Unknown Item";
+        let brandName = m?.brandName || "Unknown Item";
+        if (m) {
+          try {
+            const decrypted = decryptCell(m.brandName, dek);
+            if (decrypted) brandName = decrypted;
+          } catch (e) { }
+        }
+        const name = m ? `${brandName} ${m.strength || ''}` : "Unknown Item";
         details += `- ${name}: ${item.quantity} units\n`;
         return {
           ...item,

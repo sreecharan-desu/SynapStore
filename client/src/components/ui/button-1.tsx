@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { ChevronDown, type LucideIcon } from 'lucide-react';
-import { Slot as SlotPrimitive } from 'radix-ui';
+import { Slot as SlotPrimitive } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
@@ -59,7 +59,7 @@ const buttonVariants = cva(
             [[data-state=open]>&]:border-ring [[data-state=open]>&]:outline-hidden [[data-state=open]>&]:ring-[3px] 
             [[data-state=open]>&]:ring-ring/30 
             aria-invalid:border-destructive/60 aria-invalid:ring-destructive/10 dark:aria-invalid:border-destructive dark:aria-invalid:ring-destructive/20
-            in-data-[invalid=true]:border-destructive/60 in-data-[invalid=true]:ring-destructive/10  dark:in-data-[invalid=true]:border-destructive dark:in-data-[invalid=true]:ring-destructive/20
+            in-data-[invalid=true]:border-destructive/60 in-data-[invalid=true]:ring-destructive/10  dark:in-data-[invalid=true]:border-destructive dark:in-data-[invalid=true]:border-destructive/20
           `,
       },
       placeholder: {
@@ -376,7 +376,7 @@ function Button({
     selected?: boolean;
     asChild?: boolean;
   }) {
-  const Comp = asChild ? SlotPrimitive.Slot : 'button';
+  const Comp = asChild ? SlotPrimitive : 'button';
   return (
     <Comp
       data-slot="button"
@@ -393,7 +393,7 @@ function Button({
           underline,
           className,
         }),
-        asChild && props.disabled && 'pointer-events-none opacity-50',
+        asChild && (props as any).disabled && 'pointer-events-none opacity-50',
       )}
       {...(selected && { 'data-state': 'open' })}
       {...props}
@@ -406,7 +406,7 @@ interface ButtonArrowProps extends React.SVGProps<SVGSVGElement> {
 }
 
 function ButtonArrow({ icon: Icon = ChevronDown, className, ...props }: ButtonArrowProps) {
-  return <Icon data-slot="button-arrow" className={cn('ms-auto -me-1', className)} {...props} />;
+  return <Icon data-slot="button-arrow" className={cn('ms-auto -me-1', className)} {...props as any} />;
 }
 
 export { Button, ButtonArrow, buttonVariants };

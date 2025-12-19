@@ -6,11 +6,10 @@ import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Settings, LogOut, Users, Package,  Search, X, Sparkles, Lock, Truck,  Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store,  XCircle, Send, History as HistoryIcon, ClipboardList, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, Loader2, Clock, AlertTriangle} from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
-
 import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
 import { dashboardApi } from "../lib/api/endpoints";
-import { Button } from "../components/ui/button";
+import { Button } from "../components/ui/button-1";
 import FeedbackToast from "../components/ui/feedback-toast";
 
 
@@ -31,7 +30,7 @@ import {
     ComposedChart,
     ReferenceLine
 } from "recharts";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/line-charts-9";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/line-charts-1";
 
 import {
     Select,
@@ -46,7 +45,7 @@ import {
     DropdownMenuItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu-premium";
+} from "@/components/ui/dropdown-menu";
 import { FaRupeeSign } from "react-icons/fa";
 import {  TrendingUp, TrendingDown, Zap, CheckCircle, Share2, Filter, RefreshCw, Calendar, Download, MoreHorizontal } from "lucide-react";
 import type { Supplier, SupplierRequest } from "@/lib/types";
@@ -235,17 +234,7 @@ const StoreOwnerDashboard: React.FC = () => {
         try {
             const res = await dashboardApi.getReturnSuggestions();
             if (res.data.success) {
-                let returns = res.data.data.returns;
-                
-                // Fallback for demonstration if no suggestions found
-                if (returns.length === 0) {
-                    returns = [
-                        { id: 'd3b1b4b2-4b2a-4b2a-8b2a-000000000001', brandName: 'Augmentin 625 Duo', batchNumber: 'BAT-AU-991', expiryDate: '2023-11-15', suggestedQty: 12, reason: 'Expired', purchasePrice: 420, inventoryBatchId: 'd3b1b4b2-4b2a-4b2a-8b2a-100000000001' },
-                        { id: 'd3b1b4b2-4b2a-4b2a-8b2a-000000000002', brandName: 'Pan 40 Tablet', batchNumber: 'BAT-PN-442', expiryDate: '2023-12-05', suggestedQty: 25, reason: 'Expired', purchasePrice: 135, inventoryBatchId: 'd3b1b4b2-4b2a-4b2a-8b2a-100000000002' },
-                        { id: 'd3b1b4b2-4b2a-4b2a-8b2a-000000000003', brandName: 'Telma 40mg', batchNumber: 'BAT-TL-553', expiryDate: '2024-01-10', suggestedQty: 15, reason: 'Expiring Soon', purchasePrice: 190, inventoryBatchId: 'd3b1b4b2-4b2a-4b2a-8b2a-100000000003' }
-                    ];
-                }
-
+                const returns = res.data.data.returns || [];
                 setReturnList(returns);
                 if (returns.length > 0) {
                     setFeedbackMessage(res.data.data.returns.length > 0 ? `${returns.length} expiring items identified.` : "Showing featured returns for processing.");
@@ -570,20 +559,22 @@ const StoreOwnerDashboard: React.FC = () => {
     const [isCheckoutLoading, setIsCheckoutLoading] = React.useState(false);
     const [showPOSConfirm, setShowPOSConfirm] = React.useState(false);
 
+
     // --- Forecast State ---
     const [forecastQuery, setForecastQuery] = React.useState("");
     const [forecastResults, setForecastResults] = React.useState<any[]>([]);
     const [_selectedForecastMedicine, setSelectedForecastMedicine] = React.useState<any | null>(null);
     const [forecastData, setForecastData] = React.useState<any | null>(null);
-    const [_topForecasts, setTopForecasts] = React.useState<{ medicine: any, forecast: any }[]>([]);
     const [isForecastLoading, setIsForecastLoading] = React.useState(false);
     const [isForecastSearching, setIsForecastSearching] = React.useState(false);
     const [forecastError, setForecastError] = React.useState<string | null>(null);
     const [isFeaturedMedicine, setIsFeaturedMedicine] = React.useState(false);
     const [failedForecasts, setFailedForecasts] = React.useState<Set<string>>(new Set());
+    const [forecastDaysFilter, _setForecastDaysFilter] = React.useState<"7" | "15" | "30" | "all">("all");
     const [stopAutoForecast, setStopAutoForecast] = React.useState(false);
+    const [_topForecasts, setTopForecasts] = React.useState<{ medicine: any, forecast: any }[]>([]);
 
-
+    
     const searchForecastMedicines = async (q: string) => {
         setIsForecastSearching(true);
         try {
@@ -740,8 +731,13 @@ const StoreOwnerDashboard: React.FC = () => {
                 priceForecast: null
             }));
 
-            // 2. Process Forecast
-            const processedFore = fore.map((f: any) => {
+            // 2. Process Forecast (and Filter)
+            let limitedFore = fore;
+            if (forecastDaysFilter !== 'all') {
+                limitedFore = fore.slice(0, parseInt(forecastDaysFilter));
+            }
+
+            const processedFore = limitedFore.map((f: any) => {
                 const c = conf.find((x: any) => x.date === f.date);
                 const val = typeof f.qty === 'number' ? f.qty : 0;
                 
@@ -781,8 +777,9 @@ const StoreOwnerDashboard: React.FC = () => {
             console.error("Error processing chart data", e);
             return [];
         }
-    }, [forecastData]);
+    }, [forecastData, forecastDaysFilter]);
 
+  
     // Debounced search for POS
 
     React.useEffect(() => {
@@ -1878,10 +1875,10 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                                         yAxisId="demand"
                                                                                         type="monotone"
                                                                                         dataKey="history"
-                                                                                        stroke="#475569"
+                                                                                        stroke="var(--color-history)"
                                                                                         strokeWidth={4}
-                                                                                        dot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: '#475569' }}
-                                                                                        activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#475569' }}
+                                                                                        dot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-history)' }}
+                                                                                        activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-history)' }}
                                                                                         connectNulls
                                                                                     />
 
@@ -1890,11 +1887,11 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                                         yAxisId="demand"
                                                                                         type="monotone"
                                                                                         dataKey="forecast"
-                                                                                        stroke="#6366f1"
+                                                                                        stroke="var(--color-forecast)"
                                                                                         strokeWidth={4}
                                                                                         strokeDasharray="8 4"
                                                                                         dot={false}
-                                                                                        activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#6366f1' }}
+                                                                                        activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-forecast)' }}
                                                                                         connectNulls
                                                                                     />
 
@@ -1903,10 +1900,10 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                                         yAxisId="price"
                                                                                         type="monotone"
                                                                                         dataKey="priceHistory"
-                                                                                        stroke="#10b981"
+                                                                                        stroke="var(--color-priceHistory)"
                                                                                         strokeWidth={2}
                                                                                         dot={false}
-                                                                                        activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: '#10b981' }}
+                                                                                        activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-priceHistory)' }}
                                                                                         connectNulls
                                                                                     />
 
@@ -1915,11 +1912,11 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                                         yAxisId="price"
                                                                                         type="monotone"
                                                                                         dataKey="priceForecast"
-                                                                                        stroke="#059669"
+                                                                                        stroke="var(--color-priceForecast)"
                                                                                         strokeWidth={2}
                                                                                         strokeDasharray="5 5"
                                                                                         dot={false}
-                                                                                        activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: '#059669' }}
+                                                                                        activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-priceForecast)' }}
                                                                                         connectNulls
                                                                                     />
                                                                                 </ComposedChart>

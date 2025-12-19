@@ -2226,7 +2226,8 @@ const SupplierDashboard: React.FC = () => {
 
                                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
                                     {fulfillItems.map((item, idx) => {
-                                        const requestedQty = requestToFulfill?.payload?.items?.find((ri: any) => ri.medicineId === item.medicineId)?.quantity || 0;
+                                        const originalItem = requestToFulfill?.payload?.items?.[idx];
+                                        const requestedQty = originalItem?.quantity || 0;
                                         const isPartial = item.quantity < requestedQty;
 
                                         return (
