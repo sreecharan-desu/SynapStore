@@ -1278,12 +1278,12 @@ const StoreOwnerDashboard: React.FC = () => {
         },
         {
             icon: Package,
-            label: "Low Stock",
-            value: data?.lists.lowStock.length.toString() ?? "0",
+            label: "totalMedicines",
+            value: data?.overview.totalMedicines.toString() ?? "0",
             color: theme.primary,
             bg: theme.light,
             text: theme.text,
-            change: data?.lists.lowStock.length ? "Action needed" : "Healthy",
+            change: ((data?.overview.totalMedicines ? data.overview.totalMedicines : 0) < 10)  ? "Get some medicines" : "Okay",
         },
         {
             icon: Users,

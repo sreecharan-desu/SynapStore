@@ -170,7 +170,7 @@ dashboardRouter.get(
         Math.max(Number(req.query.recent ?? 20), 1),
         200
       );
-      const lowStockThreshold = Math.max(Number(req.query.threshold ?? 5), 1);
+      const lowStockThreshold = 50;
       const expiriesDays = Math.max(Number(req.query.expiriesDays ?? 90), 1);
       const agingBuckets = req.query.agingBuckets
         ? String(req.query.agingBuckets)
@@ -204,7 +204,6 @@ dashboardRouter.get(
         salesByHourRaw,
         paymentMethodsAgg,
         categoryBreakdownRaw,
-        stockTurnoverAgg,
         agingBucketsRaw // Optimization for aging buckets? 
       ] = await Promise.all([
         prisma.medicine.count({ where: { storeId } }),
@@ -225,7 +224,7 @@ dashboardRouter.get(
         }),
         // Low Stock (enriched)
         prisma.inventoryBatch.findMany({
-          where: { storeId, qtyAvailable: { lte: lowStockThreshold } },
+          where: { storeId, qtyAvailable: { lte: lowStockThreshold }},
           orderBy: { qtyAvailable: "asc" },
           take: 200,
           include: { medicine: true }

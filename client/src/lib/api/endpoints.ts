@@ -46,7 +46,7 @@ export const dashboardApi = {
     checkoutSale: (items: { medicineId: string; qty: number }[], paymentMethod?: string) => client.post("api/v1/dashboard/sales/checkout", { items, paymentMethod }, { responseType: 'blob' }),
     getReceipts: () => client.get<{ success: boolean; data: { receipts: any[] } }>("api/v1/dashboard/receipts"),
     getReceiptPDF: (id: string) => client.get(`api/v1/dashboard/receipts/${id}/pdf`, { responseType: 'blob' }),
-    sendReceiptEmail: (id: string, email: string) => client.post(`api/v1/dashboard/receipts/${id}/email`, { email }),
+    sendReceiptEmail: (id: string, email: string) => client.post(`api/v1/dashboard/receipts/${id}/email`, { email, saleId: id }),
     getInventoryForecast: (data: { store_id: string; medicine_id: string; horizon_days: number[] }) =>
         axios.post("https://anandvelpuri-zenith.hf.space/forecast/inventory", data, { headers: { 'Content-Type': 'application/json' } }),
 };
