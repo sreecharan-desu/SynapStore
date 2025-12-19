@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuthContext } from "../context/AuthContext";
-import { X, Send, Loader2, Sparkles, Mic, Volume2, VolumeX, Check } from "lucide-react";
+import { X, Send, Loader2, Sparkles, Mic, Check } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -55,7 +55,7 @@ export const ChatbotWidget = () => {
     // TTS & STT State
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isListening, setIsListening] = useState(false); // Used for manual dictation mode
-    const [voiceEnabled, setVoiceEnabled] = useState(true);
+    const voiceEnabled = true;
     const synthRef = useRef<SpeechSynthesis | null>(window.speechSynthesis);
 
     // Voice permission and Wake Word
