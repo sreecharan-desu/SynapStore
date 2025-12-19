@@ -61,43 +61,43 @@ jobs:
             sudo docker run -d --name synapstore-worker --restart always --env-file /home/${{ secrets.EC2_USER }}/.synapstore.env ${{ secrets.DOCKER_USERNAME }}/synapstore-backend:latest node dist/worker-entry.js
             sudo docker image prune -f
 
-  frontend-deploy:
-    name: Build & Deploy Frontend
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
-    env:
-      CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+  # frontend-deploy:
+  #   name: Build & Deploy Frontend
+  #   runs-on: ubuntu-latest
+  #   defaults:
+  #     run:
+  #       working-directory: ./client
+  #   env:
+  #     CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: client/package-lock.json
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+  #         cache: 'npm'
+  #         cache-dependency-path: client/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+  #     - name: Install dependencies
+  #       run: npm ci
 
-      - name: Build
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-        run: npm run build
+  #     - name: Build
+  #       env:
+  #         VITE_API_URL: ${{ secrets.VITE_API_URL }}
+  #       run: npm run build
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+  #     - name: Configure AWS Credentials
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Deploy to S3
-        run: aws s3 sync dist/ s3://${{ secrets.S3_BUCKET_NAME }} --delete
+  #     - name: Deploy to S3
+  #       run: aws s3 sync dist/ s3://${{ secrets.S3_BUCKET_NAME }} --delete
 
-      - name: Invalidate CloudFront
-        if: env.CLOUDFRONT_DISTRIBUTION_ID != ''
-        run: aws cloudfront create-invalidation --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+  #     - name: Invalidate CloudFront
+  #       if: env.CLOUDFRONT_DISTRIBUTION_ID != ''
+  #       run: aws cloudfront create-invalidation --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
