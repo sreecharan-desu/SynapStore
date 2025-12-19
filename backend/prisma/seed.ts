@@ -5,6 +5,9 @@ import {
   PaymentStatus,
 } from "@prisma/client";
 
+/* =========================================================
+   HELPERS
+========================================================= */
 const rand = (min: number, max: number) =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -20,57 +23,64 @@ const PAYMENT_METHODS: PaymentMethod[] = [
   PaymentMethod.UPI,
 ];
 
-
+/* =========================================================
+   MAIN SEED FUNCTION
+========================================================= */
 async function seedSalesForForecasting() {
-  console.log("📈 Seeding forecast-ready sales (20 unique days)");
+  console.log("📈 Seeding forecast-ready price + demand data");
 
   const store = await prisma.store.findFirst({
-    where: { isActive: true , id : 'daca5fe7-a868-4e81-899c-98918d5910ae'},
+    where: {
+      isActive: true,
+      id: "daca5fe7-a868-4e81-899c-98918d5910ae", // 👈 your store
+    },
   });
   if (!store) throw new Error("No store found");
 
   const owner = await prisma.user.findFirst({
     where: { stores: { some: { storeId: store.id } } },
   });
-
   if (!owner) throw new Error("No store owner found");
 
   const medicines = await prisma.medicine.findMany({
     where: { storeId: store.id, isActive: true },
-    include: {
-      inventory: {
-        where: { qtyAvailable: { gt: 0 } },
-        orderBy: { expiryDate: "asc" },
-      },
-    },
   });
 
   if (!medicines.length) {
-    throw new Error("No medicines found for sales seeding");
+    throw new Error("No medicines found");
   }
 
-  const START = addDays(new Date(), -30); // past 30 days
-  const UNIQUE_DAYS = 50;
+  /* =========================================================
+     DATE CONFIG
+  ========================================================= */
+  const START = addDays(new Date(), -40); // 40 days back
+  const PRICE_POINTS = 15;               // >=10 required for Prophet
+  const SALES_DAYS = 20;                 // unique sales days
 
   for (const med of medicines) {
-    console.log(`💊 Seeding sales for ${med.brandName}`);
+    console.log(`💊 Processing ${med.brandName}`);
 
-    /* --------------------------------------------------
-       Ensure inventory exists
-    -------------------------------------------------- */
-    if (!med.inventory.length) {
+    /* =====================================================
+       1️⃣ PRICE HISTORY (INVENTORY REPLENISHMENT)
+       👉 THIS FIXES "NOT ENOUGH PRICE DATA"
+    ===================================================== */
+    let priceDate = START;
+
+    for (let p = 0; p < PRICE_POINTS; p++) {
+      const mrp = rand(18, 40) + rand(-2, 3); // realistic fluctuation
+
       const batch = await prisma.inventoryBatch.create({
         data: {
           storeId: store.id,
           medicineId: med.id,
-          batchNumber: `AUTO-${rand(1000, 9999)}`,
-          qtyReceived: 500,
-          qtyAvailable: 500,
-          mrp: rand(15, 40),
-          purchasePrice: rand(10, 25),
-          expiryDate: addDays(new Date(), 365),
-          receivedAt: START,
-          createdAt: START,
+          batchNumber: `PRICE-${p}-${rand(100, 999)}`,
+          qtyReceived: 200,
+          qtyAvailable: 200,
+          mrp,
+          purchasePrice: mrp * 0.7,
+          expiryDate: addDays(priceDate, 365),
+          receivedAt: priceDate,
+          createdAt: priceDate,
         },
       });
 
@@ -79,21 +89,21 @@ async function seedSalesForForecasting() {
           storeId: store.id,
           inventoryId: batch.id,
           medicineId: med.id,
-          delta: 500,
+          delta: 200,
           reason: StockMovementReason.RECEIPT,
           performedById: owner.id,
-          createdAt: START,
+          createdAt: priceDate,
         },
       });
 
-      med.inventory.push(batch);
+      priceDate = addDays(priceDate, 2); // every 2 days
     }
 
-    /* --------------------------------------------------
-       Create 20 UNIQUE DAY SALES
-    -------------------------------------------------- */
-    for (let i = 0; i < UNIQUE_DAYS; i++) {
-      const saleDate = addDays(START, i + rand(0, 2)); // slight randomness
+    /* =====================================================
+       2️⃣ SALES (DEMAND SIGNAL — WHAT PROPHET USES)
+    ===================================================== */
+    for (let i = 0; i < SALES_DAYS; i++) {
+      const saleDate = addDays(START, i + rand(0, 2));
       const qty = rand(3, 10);
 
       const batch = await prisma.inventoryBatch.findFirst({
@@ -132,13 +142,12 @@ async function seedSalesForForecasting() {
         include: { items: true },
       });
 
-      // Reduce stock
       await prisma.inventoryBatch.update({
         where: { id: batch.id },
         data: { qtyAvailable: { decrement: qty } },
       });
 
-      // Stock movement (THIS IS WHAT FORECAST USES)
+      // 🔥 THIS IS WHAT YOUR FORECAST READS
       await prisma.stockMovement.create({
         data: {
           storeId: store.id,
@@ -152,16 +161,19 @@ async function seedSalesForForecasting() {
         },
       });
     }
+
+    console.log(`   ✔ Price points: ${PRICE_POINTS}`);
+    console.log(`   ✔ Sales days: ${SALES_DAYS}`);
   }
 
-  console.log("✅ Sales seeding complete (forecast-safe)");
+  console.log("✅ Forecast-ready seed completed");
 }
 
+/* =========================================================
+   RUN
+========================================================= */
 async function main() {
   try {
-    
-    // await prisma.medicine.deleteMany();
-    // console.log("Deleted medicines");
     await seedSalesForForecasting();
   } catch (error) {
     console.error("❌ Seeding failed:", error);
