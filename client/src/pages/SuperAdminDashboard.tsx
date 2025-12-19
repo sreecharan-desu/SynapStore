@@ -299,9 +299,18 @@ const SuperAdminDashboard: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        fetchData();
+        const needsFetch = 
+            (activeTab === 'analytics' && !analytics) ||
+            (activeTab === 'stores' && stores.length === 0) ||
+            (activeTab === 'suppliers' && suppliers.length === 0) ||
+            (activeTab === 'users' && users.length === 0) ||
+            (activeTab === 'network' && !graphData);
+
+        if (needsFetch) {
+            fetchData();
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab]);
+    }, [activeTab, analytics, stores.length, suppliers.length, users.length, graphData]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -571,6 +580,19 @@ const SuperAdminDashboard: React.FC = () => {
                                     {format(new Date(), 'EEE d MMM')}
                                 </span>
                             </div>
+
+                            <motion.div
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                            >
+                                <i
+                                    onClick={fetchData}
+                                    className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-slate-500 border border-slate-200 shadow-sm hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all cursor-pointer"
+                                    title="Refresh System Data"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                                </i>
+                            </motion.div>
 
                             <motion.div
                                 initial={{ opacity: 0, x: 20 }}

@@ -693,6 +693,21 @@ router.post(
             payload: { requestId, isReturn }
           }
         });
+
+            if (isReturn) {
+                await tx.activityLog.create({
+                    data: {
+                        storeId: request.storeId,
+                        userId: user.id,
+                        action: "product_return_accepted",
+                        payload: { 
+                            requestId, 
+                            supplierName: supplier.name,
+                            itemsCount: payload.items?.length || 0
+                        }
+                    }
+                });
+            }
       }, { timeout: 45000 });
 
       // Notify Store Owner

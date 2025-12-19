@@ -124,161 +124,161 @@ async function main() {
   console.log("🌱 Starting Forecast-Ready Seed...");
   await cleanDB();
 
-  const stores = await prisma.store.findMany({ include: { users: true } });
-  if (!stores.length) throw new Error("No stores found");
-  console.log(`🔍 Found ${stores.length} stores to seed\n`);
+  // const stores = await prisma.store.findMany({ include: { users: true } });
+  // if (!stores.length) throw new Error("No stores found");
+  // console.log(`🔍 Found ${stores.length} stores to seed\n`);
 
-  for (const store of stores) {
-    const owner = store.users[0];
-    if (!owner) continue;
+  // for (const store of stores) {
+  //   const owner = store.users[0];
+  //   if (!owner) continue;
 
-    console.log(`🏪 Store: ${store.name}`);
+  //   console.log(`🏪 Store: ${store.name}`);
 
-    /* -----------------------------------------
-       Create medicines
-    ------------------------------------------ */
-    const medicineMap = new Map<string, string>();
+  //   /* -----------------------------------------
+  //      Create medicines
+  //   ------------------------------------------ */
+  //   const medicineMap = new Map<string, string>();
 
-    for (const med of KEY_MEDICINES) {
-      process.stdout.write(`  Creating ${med.brand}... `);
-      const m = await prisma.medicine.create({
-        data: {
-          storeId: store.id,
-          brandName: med.brand,
-          genericName: med.generic,
-          category: med.category,
-          strength: "500mg",
-          dosageForm: "Tablet",
-          uom: "Strip",
-          sku: `SKU-${rand(10000, 99999)}`,
-          isActive: true,
-        },
-      });
-      medicineMap.set(med.brand, m.id);
-      process.stdout.write("Done\n");
-    }
-    console.log(`💊 All medicines created`);
+  //   for (const med of KEY_MEDICINES) {
+  //     process.stdout.write(`  Creating ${med.brand}... `);
+  //     const m = await prisma.medicine.create({
+  //       data: {
+  //         storeId: store.id,
+  //         brandName: med.brand,
+  //         genericName: med.generic,
+  //         category: med.category,
+  //         strength: "500mg",
+  //         dosageForm: "Tablet",
+  //         uom: "Strip",
+  //         sku: `SKU-${rand(10000, 99999)}`,
+  //         isActive: true,
+  //       },
+  //     });
+  //     medicineMap.set(med.brand, m.id);
+  //     process.stdout.write("Done\n");
+  //   }
+  //   console.log(`💊 All medicines created`);
 
-    /* -----------------------------------------
-       Time simulation
-    ------------------------------------------ */
-    let currentDate = new Date(START_DATE);
-    const today = new Date();
+  //   /* -----------------------------------------
+  //      Time simulation
+  //   ------------------------------------------ */
+  //   let currentDate = new Date(START_DATE);
+  //   const today = new Date();
 
-    let dayIndex = 0;
-    let totalSales = 0;
-    let totalBatches = 0;
-    process.stdout.write(`⏳ Simulating ${SIMULATION_DAYS} days: `);
+  //   let dayIndex = 0;
+  //   let totalSales = 0;
+  //   let totalBatches = 0;
+  //   process.stdout.write(`⏳ Simulating ${SIMULATION_DAYS} days: `);
 
-    while (currentDate <= today) {
-      const progress = Math.round((dayIndex / SIMULATION_DAYS) * 100);
-      if (dayIndex % 10 === 0 && dayIndex !== 0) {
-        process.stdout.write(`${progress}%... `);
-      }
-      for (const med of KEY_MEDICINES) {
-        const medicineId = medicineMap.get(med.brand)!;
+  //   while (currentDate <= today) {
+  //     const progress = Math.round((dayIndex / SIMULATION_DAYS) * 100);
+  //     if (dayIndex % 10 === 0 && dayIndex !== 0) {
+  //       process.stdout.write(`${progress}%... `);
+  //     }
+  //     for (const med of KEY_MEDICINES) {
+  //       const medicineId = medicineMap.get(med.brand)!;
 
-        // 1️⃣ Create batch every ~10 days with new price
-        if (dayIndex % 10 === 0) {
-          const baseMRP = rand(18, 30);
-          const mrp = calculateMRP(baseMRP, dayIndex, med.forecast.priceTrend);
+  //       // 1️⃣ Create batch every ~10 days with new price
+  //       if (dayIndex % 10 === 0) {
+  //         const baseMRP = rand(18, 30);
+  //         const mrp = calculateMRP(baseMRP, dayIndex, med.forecast.priceTrend);
 
-          const batch = await prisma.inventoryBatch.create({
-            data: {
-              storeId: store.id,
-              medicineId,
-              batchNumber: `B-${dayIndex}-${rand(100, 999)}`,
-              qtyReceived: 300,
-              qtyAvailable: 300,
-              mrp,
-              purchasePrice: mrp * 0.7,
-              expiryDate: addDays(currentDate, 365),
-              receivedAt: currentDate,
-              createdAt: currentDate,
-            },
-          });
+  //         const batch = await prisma.inventoryBatch.create({
+  //           data: {
+  //             storeId: store.id,
+  //             medicineId,
+  //             batchNumber: `B-${dayIndex}-${rand(100, 999)}`,
+  //             qtyReceived: 300,
+  //             qtyAvailable: 300,
+  //             mrp,
+  //             purchasePrice: mrp * 0.7,
+  //             expiryDate: addDays(currentDate, 365),
+  //             receivedAt: currentDate,
+  //             createdAt: currentDate,
+  //           },
+  //         });
 
-          totalBatches++;
+  //         totalBatches++;
 
-          await prisma.stockMovement.create({
-            data: {
-              storeId: store.id,
-              inventoryId: batch.id,
-              medicineId,
-              delta: 300,
-              reason: StockMovementReason.RECEIPT,
-              createdAt: currentDate,
-            },
-          });
-        }
+  //         await prisma.stockMovement.create({
+  //           data: {
+  //             storeId: store.id,
+  //             inventoryId: batch.id,
+  //             medicineId,
+  //             delta: 300,
+  //             reason: StockMovementReason.RECEIPT,
+  //             createdAt: currentDate,
+  //           },
+  //         });
+  //       }
 
-        // 2️⃣ Daily sales
-        const dailyQty = calculateDailyDemand(
-          med.forecast.baseDemand,
-          currentDate,
-          med.forecast
-        );
+  //       // 2️⃣ Daily sales
+  //       const dailyQty = calculateDailyDemand(
+  //         med.forecast.baseDemand,
+  //         currentDate,
+  //         med.forecast
+  //       );
 
-        if (dailyQty > 0) {
-          const batch = await prisma.inventoryBatch.findFirst({
-            where: { medicineId, qtyAvailable: { gt: dailyQty } },
-            orderBy: { expiryDate: "asc" },
-          });
+  //       if (dailyQty > 0) {
+  //         const batch = await prisma.inventoryBatch.findFirst({
+  //           where: { medicineId, qtyAvailable: { gt: dailyQty } },
+  //           orderBy: { expiryDate: "asc" },
+  //         });
 
-          if (!batch) continue;
+  //         if (!batch) continue;
 
-          const total = dailyQty * Number(batch.mrp);
+  //         const total = dailyQty * Number(batch.mrp);
 
-          const sale = await prisma.sale.create({
-            data: {
-              storeId: store.id,
-              totalValue: total,
-              paymentMethod: PAYMENT_METHODS[rand(0, PAYMENT_METHODS.length - 1)],
-              paymentStatus: PaymentStatus.PAID,
-              createdAt: currentDate,
-              items: {
-                create: {
-                  medicineId,
-                  qty: dailyQty,
-                  unitPrice: batch.mrp,
-                  lineTotal: total,
-                  inventoryBatchId: batch.id,
-                },
-              },
-            },
-            include: { items: true },
-          });
+  //         const sale = await prisma.sale.create({
+  //           data: {
+  //             storeId: store.id,
+  //             totalValue: total,
+  //             paymentMethod: PAYMENT_METHODS[rand(0, PAYMENT_METHODS.length - 1)],
+  //             paymentStatus: PaymentStatus.PAID,
+  //             createdAt: currentDate,
+  //             items: {
+  //               create: {
+  //                 medicineId,
+  //                 qty: dailyQty,
+  //                 unitPrice: batch.mrp,
+  //                 lineTotal: total,
+  //                 inventoryBatchId: batch.id,
+  //               },
+  //             },
+  //           },
+  //           include: { items: true },
+  //         });
 
-          totalSales++;
+  //         totalSales++;
 
-          await prisma.inventoryBatch.update({
-            where: { id: batch.id },
-            data: { qtyAvailable: { decrement: dailyQty } },
-          });
+  //         await prisma.inventoryBatch.update({
+  //           where: { id: batch.id },
+  //           data: { qtyAvailable: { decrement: dailyQty } },
+  //         });
 
-          await prisma.stockMovement.create({
-            data: {
-              storeId: store.id,
-              inventoryId: batch.id,
-              medicineId,
-              delta: -dailyQty,
-              reason: StockMovementReason.SALE,
-              saleItemId: sale.items[0].id,
-              createdAt: currentDate,
-            },
-          });
-        }
-      }
+  //         await prisma.stockMovement.create({
+  //           data: {
+  //             storeId: store.id,
+  //             inventoryId: batch.id,
+  //             medicineId,
+  //             delta: -dailyQty,
+  //             reason: StockMovementReason.SALE,
+  //             saleItemId: sale.items[0].id,
+  //             createdAt: currentDate,
+  //           },
+  //         });
+  //       }
+  //     }
 
-      currentDate = addDays(currentDate, 1);
-      dayIndex++;
-    }
-    process.stdout.write("100%! Done.\n");
-    console.log(`📊 Stats for ${store.name}:`);
-    console.log(`   - Batches created: ${totalBatches}`);
-    console.log(`   - Sales generated: ${totalSales}`);
-    console.log(`✨ Store simulation complete\n`);
-  }
+  //     currentDate = addDays(currentDate, 1);
+  //     dayIndex++;
+  //   }
+  //   process.stdout.write("100%! Done.\n");
+  //   console.log(`📊 Stats for ${store.name}:`);
+  //   console.log(`   - Batches created: ${totalBatches}`);
+  //   console.log(`   - Sales generated: ${totalSales}`);
+  //   console.log(`✨ Store simulation complete\n`);
+  // }
 
   console.log("✅ Forecast-ready seed completed");
 }

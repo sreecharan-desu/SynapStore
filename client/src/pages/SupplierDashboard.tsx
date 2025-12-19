@@ -228,7 +228,7 @@ const SupplierDashboard: React.FC = () => {
         }
     };
 
-    // UseEffect: Initial Load + Refresh on Tab Change only if needed
+    // UseEffect: Initial Load only if needed
     useEffect(() => {
         if (!currentSupplier) return;
 
@@ -236,19 +236,10 @@ const SupplierDashboard: React.FC = () => {
         if (!dataLoaded) {
             refreshData();
         }
+    }, [currentSupplier, dataLoaded]);
 
-        // If switching to marketplace and we don't have stores, fetch them specifically?
-        // refreshData covers it.
-
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentSupplier, dataLoaded]); // Remove activeTab dependency to prevent refetch on tab switch
-
-    // Special case: If user switches to Marketplace and stores are empty, we might want to trigger a fetch even if dataLoaded is true
-    useEffect(() => {
-        if (activeTab === 'marketplace' && stores.length === 0 && dataLoaded) {
-            refreshData();
-        }
-    }, [activeTab]);
+    // Note: Removed tab-specific refetch to ensure caching as requested.
+    // Users must click the Refresh button for new data.
 
     // ... (rest of code) ...
 

@@ -1,4 +1,4 @@
-import { LogOut, Loader2, Building2, Truck, Rocket, ArrowRight } from "lucide-react";
+import { LogOut, Loader2, Building2, Truck, Rocket, ArrowRight, Check, AlertCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRecoilState } from "recoil";
@@ -39,6 +39,7 @@ const StoreCreate = () => {
   const [avatar] = useState("fruit-strawberry");
   const [selectedRole, setSelectedRole] =
     useState<"STORE_OWNER" | "SUPPLIER" | null>(null);
+  const [slugStatus, setSlugStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
 
   useEffect(() => {
     // Check if role updated while on this screen
@@ -97,6 +98,27 @@ const StoreCreate = () => {
       setSlug(slugify(value));
     }
   };
+
+  useEffect(() => {
+    if (!slug || slug.length < 2) {
+      setSlugStatus('idle');
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSlugStatus('checking');
+      try {
+        const res = await dashboardApi.checkSlugAvailability(slugify(slug));
+        if (res.data.success) {
+          setSlugStatus(res.data.data.available ? 'available' : 'taken');
+        }
+      } catch (err) {
+        setSlugStatus('idle');
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [slug]);
 
   const handleLogout = () => {
     setAuth({
@@ -412,14 +434,31 @@ const StoreCreate = () => {
                         </label>
                         <span className="text-[10px] text-slate-400 py-0.5 bg-slate-100 px-1.5 rounded border border-slate-200 font-medium">URL Safe</span>
                       </div>
-                      <input
-                        type="text"
-                        value={slug}
-                        onChange={(e) => setSlug(e.target.value)}
-                        className="w-full px-5 py-3.5 bg-slate-50/50 border border-slate-200 rounded-xl text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-mono text-sm shadow-inner"
-                        placeholder="e.g. sunrise-pharmacy"
-                        disabled={loading}
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={slug}
+                          onChange={(e) => setSlug(e.target.value)}
+                          className={`w-full px-5 py-3.5 bg-slate-50/50 border rounded-xl text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all font-mono text-sm shadow-inner pr-12 ${
+                            slugStatus === 'available' ? 'border-emerald-200 focus:ring-emerald-500/10 focus:border-emerald-500' :
+                            slugStatus === 'taken' ? 'border-red-200 focus:ring-red-500/10 focus:border-red-500' :
+                            'border-slate-200 focus:ring-indigo-500/10 focus:border-indigo-500'
+                          }`}
+                          placeholder="e.g. sunrise-pharmacy"
+                          disabled={loading}
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center">
+                          {slugStatus === 'checking' && <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />}
+                          {slugStatus === 'available' && <Check className="w-4 h-4 text-emerald-500" />}
+                          {slugStatus === 'taken' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                        </div>
+                      </div>
+                      {slugStatus === 'taken' && (
+                        <p className="text-[10px] text-red-500 font-bold mt-1.5 ml-1">This slug is already taken. Try another one.</p>
+                      )}
+                      {slugStatus === 'available' && (
+                        <p className="text-[10px] text-emerald-600 font-bold mt-1.5 ml-1">Perfect! This slug is available.</p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-5">
@@ -452,8 +491,8 @@ const StoreCreate = () => {
                   <div className="pt-4">
                     <button
                       type="submit"
-                      disabled={loading}
-                      className="w-full !bg-black !text-white py-4 rounded-xl font-bold text-sm shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-0.5 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3 group relative overflow-hidden"
+                      disabled={loading || slugStatus === 'checking' || slugStatus === 'taken' || !name.trim() || !slug.trim()}
+                      className="w-full !bg-black !text-white py-4 rounded-xl font-bold text-sm shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-0.5 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3 group relative overflow-hidden"
                     >
                       <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                       {loading ? (

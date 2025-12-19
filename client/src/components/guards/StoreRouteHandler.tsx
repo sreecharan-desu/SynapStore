@@ -2,7 +2,6 @@
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/AuthContext";
 import StoreOwnerDashboard from "../../pages/StoreOwnerDashboard";
-import PublicStorePage from "../../pages/PublicStorePage";
 
 const StoreRouteHandler = () => {
     const { slug } = useParams();
@@ -23,8 +22,7 @@ const StoreRouteHandler = () => {
         return <StoreOwnerDashboard />;
     }
 
-    // Otherwise, show public read-only view
-    return <PublicStorePage />;
+
 };
 
 export default StoreRouteHandler;

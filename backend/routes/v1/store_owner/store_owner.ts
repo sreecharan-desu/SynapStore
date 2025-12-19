@@ -40,6 +40,28 @@ const dashboardRouter = Router();
  *  - requireStore enforces a store exists
  */
 dashboardRouter.use(authenticate);
+
+/**
+ * GET /v1/dashboard/check-slug/:slug
+ * Description: Checks if a store slug is available.
+ * This is used during store creation onboarding.
+ */
+dashboardRouter.get(
+  "/check-slug/:slug",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const store = await prisma.store.findUnique({
+        where: { slug: slug.toLowerCase() },
+        select: { id: true }
+      });
+      return sendSuccess(res, "Slug availability check", { available: !store });
+    } catch (err) {
+      return sendInternalError(res, err, "Failed to check slug availability");
+    }
+  }
+);
+
 dashboardRouter.use(storeContext);
 dashboardRouter.use(requireStore);
 
@@ -1579,7 +1601,7 @@ dashboardRouter.post(
 
 /**
  * GET /v1/dashboard/reorder-suggestions
- * Desc: Get automated reorder suggestions based on low stock (< 50)
+ * Desc: Get automated reorder suggestions based on low stock (< 15)
  */
 dashboardRouter.get(
   "/reorder-suggestions",
@@ -1598,7 +1620,7 @@ dashboardRouter.get(
             _sum: { qtyAvailable: true }
         });
 
-        const lowStockThreshold = 300;
+        const lowStockThreshold = 15;
         const lowStockIds = inventory
         // Fetch ALL Active Medicines
         const allMedicines = await prisma.medicine.findMany({
@@ -1859,25 +1881,25 @@ dashboardRouter.get(
 /**
  * GET /v1/dashboard/medicines/search
  * Search medicines by brandName, genericName, or SKU.
+ * Includes substitute suggestions for out-of-stock items.
  */
 dashboardRouter.get(
   "/medicines/search",
   async (req: AuthRequest, res: Response) => {
     try {
       const q = (req.query.q as string || "").toLowerCase();
+      const storeId = req.store?.id;
 
-      // Fetch all active medicines for this store
-      // Note: For large inventories, this in-memory filtering is not scalable. 
-      // Ideally, use a search service or deterministic encryption for searchable fields.
+      if (!storeId) {
+        return sendError(res, "Store ID missing", 400);
+      }
+
+      // 1. Fetch ALL active medicines for this store (including OOS)
+      // We pull everything to perform in-memory decryption and cross-referencing for substitutes.
       const allMedicines = await prisma.medicine.findMany({
         where: {
-          storeId: req.store?.id,
+          storeId: storeId,
           isActive: true,
-          inventory: {
-            some: {
-              qtyAvailable: { gt: 0 }
-            }
-          }
         },
         include: {
           inventory: {
@@ -1890,14 +1912,13 @@ dashboardRouter.get(
 
       const dek = dekFromEnv();
 
-      // Decrypt and Filter in-memory
-      const matchedMedicines = allMedicines.map(med => {
+      // 2. Decrypt and enrich ALL medicines with stock total and human-readable names
+      const enrichedMeds = allMedicines.map(med => {
         let brandName = med.brandName;
         let genericName = med.genericName;
         let strength = med.strength;
 
         try {
-          // Attempt decryption
           const decryptedBrand = decryptCell(med.brandName, dek);
           if (decryptedBrand) brandName = decryptedBrand;
 
@@ -1906,39 +1927,43 @@ dashboardRouter.get(
 
           const decryptedStrength = decryptCell(med.strength, dek);
           if (decryptedStrength) strength = decryptedStrength;
-
         } catch (e) { }
 
-        // Decrypt matches within inventory and combine same batches
+        // Consolidate inventory
         const decryptedInventoryMap = new Map();
+        let totalStock = 0;
 
         med.inventory.forEach(inv => {
-             let bn = inv.batchNumber;
-             try {
-                if (bn) {
-                    const d = decryptCell(bn, dek);
-                    if (d) bn = d;
-                }
-             } catch (e) {}
-             
-             // Normalize 'null' or undefined batch number to a string if needed, or keep as is.
-             // Usually batchNumber is a string. If null, we might group all nulls or keep separate.
-             // Assumption: Group by batchNumber string.
-             const key = bn || 'UnknownBatch';
-             
-             if (decryptedInventoryMap.has(key)) {
-                 const existing = decryptedInventoryMap.get(key);
-                 existing.qtyAvailable += inv.qtyAvailable;
-                 // Optionally keep newest/oldest expiry? Keeping first one found (usually oldest due to default sort order if any)
-             } else {
-                 decryptedInventoryMap.set(key, { ...inv, batchNumber: bn });
-             }
+          totalStock += inv.qtyAvailable;
+          let bn = inv.batchNumber;
+          try {
+            if (bn) {
+              const d = decryptCell(bn, dek);
+              if (d) bn = d;
+            }
+          } catch (e) { }
+
+          const key = bn || 'UnknownBatch';
+          if (decryptedInventoryMap.has(key)) {
+            const existing = decryptedInventoryMap.get(key);
+            existing.qtyAvailable += inv.qtyAvailable;
+          } else {
+            decryptedInventoryMap.set(key, { ...inv, batchNumber: bn });
+          }
         });
 
-        const consolidatedInventory = Array.from(decryptedInventoryMap.values());
+        return { 
+          ...med, 
+          brandName, 
+          genericName, 
+          strength, 
+          totalStock,
+          inventory: Array.from(decryptedInventoryMap.values()) 
+        };
+      });
 
-        return { ...med, brandName, genericName, strength, inventory: consolidatedInventory };
-      }).filter(med => {
+      // 3. Filter matched medicines based on query
+      const matchedMedicines = enrichedMeds.filter(med => {
         if (!q) return true;
         return (
           (med.brandName && med.brandName.toLowerCase().includes(q)) ||
@@ -1947,7 +1972,27 @@ dashboardRouter.get(
         );
       });
 
-      return sendSuccess(res, "Medicines found", { medicines: matchedMedicines });
+      // 4. For out-of-stock items, find substitutes (Same Generic, Stock > 0)
+      const finalResult = matchedMedicines.map(med => {
+        if (med.totalStock > 0) return { ...med, substitutes: [] };
+
+        // Find subs from the full list
+        const substitutes = enrichedMeds.filter(sub => 
+          sub.id !== med.id && 
+          sub.totalStock > 0 &&
+          sub.genericName && 
+          med.genericName &&
+          sub.genericName.toLowerCase() === med.genericName.toLowerCase()
+        ).map(sub => ({
+          ...sub,
+          available_units: sub.totalStock,
+          price: sub.inventory.length > 0 ? sub.inventory[0].mrp : 0
+        }));
+
+        return { ...med, substitutes };
+      });
+
+      return sendSuccess(res, "Medicines found", { medicines: finalResult });
     } catch (error) {
       handlePrismaError(res, error);
     }
