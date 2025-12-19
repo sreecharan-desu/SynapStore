@@ -32,6 +32,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@google-cloud/speech": "^7.2.1",
     "@prisma/adapter-pg": "^7.1.0",
     "@types/pdfkit": "^0.17.4",
     "axios": "^1.13.2",

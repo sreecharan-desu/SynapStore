@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hey Dose - Wake Word Demo</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            text-align: center;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        }
+
+        h1 { margin-bottom: 10px; }
+        p.subtitle { color: #666; margin-bottom: 30px; }
+
+        #enable-btn {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #enable-btn:hover { background-color: #1d4ed8; }
+        #enable-btn:disabled { background-color: #94a3b8; cursor: not-allowed; }
+
+        #status-indicator {
+            margin-top: 30px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f1f5f9;
+            font-weight: 500;
+            display: inline-block;
+            min-width: 200px;
+        }
+
+        .status-listening { color: #059669; border: 1px solid #d1fae5; background: #ecfdf5; }
+        .status-processing { color: #d97706; border: 1px solid #fef3c7; background: #fffbeb; }
+        .status-inactive { color: #64748b; }
+        .status-active { color: #dc2626; border: 1px solid #fee2e2; background: #fef2f2; animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+        }
+
+        #log-container {
+            margin-top: 30px;
+            text-align: left;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 20px;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #f8fafc;
+            border-radius: 4px;
+            font-size: 14px;
+            border-left: 3px solid #cbd5e1;
+        }
+        .log-command { border-left-color: #2563eb; background: #eff6ff; }
+        .log-wake { border-left-color: #059669; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Hey Dose Demo</h1>
+        <p class="subtitle">Click enable, then say "Hey Dose" to activate.</p>
+
+        <button id="enable-btn">Enable Voice</button>
+
+        <div id="status-container">
+            <div id="status-indicator" class="status-inactive">Inactive</div>
+        </div>
+
+        <div id="log-container">
+            <!-- Logs will appear here -->
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
