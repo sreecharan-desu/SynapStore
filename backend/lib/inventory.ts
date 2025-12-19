@@ -87,7 +87,7 @@ export const InventoryService = {
         where: { id: requestId },
         data: { status: "ACCEPTED" } // Added in recent schema update
       });
-      
+
       await tx.activityLog.create({
         data: {
           storeId,
@@ -103,6 +103,6 @@ export const InventoryService = {
       });
 
       return { upload, batches: results };
-    }, { timeout: 20000 });
+    }, { timeout: 45000 });
   }
 };

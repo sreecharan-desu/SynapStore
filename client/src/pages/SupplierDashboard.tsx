@@ -99,27 +99,27 @@ const SupplierDashboard: React.FC = () => {
 
     // Helper to open fulfill modal
     const openFulfillModal = (req: SupplierRequest) => {
-    // Determine request type
-    const isReorder = req.payload?.type === 'REORDER';
-    const isReturn = req.payload?.type === 'RETURN';
+        // Determine request type
+        const isReorder = req.payload?.type === 'REORDER';
+        const isReturn = req.payload?.type === 'RETURN';
 
-    if ((isReorder || isReturn) && req.payload.items) {
-        setRequestToFulfill(req);
-        // Pre-fill items from request
-        setFulfillItems(req.payload.items.map((i: any) => ({
-            medicineId: i.medicineId,
-            medicineName: i.medicineName || "Unknown Item",
-            quantity: i.quantity,
-            batchNumber: i.batchNumber || "", // Use provided batch for Returns if available
-            expiryDate: i.expiryDate || "",
-            purchasePrice: i.purchasePrice || 0,
-            mrp: i.mrp || 0
-        })));
-        setFulfillModalOpen(true);
-    } else {
-        alert("This request does not contain items or is malformed.");
-    }
-};
+        if ((isReorder || isReturn) && req.payload.items) {
+            setRequestToFulfill(req);
+            // Pre-fill items from request
+            setFulfillItems(req.payload.items.map((i: any) => ({
+                medicineId: i.medicineId,
+                medicineName: i.medicineName || "Unknown Item",
+                quantity: i.quantity,
+                batchNumber: i.batchNumber || "", // Use provided batch for Returns if available
+                expiryDate: i.expiryDate || "",
+                purchasePrice: i.purchasePrice || 0,
+                mrp: i.mrp || 0
+            })));
+            setFulfillModalOpen(true);
+        } else {
+            alert("This request does not contain items or is malformed.");
+        }
+    };
 
     const [historyDetailRequest, setHistoryDetailRequest] = useState<SupplierRequest | null>(null);
     const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string; subtext?: string } | null>(null);
@@ -139,45 +139,45 @@ const SupplierDashboard: React.FC = () => {
     const [rejectionReason, setRejectionReason] = useState("");
 
     const handleSubmitFulfillment = async () => {
-    if (!requestToFulfill) return;
-    try {
-        const isReturn = requestToFulfill.payload?.type === 'RETURN';
+        if (!requestToFulfill) return;
+        try {
+            const isReturn = requestToFulfill.payload?.type === 'RETURN';
 
-        // Validate only if REORDER
-        if (!isReturn && fulfillItems.some(i => !i.batchNumber || !i.expiryDate)) {
-            alert("Please provide Batch Number and Expiry Date for all items.");
-            return;
-        }
+            // Validate only if REORDER
+            if (!isReturn && fulfillItems.some(i => !i.batchNumber || !i.expiryDate)) {
+                alert("Please provide Batch Number and Expiry Date for all items.");
+                return;
+            }
 
-        setActionLoading("FULFILL");
-        // For Returns, we can send empty items or just the items as confirmation.
-        // The backend schema allows optional items.
-        const res = await suppliersApi.fulfillRequest(requestToFulfill.id, { items: fulfillItems });
-        
-        if (res.data.success) {
-            setFulfillModalOpen(false);
-            setRequestToFulfill(null);
-            setFulfillItems([]);
+            setActionLoading("FULFILL");
+            // For Returns, we can send empty items or just the items as confirmation.
+            // The backend schema allows optional items.
+            const res = await suppliersApi.fulfillRequest(requestToFulfill.id, { items: fulfillItems });
+
+            if (res.data.success) {
+                setFulfillModalOpen(false);
+                setRequestToFulfill(null);
+                setFulfillItems([]);
+                setActionResult({
+                    type: 'success',
+                    title: isReturn ? 'Return Processed' : 'Order Accepted',
+                    message: isReturn
+                        ? 'The return request has been marked as processed.'
+                        : 'The order has been successfully accepted and inventory is being processed.'
+                });
+                refreshData();
+            }
+        } catch (err: any) {
+            console.error(err);
             setActionResult({
-                type: 'success',
-                title: isReturn ? 'Return Processed' : 'Order Accepted',
-                message: isReturn 
-                    ? 'The return request has been marked as processed.' 
-                    : 'The order has been successfully accepted and inventory is being processed.'
+                type: 'error',
+                title: 'Submission Failed',
+                message: err.message || "Failed to fulfill request."
             });
-            refreshData();
+        } finally {
+            setActionLoading(null);
         }
-    } catch (err: any) {
-        console.error(err);
-        setActionResult({
-            type: 'error',
-            title: 'Submission Failed',
-            message: err.message || "Failed to fulfill request."
-        });
-    } finally {
-        setActionLoading(null);
-    }
-};
+    };
 
     // --- REFACTORED DATA FETCHING ---
     // This replaces fetchData to center data handling and cache response
@@ -290,17 +290,17 @@ const SupplierDashboard: React.FC = () => {
                 // We utilize the detailed status object: { status, progressPercent, processedRows, totalRows, phase }
                 while (status !== "APPLIED" && status !== "FAILED" && attempts < maxAttempts) {
                     await new Promise(r => setTimeout(r, 2000)); // Wait 2s
-                    
+
                     const statusObj = await SupplierService.getUploadStatus(uploadId);
-                    
+
                     // Extract status string
-                    status = statusObj.status; 
-                    
+                    status = statusObj.status;
+
                     // Update UI Feedback
                     if (typeof statusObj.progressPercent === 'number') {
                         setUploadProgress(statusObj.progressPercent);
                     }
-                    
+
                     // Construct a helpful message
                     let msg = `Status: ${status}`;
                     if (statusObj.phase) msg += ` - ${statusObj.phase}`;
@@ -491,15 +491,15 @@ const SupplierDashboard: React.FC = () => {
             const isoExpiry = defaultExpiry.toISOString().split('T')[0];
 
             // Pre-fill items from request with payload data or auto-generated for Reorders
-                                                                            setFulfillItems(req.payload.items.map((i: any) => ({
-                                                                                medicineId: i.medicineId,
-                                                                                medicineName: i.medicineName || "Unknown Item",
-                                                                                quantity: i.quantity,
-                                                                                batchNumber: i.batchNumber || `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`, // Use existing for Returns
-                                                                                expiryDate: i.expiryDate || isoExpiry,
-                                                                                purchasePrice: i.purchasePrice || 0,
-                                                                                mrp: i.mrp || 0
-                                                                            })));
+            setFulfillItems(req.payload.items.map((i: any) => ({
+                medicineId: i.medicineId,
+                medicineName: i.medicineName || "Unknown Item",
+                quantity: i.quantity,
+                batchNumber: i.batchNumber || `BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`, // Use existing for Returns
+                expiryDate: i.expiryDate || isoExpiry,
+                purchasePrice: i.purchasePrice || 0,
+                mrp: i.mrp || 0
+            })));
             setFulfillModalOpen(true);
             return;
         }
@@ -625,7 +625,7 @@ const SupplierDashboard: React.FC = () => {
                                         </span>
                                     </div>
                                     <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-white shadow-md shadow-slate-200/50 overflow-hidden">
-                                    {auth.user?.imageUrl && !imgError ? (
+                                        {auth.user?.imageUrl && !imgError ? (
                                             <img
                                                 key={auth.user.imageUrl}
                                                 src={auth.user.imageUrl}
@@ -996,10 +996,10 @@ const SupplierDashboard: React.FC = () => {
                                                                     const storeName = req.store?.name || "";
                                                                     const msg = req.message || "";
                                                                     const type = req.payload?.type || "";
-                                                                    return storeName.toLowerCase().includes(q) || 
-                                                                           msg.toLowerCase().includes(q) || 
-                                                                           req.id.toLowerCase().includes(q) ||
-                                                                           type.toLowerCase().includes(q);
+                                                                    return storeName.toLowerCase().includes(q) ||
+                                                                        msg.toLowerCase().includes(q) ||
+                                                                        req.id.toLowerCase().includes(q) ||
+                                                                        type.toLowerCase().includes(q);
                                                                 });
 
                                                                 if (filteredRequests.length === 0) {
@@ -1060,14 +1060,14 @@ const SupplierDashboard: React.FC = () => {
                                                                                             {req.payload?.items?.length || 0} items to return
                                                                                         </p>
                                                                                         <div className="flex flex-wrap gap-1">
-                                                                                             {req.payload?.items?.slice(0, 3).map((item: any, i: number) => (
-                                                                                                 <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[120px]">
-                                                                                                     {item.medicineName}
-                                                                                                 </span>
-                                                                                             ))}
-                                                                                             {(req.payload?.items?.length || 0) > 3 && (
-                                                                                                 <span className="text-[10px] text-slate-400 font-medium">+{req.payload.items.length - 3} more</span>
-                                                                                             )}
+                                                                                            {req.payload?.items?.slice(0, 3).map((item: any, i: number) => (
+                                                                                                <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[120px]">
+                                                                                                    {item.medicineName}
+                                                                                                </span>
+                                                                                            ))}
+                                                                                            {(req.payload?.items?.length || 0) > 3 && (
+                                                                                                <span className="text-[10px] text-slate-400 font-medium">+{req.payload.items.length - 3} more</span>
+                                                                                            )}
                                                                                         </div>
                                                                                         {req.payload?.note && <span className="text-xs text-slate-400 italic mt-0.5 mt-1 border-t border-slate-100 pt-1">"{req.payload.note}"</span>}
                                                                                     </div>
@@ -1227,8 +1227,8 @@ const SupplierDashboard: React.FC = () => {
 
                                                                         <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-sm ${isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                                             isAccepted ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                                            isFulfilled ? 'bg-black text-emerald-700 border-emerald-200' :
-                                                                                 'bg-slate-100 text-slate-600 border-slate-200'
+                                                                                isFulfilled ? 'bg-black text-emerald-700 border-emerald-200' :
+                                                                                    'bg-slate-100 text-slate-600 border-slate-200'
                                                                             }`}>
                                                                             {isPending && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
                                                                             {isAccepted && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
@@ -1253,11 +1253,11 @@ const SupplierDashboard: React.FC = () => {
                                                                     <div className="flex items-center justify-between mb-4">
                                                                         <h4 className="font-bold text-slate-800 flex items-center gap-2">
                                                                             {req.payload?.type === 'RETURN' ? (
-                                                                                 <><RefreshCw className="w-5 h-5 text-red-400" /> Return Items</>
+                                                                                <><RefreshCw className="w-5 h-5 text-red-400" /> Return Items</>
                                                                             ) : (
-                                                                                 <><Package className="w-5 h-5 text-slate-400" /> Requested Items</>
+                                                                                <><Package className="w-5 h-5 text-slate-400" /> Requested Items</>
                                                                             )}
-                                                                             <span className="text-slate-400 font-normal">({req.payload?.items?.length || 0})</span>
+                                                                            <span className="text-slate-400 font-normal">({req.payload?.items?.length || 0})</span>
                                                                         </h4>
                                                                     </div>
 
@@ -1299,9 +1299,10 @@ const SupplierDashboard: React.FC = () => {
                                                                                 </Button>
                                                                             </>
                                                                         ) : isAccepted ? (
-                                                                            <Button onClick={() => openFulfillModal(req)} className={`!bg-black hover:!bg-slate-800 !text-white px-8 shadow-lg shadow-black/20 ${req.payload?.type === 'RETURN' ? '!bg-red-600 hover:!bg-red-700 shadow-red-600/20' : ''}`}>
-                                                                                {req.payload?.type === 'RETURN' ? 'Process Return' : 'Fulfill Order'}
-                                                                            </Button>
+                                                                            <></>
+                                                                            // <Button onClick={() => openFulfillModal(req)} className={`!bg-black hover:!bg-slate-800 !text-white px-8 shadow-lg shadow-black/20 ${req.payload?.type === 'RETURN' ? '!bg-red-600 hover:!bg-red-700 shadow-red-600/20' : ''}`}>
+                                                                            //     {req.payload?.type === 'RETURN' ? 'Process Return' : 'Fulfill Order'}
+                                                                            // </Button>
                                                                         ) : (
                                                                             <div className="text-slate-400 italic text-sm">No actions available</div>
                                                                         )}
@@ -1415,8 +1416,8 @@ const SupplierDashboard: React.FC = () => {
                                                                     <div className="flex items-center gap-3">
                                                                         <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-sm ${isPending ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                                             isAccepted ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                                            isFulfilled ? 'bg-black text-emerald-700 border-emerald-200' :
-                                                                                 'bg-slate-100 text-slate-600 border-slate-200'
+                                                                                isFulfilled ? 'bg-black text-emerald-700 border-emerald-200' :
+                                                                                    'bg-slate-100 text-slate-600 border-slate-200'
                                                                             }`}>
                                                                             {isPending && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
                                                                             {isAccepted && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
@@ -1430,11 +1431,11 @@ const SupplierDashboard: React.FC = () => {
                                                                 <div className="px-6 py-4 flex items-center justify-between">
                                                                     <div className="text-sm text-slate-600">
                                                                         {req.payload?.type === 'RETURN' ? (
-                                                                             <span className="font-bold text-slate-900 capitalize flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Return Request</span>
+                                                                            <span className="font-bold text-slate-900 capitalize flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Return Request</span>
                                                                         ) : (
-                                                                             <>Requested <span className="font-bold text-slate-900">{req.payload?.items?.length || 0} items</span></>
+                                                                            <>Requested <span className="font-bold text-slate-900">{req.payload?.items?.length || 0} items</span></>
                                                                         )}
-                                                                        
+
                                                                         {isAccepted ? (
                                                                             <span className="text-emerald-600 font-medium ml-2 inline-flex items-center gap-1"><CheckCircle className="w-3 h-3" /> {req.payload?.type === 'RETURN' ? 'Processed' : 'Fulfilled'}</span>
                                                                         ) : isPending ? (
