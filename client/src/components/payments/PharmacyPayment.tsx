@@ -10,6 +10,7 @@ interface PharmacyPaymentProps {
     name: string;
     phone: string;
     orderId: string;
+    payuData?: any;
     onSuccess?: () => void;
     onFailure?: (error: string) => void;
 }
@@ -20,50 +21,87 @@ const PharmacyPayment: React.FC<PharmacyPaymentProps> = ({
     name,
     phone,
     orderId,
+    payuData
 }) => {
     const [loading, setLoading] = useState(false);
+    const [submissionFields, setSubmissionFields] = useState<Record<string, string> | null>(null);
+    const formRef = React.useRef<HTMLFormElement>(null);
+
+    React.useEffect(() => {
+        if (payuData && !loading && !submissionFields) {
+            handlePayment();
+        }
+    }, [payuData]);
+
+    React.useEffect(() => {
+        if (submissionFields && formRef.current) {
+            console.log("Preparing PayU submission. Synchronizing DOM...");
+            const timer = setTimeout(() => {
+                // Request animation frame ensures the browser has painted the 
+                // new hidden inputs into the DOM before we trigger the submit.
+                requestAnimationFrame(() => {
+                    if (formRef.current) {
+                        console.log("Submitting form now.");
+                        formRef.current.submit();
+                    }
+                });
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [submissionFields]);
 
     const handlePayment = async () => {
         setLoading(true);
         try {
-            // 1. Get the hash and payment params from your backend
-            const response = await paymentApi.initiate({
-                amount,
-                email,
-                name,
-                phone,
-                orderId
-            });
-
-            if (response.data.success) {
-                const payuData = response.data.data;
-
-                // 2. Create a form dynamically and submit it to PayU
-                const form = document.createElement("form");
-                form.method = "POST";
-                form.action = payuData.action_url; // https://secure.payu.in/_payment
-
-                // All fields required by PayU
-                const fields = [
-                    'key', 'txnid', 'amount', 'productinfo', 
-                    'firstname', 'email', 'phone', 'surl', 
-                    'furl', 'hash', 'udf1', 'udf2', 'udf3', 
-                    'udf4', 'udf5'
-                ];
-
-                fields.forEach(field => {
-                    const input = document.createElement("input");
-                    input.type = "hidden";
-                    input.name = field;
-                    input.value = payuData[field];
-                    form.appendChild(input);
+            let currentPayuData = payuData;
+            
+            if (!currentPayuData) {
+                const response = await paymentApi.initiate({
+                    amount,
+                    email,
+                    name,
+                    phone,
+                    orderId
                 });
 
-                document.body.appendChild(form);
-                form.submit();
-                // User is now redirected to PayU...
-            } else {
-                throw new Error("Failed to initiate payment");
+                if (response.data.success) {
+                    currentPayuData = response.data.data;
+                } else {
+                    throw new Error("Failed to initiate payment");
+                }
+            }
+
+            if (currentPayuData) {
+                // Ensure non-empty mandatory fields (Fallbacks handled by backend now)
+                const phoneValue = currentPayuData.phone || "9999999999";
+                const firstnameValue = currentPayuData.firstname;
+
+                // All fields required by PayU
+                const fields: Record<string, string> = {
+                    key: String(currentPayuData.key),
+                    txnid: String(currentPayuData.txnid),
+                    amount: String(currentPayuData.amount),
+                    productinfo: String(currentPayuData.productinfo),
+                    firstname: String(firstnameValue),
+                    email: String(currentPayuData.email),
+                    phone: String(phoneValue),
+                    surl: String(currentPayuData.surl),
+                    furl: String(currentPayuData.furl),
+                    hash: String(currentPayuData.hash),
+                    udf1: String(currentPayuData.udf1 || ""),
+                    udf2: String(currentPayuData.udf2 || ""),
+                    udf3: String(currentPayuData.udf3 || ""),
+                    udf4: String(currentPayuData.udf4 || ""),
+                    udf5: String(currentPayuData.udf5 || ""),
+                    udf6: "",
+                    udf7: "",
+                    udf8: "",
+                    udf9: "",
+                    udf10: "",
+                    action_url: currentPayuData.action_url
+                };
+
+                setSubmissionFields(fields);
             }
 
         } catch (error: any) {
@@ -74,7 +112,24 @@ const PharmacyPayment: React.FC<PharmacyPaymentProps> = ({
     };
 
     return (
-        <Card className="w-full max-w-md mx-auto overflow-hidden border-zinc-800 bg-zinc-950/50 backdrop-blur-xl">
+        <div className="relative">
+            {/* Hidden form for PayU submission */}
+            {submissionFields && submissionFields.action_url && (
+                <form 
+                    ref={formRef} 
+                    action={submissionFields.action_url} 
+                    method="POST" 
+                    encType="application/x-www-form-urlencoded"
+                    style={{ position: 'absolute', top: 0, left: 0, width: '1px', height: '1px', opacity: 0.01, pointerEvents: 'none', overflow: 'hidden' }}
+                >
+                    {Object.entries(submissionFields).map(([name, value]) => {
+                        if (name === 'action_url') return null;
+                        return <input key={name} type="hidden" name={name} value={value} />;
+                    })}
+                </form>
+            )}
+
+            <Card className="w-full max-w-md mx-auto overflow-hidden border-zinc-800 bg-zinc-950/50 backdrop-blur-xl">
             <CardHeader className="space-y-1">
                 <CardTitle className="text-2xl font-bold tracking-tight text-white">Pharmacy Checkout</CardTitle>
                 <CardDescription className="text-zinc-400">
@@ -84,7 +139,7 @@ const PharmacyPayment: React.FC<PharmacyPaymentProps> = ({
             <CardContent className="grid gap-4">
                 <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-900/50 border border-zinc-800">
                     <span className="text-zinc-400">Total Amount</span>
-                    <span className="text-xl font-bold text-white">₹{amount.toFixed(2)}</span>
+                    <span className="text-xl font-bold text-white">₹{Number(amount).toFixed(2)}</span>
                 </div>
                 <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
@@ -114,6 +169,7 @@ const PharmacyPayment: React.FC<PharmacyPaymentProps> = ({
                 </Button>
             </CardFooter>
         </Card>
+        </div>
     );
 };
 

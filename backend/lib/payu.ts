@@ -25,28 +25,23 @@ class PayUService {
         productInfo?: string;
     }) {
         try {
-            // Generate a unique transaction ID
-            const txnid = `PHARM_${orderId}_${uuidv4().substring(0, 8)}`;
-            const formattedAmount = parseFloat(amount.toString()).toFixed(2); // Ensure 2 decimal places
+            // Aligned with Python: HMS_{booking_id}_{uuid.uuid4().hex[:8]}
+            // Using PX_{orderId_short}_{random} to stay under 25 chars
+            const txnid = `PX_${orderId.substring(0, 8)}_${uuidv4().substring(0, 4)}`;
+            const formattedAmount = `${parseFloat(amount.toString()).toFixed(2)}`; 
 
-            // UDFs (User Defined Fields) - Mapping orderId to udf1
-            const udf1 = orderId;
-            const udf2 = "PHARMACY_ORDER";
+            const udf1 = orderId; 
+            const udf2 = "PHARMACY_SALE";
             const udf3 = "";
             const udf4 = "";
             const udf5 = "";
 
-            const cleanProductInfo = productInfo.trim();
+            const cleanProductInfo = "Medicine_Purchase";
 
             // Hash Sequence: key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt
             const hashString = `${this.merchantKey}|${txnid}|${formattedAmount}|${cleanProductInfo}|${name}|${email}|${udf1}|${udf2}|${udf3}|${udf4}|${udf5}||||||${this.salt}`;
             
             const paymentHash = this.generateHash(hashString);
-
-            console.log(`Creating PayU request for Order: ${orderId}, TxnID: ${txnid}`);
-
-            const callbackSuccessUrl = `${process.env.BACKEND_URL}/api/v1/payments/callback/success`;
-            const callbackFailureUrl = `${process.env.BACKEND_URL}/api/v1/payments/callback/failure`;
 
             return {
                 key: this.merchantKey,
@@ -56,8 +51,8 @@ class PayUService {
                 firstname: name,
                 email: email,
                 phone: phone,
-                surl: callbackSuccessUrl,
-                furl: callbackFailureUrl,
+                surl: `${process.env.BACKEND_URL}/api/v1/payments/callback/success`,
+                furl: `${process.env.BACKEND_URL}/api/v1/payments/callback/failure`,
                 hash: paymentHash,
                 udf1: udf1,
                 udf2: udf2,

@@ -81,14 +81,19 @@ router.post('/callback/failure', async (req: Request, res: Response) => {
     console.log(`PayU Failure Callback received for TXN: ${responseData.txnid}`);
 
     try {
-        // Update the Sale record as FAILED
-        await prisma.sale.update({
-            where: { id: responseData.txnid },
-            data: { paymentStatus: 'FAILED' }
-        });
-        console.log(`Sale ${responseData.txnid} marked as FAILED`);
+        // Update the Sale record as FAILED. Note: udf1 contains our internal saleId
+        const saleId = responseData.udf1;
+        if (saleId) {
+            await prisma.sale.update({
+                where: { id: saleId },
+                data: { paymentStatus: 'FAILED' }
+            });
+            console.log(`Sale ${saleId} marked as FAILED`);
+        } else {
+            console.warn(`No udf1 (saleId) found in failure callback for txnid: ${responseData.txnid}`);
+        }
     } catch (dbError) {
-        console.error(`Failed to update sale status for ${responseData.txnid}:`, dbError);
+        console.error(`Failed to update sale status for txnid ${responseData.txnid}:`, dbError);
     }
 
     const frontendFailureUrl = `${process.env.FRONTEND_URL}/payment/failure`;

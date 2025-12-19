@@ -16,6 +16,7 @@ import { z } from "zod";
 import PDFDocument from "pdfkit";
 import { generateReceiptPDF } from "../../../utils/receipt_generator";
 import { decryptCell, dekFromEnv } from "../../../middleware/prisma_crypto_middleware";
+import payuService from "../../../lib/payu";
 
 type RoleEnum = Role;
 
@@ -208,10 +209,10 @@ dashboardRouter.get(
       );
 
       // 2. Parallel Optimized Fetches
+      // 2. Parallel Optimized Fetches - Chunked into two batches to prevent SSL EPROTO issues with excessive parallel connections
       const [
         totalMedicines,
         totalBatches,
-        // recentSalesCount removed (duplicate of salesStats._count)
         recentRevenueAgg,
         inventorySums,
         lowStockBatches,
@@ -221,17 +222,9 @@ dashboardRouter.get(
         activity,
         suppliers,
         webhookFailures,
-        // Aggregations replacing huge fetches
-        salesStats, // avg order value, count
-        salesByDayRaw,
-        salesByHourRaw,
-        paymentMethodsAgg,
-        categoryBreakdownRaw,
-        agingBucketsRaw // Optimization for aging buckets? 
       ] = await Promise.all([
         prisma.medicine.count({ where: { storeId } }),
         prisma.inventoryBatch.count({ where: { storeId } }),
-        // prisma.sale.count removed
         prisma.sale.aggregate({
           where: {
             storeId,
@@ -239,20 +232,19 @@ dashboardRouter.get(
             paymentStatus: "PAID",
           },
           _sum: { totalValue: true },
+          _avg: { totalValue: true },
+          _count: true
         }),
-        // Inventory Totals
         prisma.inventoryBatch.aggregate({
           where: { storeId },
           _sum: { qtyAvailable: true, qtyReserved: true, qtyReceived: true },
         }),
-        // Low Stock (enriched)
         prisma.inventoryBatch.findMany({
           where: { storeId, qtyAvailable: { lte: lowStockThreshold }},
           orderBy: { qtyAvailable: "asc" },
           take: 200,
           include: { medicine: true }
         }),
-        // Expiries (enriched)
         prisma.inventoryBatch.findMany({
           where: {
             storeId,
@@ -263,7 +255,6 @@ dashboardRouter.get(
           take: 500,
           include: { medicine: true }
         }),
-        // Top Movers (qty)
         prisma.saleItem.groupBy({
           by: ["medicineId"],
           where: {
@@ -277,18 +268,16 @@ dashboardRouter.get(
           orderBy: [{ _sum: { qty: "desc" } }],
           take: topLimit,
         }),
-        // Recent Sales (enriched)
         prisma.sale.findMany({
           where: { storeId },
           orderBy: { createdAt: "desc" },
           take: recentSalesLimit,
           include: {
             items: {
-              include: { medicine: true } // Include medicine details directly
+              include: { medicine: true }
             },
           },
         }),
-        // Activity
         prisma.activityLog.findMany({
           where: { storeId },
           orderBy: { createdAt: "desc" },
@@ -301,7 +290,6 @@ dashboardRouter.get(
             createdAt: true,
           },
         }),
-        // Suppliers (Owned OR Connected)
         prisma.supplier.findMany({
           where: {
             OR: [
@@ -321,16 +309,16 @@ dashboardRouter.get(
           },
         }),
         Promise.resolve(0), // Webhooks placeholder
+      ]);
 
-        // --- NEW AGGREGATIONS ---
-
-        // AVG Order Value & Total Items (approx) & Count (replacing standalone count)
-        prisma.sale.aggregate({
-          where: { storeId, createdAt: { gte: salesWindowStart } },
-          _avg: { totalValue: true },
-          _count: true
-        }),
-
+      const [
+        salesByDayRaw,
+        salesByHourRaw,
+        paymentMethodsAgg,
+        categoryBreakdownRaw,
+        stockMovementAgg,
+        agingBucketsRaw 
+      ] = await Promise.all([
         // Sales by Day
         prisma.$queryRaw`
             SELECT TO_CHAR("createdAt", 'YYYY-MM-DD') as date, 
@@ -341,7 +329,6 @@ dashboardRouter.get(
             GROUP BY TO_CHAR("createdAt", 'YYYY-MM-DD')
             ORDER BY date ASC
         `,
-
         // Sales by Hour
         prisma.$queryRaw`
             SELECT EXTRACT(HOUR FROM "createdAt")::int as hour, 
@@ -352,15 +339,13 @@ dashboardRouter.get(
             GROUP BY EXTRACT(HOUR FROM "createdAt")
             ORDER BY hour ASC
         `,
-
-        // Payment Methods
+        // Payment Methods GroupBy
         prisma.sale.groupBy({
-          by: ['paymentMethod'],
-          where: { storeId, createdAt: { gte: salesWindowStart } },
+          by: ["paymentMethod"],
+          where: { storeId, createdAt: { gte: salesWindowStart }, paymentStatus: "PAID" },
           _count: true,
-          _sum: { totalValue: true }
+          _sum: { totalValue: true },
         }),
-
         // Category Breakdown
         prisma.$queryRaw`
             SELECT m.category, 
@@ -375,17 +360,13 @@ dashboardRouter.get(
             GROUP BY m.category
             ORDER BY revenue DESC
         `,
-
-        // Stock Movements (for turnover)
+        // Stock Movements
         prisma.stockMovement.groupBy({
           by: ["reason"],
           where: { storeId },
           _sum: { delta: true },
         }),
-
-        // Inventory Aging (Optimized to fetching just dates, not full objects if possible, or just standard fetch)
-        // Check if we can do this with raw query? 
-        // "receivedAt" buckets: <30, 30-90, 90-180, 180-365, >365
+        // Inventory Aging
         prisma.$queryRaw`
             SELECT 
                 CASE 
@@ -401,6 +382,10 @@ dashboardRouter.get(
             GROUP BY bucket
         `
       ]);
+
+      // Map values after chunked fetches
+      const salesStats = recentRevenueAgg; // Alias for processing logic
+
 
       // Cache for 30s
       res.setHeader('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
@@ -2134,7 +2119,7 @@ dashboardRouter.post(
               createdById: req.user?.id,
               subtotal,
               totalValue: subtotal,
-              paymentMethod: paymentMethod || "CASH",
+              paymentMethod: paymentMethod === "ONLINE" ? "UPI" : "CASH",
               paymentStatus: paymentMethod === 'ONLINE' ? "PENDING" : "PAID",
               items: {
                 create: saleItemsPayload
@@ -2198,15 +2183,23 @@ dashboardRouter.post(
         { timeout: 45000 }
       ); // end transaction
 
-      // If Online Payment, return Sale ID and Total for Frontend to initiate PayU
+      // If Online Payment, return Sale ID, Total, and PayU initiation data
       if (paymentMethod === 'ONLINE') {
-        return sendSuccess(res, "Sale initiated. Please complete online payment.", { 
+        const paymentParams = payuService.createPaymentRequest({
+          amount: Number(result.sale.totalValue),
+          email: req.user?.email || "",
+          name: req.user?.username || "",
+          phone: req.user?.phone || "",
+          orderId: result.sale.id
+        });
+
+        return sendSuccess(res, "Sale initiated. Redirecting to payment...", { 
             saleId: result.sale.id, 
             total: result.sale.totalValue,
             email: req.user?.email,
-          name: req.user?.username,
-            
-            phone: req.user?.phone || ""
+            name: req.user?.username,
+            phone: req.user?.phone || "",
+            payuData: paymentParams
         });
       }
 

@@ -354,6 +354,7 @@ enum PaymentMethod {
   CASH
   CARD
   UPI
+  ONLINE
   INSURANCE
   OTHER
 }

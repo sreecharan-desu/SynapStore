@@ -8,7 +8,7 @@ import { Bell, Settings, LogOut, Users, Package,  Search, X, Sparkles, Lock, Tru
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
-import { dashboardApi } from "../lib/api/endpoints";
+import { dashboardApi, paymentApi } from "../lib/api/endpoints";
 import { Button } from "../components/ui/button-1";
 import FeedbackToast from "../components/ui/feedback-toast";
 import PharmacyPayment from "../components/payments/PharmacyPayment";
@@ -320,6 +320,7 @@ const StoreOwnerDashboard: React.FC = () => {
         name: string;
         phone: string;
         orderId: string;
+        payuData?: any;
     } | null>(null);
     const [currentReceiptUrl, setCurrentReceiptUrl] = React.useState<string | null>(null);
     const [currentSaleId, setCurrentSaleId] = React.useState<string | null>(null);
@@ -922,12 +923,15 @@ const StoreOwnerDashboard: React.FC = () => {
                 const json = JSON.parse(text);
 
                 if (json.success) {
+                    const saleData = json.data;
+                    
                     setPayUPaymentInfo({
-                        amount: json.data.total,
-                        email: json.data.email || "",
-                        name: json.data.name || "",
-                        phone: json.data.phone || "",
-                        orderId: json.data.saleId
+                        amount: Number(saleData.total),
+                        email: saleData.email || "",
+                        name: saleData.name || "",
+                        phone: saleData.phone || "",
+                        orderId: saleData.saleId,
+                        payuData: saleData.payuData // Now returned directly from checkoutSale
                     });
                     setShowPayUModal(true);
 
@@ -3803,6 +3807,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                 name={payUPaymentInfo.name}
                                 phone={payUPaymentInfo.phone}
                                 orderId={payUPaymentInfo.orderId}
+                                payuData={payUPaymentInfo.payuData}
                             />
                             <button
                                 onClick={() => setShowPayUModal(false)}
