@@ -10,6 +10,7 @@ Base URL: `http://localhost:3000/api/v1` (Assuming standard port)
 - **Response**: `{ message: string, user: { id, username, email } }`
 - **Description**: Registers a new user and sends an OTP to the email.
 
+
 ### Login
 **POST** `/auth/signin`
 - **Body**: `{ email: string, password: string }`
