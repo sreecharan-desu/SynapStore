@@ -1156,6 +1156,7 @@ const StoreOwnerDashboard: React.FC = () => {
             const file = new Blob([res.data as any], { type: 'application/pdf' });
             const fileURL = URL.createObjectURL(file);
             setCurrentReceiptUrl(fileURL);
+            setCurrentSaleId(id);
             setShowReceiptPreview(true);
         } catch (err) {
             console.error("Failed to load PDF", err);

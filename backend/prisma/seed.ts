@@ -57,7 +57,9 @@ const KEY_MEDICINES: {
     generic: "Metformin",
     category: "Diabetes",
     forecast: { baseDemand: 20, weeklyPattern: false, seasonality: "steady", priceTrend: "flat" },
-  },
+    },
+      
+    
 ];
 
 /* =========================================================
