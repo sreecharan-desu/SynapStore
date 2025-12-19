@@ -176,19 +176,19 @@ export default function CTAAndFooter() {
 
             {/* Social Links */}
             <div className="flex items-center justify-center gap-8 pt-4">
-              <a href="#" className="group flex flex-col items-center gap-2">
+              <a href="https://www.synapstore.me" target="_blank" className="group flex flex-col items-center gap-2">
                 <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-sky-500 group-hover:border-sky-500/30 group-hover:shadow-sky-500/20 group-hover:scale-110 transition-all duration-300">
                   <Twitter className="w-5 h-5" />
                 </div>
                 <span className="text-xs font-semibold text-slate-400 group-hover:text-sky-600 transition-colors opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 duration-300">Twitter</span>
               </a>
-              <a href="#" className="group flex flex-col items-center gap-2">
+              <a href="https://www.synapstore.me" target="_blank" className="group flex flex-col items-center gap-2">
                 <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-blue-600 group-hover:border-blue-600/30 group-hover:shadow-blue-600/20 group-hover:scale-110 transition-all duration-300">
                   <Linkedin className="w-5 h-5" />
                 </div>
                 <span className="text-xs font-semibold text-slate-400 group-hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 duration-300">LinkedIn</span>
               </a>
-              <a href="#" className="group flex flex-col items-center gap-2">
+              <a href="https://github.com/sreecharan-desu/SynapStore" target="_blank" className="group flex flex-col items-center gap-2">
                 <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-slate-900 group-hover:border-slate-900/30 group-hover:shadow-slate-900/20 group-hover:scale-110 transition-all duration-300">
                   <Github className="w-5 h-5" />
                 </div>
