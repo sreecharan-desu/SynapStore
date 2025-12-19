@@ -23,11 +23,11 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 const RequestBadge = ({ status }: { status: string }) => {
     switch (status) {
         case "ACCEPTED":
-            return <div className="flex items-center gap-1.5 px-2.5 py-1 bg-black text-emerald-700 rounded-full text-xs font-semibold border border-emerald-200"><CheckCircle className="w-3.5 h-3.5" /> Connected</div>;
+            return <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-200"><CheckCircle className="w-3.5 h-3.5" /> Connected</div>;
         case "REJECTED":
             return <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold border border-red-200"><XCircle className="w-3.5 h-3.5" /> Rejected</div>;
         case "FULFILLED":
-            return <div className="flex items-center gap-1.5 px-2.5 py-1 bg-black text-emerald-700 rounded-full text-xs font-semibold border border-emerald-200"><CheckCircle className="w-3.5 h-3.5" /> Fulfilled</div>;
+            return <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-200"><CheckCircle className="w-3.5 h-3.5" /> Fulfilled</div>;
         default:
             return <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-semibold border border-amber-200"><Clock className="w-3.5 h-3.5" /> Pending</div>;
     }
@@ -97,6 +97,30 @@ const SupplierDashboard: React.FC = () => {
     const [requestToFulfill, setRequestToFulfill] = useState<SupplierRequest | null>(null);
     const [fulfillItems, setFulfillItems] = useState<any[]>([]);
 
+    // Helper to open fulfill modal
+    const openFulfillModal = (req: SupplierRequest) => {
+        // Determine request type
+        const isReorder = req.payload?.type === 'REORDER';
+        const isReturn = req.payload?.type === 'RETURN';
+
+        if ((isReorder || isReturn) && req.payload.items) {
+            setRequestToFulfill(req);
+            // Pre-fill items from request
+            setFulfillItems(req.payload.items.map((i: any) => ({
+                medicineId: i.medicineId,
+                medicineName: i.medicineName || "Unknown Item",
+                quantity: i.quantity,
+                batchNumber: i.batchNumber || "", // Use provided batch for Returns if available
+                expiryDate: i.expiryDate || "",
+                purchasePrice: i.purchasePrice || 0,
+                mrp: i.mrp || 0
+            })));
+            setFulfillModalOpen(true);
+        } else {
+            setActionResult({ type: 'error', title: 'Invalid Request', message: "This request does not contain items or is malformed." });
+        }
+    };
+
   
     const [historyDetailRequest, setHistoryDetailRequest] = useState<SupplierRequest | null>(null);
     const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string; subtext?: string } | null>(null);
@@ -122,6 +146,7 @@ const SupplierDashboard: React.FC = () => {
 
             // Validate only if REORDER
             if (!isReturn && fulfillItems.some(i => !i.batchNumber || !i.expiryDate)) {
+                setActionResult({ type: 'error', title: 'Validation Error', message: "Please provide Batch Number and Expiry Date for all items." });
                 alert("Please provide Batch Number and Expiry Date for all items.");
                 return;
             }
@@ -229,11 +254,11 @@ const SupplierDashboard: React.FC = () => {
             const file = e.target.files?.[0];
             if (!file) return;
             if (!currentSupplier) {
-                alert("Please create a supplier profile first.");
+                setActionResult({ type: 'error', title: 'Profile Required', message: "Please create a supplier profile first." });
                 return;
             }
             if (!selectedStore) {
-                alert("Please select a target store first.");
+                setActionResult({ type: 'error', title: 'Select Store', message: "Please select a target store first." });
                 return;
             }
             try {
@@ -291,24 +316,24 @@ const SupplierDashboard: React.FC = () => {
                     try {
                         const acceptRes = await suppliersApi.acceptRequest(pendingAcceptRequestId);
                         if (acceptRes.data.success) {
-                            alert(`Order Fulfilled & Accepted! Inventory Updated (ID: ${uploadId})`);
+                            setActionResult({ type: 'success', title: 'Order Fulfilled', message: `Order Fulfilled & Accepted! Inventory Updated (ID: ${uploadId})` });
                             setPendingAcceptRequestId(null);
                             setActiveTab("orders");
                             refreshData();
                         } else {
-                            alert("Inventory Uploaded & Applied, but failed to update order status in local DB.");
+                            setActionResult({ type: 'error', title: 'Database Error', message: "Inventory Uploaded & Applied, but failed to update order status in local DB." });
                         }
                     } catch (acceptErr: any) {
                         console.error(acceptErr);
-                        alert(`Inventory Uploaded & Applied, but failed to accept order: ${acceptErr.message}`);
+                        setActionResult({ type: 'error', title: 'Accept Error', message: `Inventory Uploaded & Applied, but failed to accept order: ${acceptErr.message}` });
                     }
                 } else {
-                    alert(`Upload successful and applied! ID: ${uploadId}`);
+                    setActionResult({ type: 'success', title: 'Upload Successful', message: `Upload successful and applied! ID: ${uploadId}` });
                 }
 
             } catch (err: any) {
                 console.error(err);
-                alert("Upload processing failed: " + (err.message || "Unknown error"));
+                setActionResult({ type: 'error', title: 'Upload Failed', message: "Upload processing failed: " + (err.message || "Unknown error") });
             } finally {
                 setLoading(false);
                 e.target.value = "";
@@ -350,7 +375,7 @@ const SupplierDashboard: React.FC = () => {
         e.preventDefault();
 
         if (!currentSupplier) {
-            alert("You must create a Supplier Profile first! Go to the 'Profile' tab.");
+            setActionResult({ type: 'error', title: 'Profile Required', message: "You must create a Supplier Profile first! Go to the 'Profile' tab." });
             return;
         }
 
@@ -363,15 +388,15 @@ const SupplierDashboard: React.FC = () => {
                 message: requestMessage
             });
             if (res.data.success) {
-                alert("Request sent successfully!");
+                setActionResult({ type: 'success', title: 'Request Sent', message: "Request sent successfully!" });
                 setSelectedStore(null);
                 setRequestMessage("");
                 setActiveTab("requests");
             } else {
-                alert("Failed to send request: Unknown error");
+                setActionResult({ type: 'error', title: 'Request Failed', message: "Failed to send request: Unknown error" });
             }
         } catch (err: any) {
-            alert("Error: " + err.message);
+            setActionResult({ type: 'error', title: 'Error', message: "Error: " + err.message });
         }
     };
 
@@ -379,7 +404,7 @@ const SupplierDashboard: React.FC = () => {
         try {
             setLoading(true);
             if (!profileForm.name.trim()) {
-                alert("Business Name is required");
+                setActionResult({ type: 'error', title: 'Validation', message: "Business Name is required" });
                 return;
             }
 
@@ -476,14 +501,14 @@ const SupplierDashboard: React.FC = () => {
         try {
             const res = await suppliersApi.acceptRequest(requestId);
             if (res.data.success) {
-                alert("Request accepted!");
+                setActionResult({ type: 'success', title: 'Accepted', message: "Request accepted!" });
                 // Optimistic update
                 setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: "ACCEPTED" } : r));
                 refreshData();
             }
         } catch (err: any) {
             console.error(err);
-            alert("Failed to accept request: " + err.message);
+            setActionResult({ type: 'error', title: 'Accept Failed', message: "Failed to accept request: " + err.message });
         }
     };
 
@@ -1056,15 +1081,14 @@ const SupplierDashboard: React.FC = () => {
                                                                                     <div className="flex items-center justify-center gap-2 transition-opacity">
                                                                                         <Button
                                                                                             size="sm"
-                                                                                            className="h-8 shadow-sm !bg-black hover:!bg-slate-800 !text-white border-0 shadow-md shadow-black/10"
+                                                                                            className="h-8 cursor-pointer shadow-sm !bg-black hover:!bg-slate-800 !text-white border-0 shadow-md shadow-black/10"
                                                                                             onClick={() => handleAcceptRequest(req.id)}
                                                                                         >
                                                                                             {isReturn ? 'Process' : 'Accept'}
                                                                                         </Button>
                                                                                         <Button
                                                                                             size="sm"
-                                                                                            variant="outline"
-                                                                                            className="h-8 !border-black !text-black hover:!bg-slate-50"
+                                                                                            className="h-8 !bg-black cursor-pointer !text-white hover:!bg-slate-800 border-none shadow-md shadow-black/10"
                                                                                             onClick={() => handleRejectRequest(req.id)}
                                                                                         >
                                                                                             Reject
@@ -1471,7 +1495,7 @@ const SupplierDashboard: React.FC = () => {
                                             </p>
                                             <Button
                                                 onClick={() => setActiveTab("marketplace")}
-                                                className="mt-6 bg-slate-900 text-white hover:bg-slate-800"
+                                                className="mt-6 !bg-black !text-white hover:!bg-neutral-800"
                                             >
                                                 Browse Marketplace
                                             </Button>
@@ -1757,11 +1781,11 @@ const SupplierDashboard: React.FC = () => {
                                                         const file = e.target.files?.[0];
                                                         if (!file) return;
                                                         if (!currentSupplier) {
-                                                            alert("Please create a supplier profile first.");
+                                                            setActionResult({ type: 'error', title: 'Profile Required', message: "Please create a supplier profile first." });
                                                             return;
                                                         }
                                                         if (!selectedStore) {
-                                                            alert("Please select a target store first.");
+                                                            setActionResult({ type: 'error', title: 'Select Store', message: "Please select a target store first." });
                                                             return;
                                                         }
 
@@ -2483,6 +2507,31 @@ const SupplierDashboard: React.FC = () => {
                                     Reject
                                 </Button>
                             </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+            {/* Action Result / General Alert Modal */}
+            <AnimatePresence>
+                {actionResult && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full text-center"
+                        >
+                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${actionResult.type === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                                {actionResult.type === 'success' ? <CheckCircle className="w-8 h-8" /> : <XCircle className="w-8 h-8" />}
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">{actionResult.title}</h3>
+                            <p className="text-slate-500 mb-6">{actionResult.message}</p>
+                            <Button
+                                onClick={() => setActionResult(null)}
+                                className="w-full h-12 cursor-pointer rounded-xl !bg-black !text-white hover:!bg-slate-800 font-bold"
+                            >
+                                Close
+                            </Button>
                         </motion.div>
                     </div>
                 )}

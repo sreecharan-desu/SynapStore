@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuthContext } from "../context/AuthContext";
-import { X, Send, Loader2, Sparkles, Mic, Volume2, VolumeX, Check } from "lucide-react";
+import { X, Send, Loader2, Mic, Check } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,10 +17,15 @@ interface Message {
 
 import Login3DCharacter from "./Login3DCharacter";
 import { AIVoiceInput } from "./ui/ai-voice-input";
+import { TextShimmer } from "./ui/text-shimmer";
 
 export const ChatbotWidget = () => {
     const { isAuthenticated, user } = useAuthContext();
     const { token } = useRecoilValue(authState);
+    const location = useLocation();
+
+    // Hide on Store Create page
+    if (location.pathname === "/store/create") return null;
 
     // Filter for permitted roles
     const userRole = user?.globalRole || "";
@@ -33,6 +39,12 @@ export const ChatbotWidget = () => {
     }, [user?.globalRole, user?.id]);
 
     const [isOpen, setIsOpen] = useState(false);
+
+    // Reset focused field when closed to resume dancing
+    useEffect(() => {
+        if (!isOpen) setFocusedField(null);
+    }, [isOpen]);
+
     const BOT_NAME = import.meta.env.VITE_BOT_NAME || "Dose";
     const [messages, setMessages] = useState<Message[]>([
         { id: "welcome", role: "bot", text: `Hello! I'm ${BOT_NAME}. How can I help you manage your store today?` }
@@ -49,7 +61,7 @@ export const ChatbotWidget = () => {
     // TTS & STT State
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isListening, setIsListening] = useState(false); // Used for manual dictation mode
-    const [voiceEnabled, setVoiceEnabled] = useState(true);
+    const voiceEnabled = true;
     const synthRef = useRef<SpeechSynthesis | null>(window.speechSynthesis);
 
     // Voice permission and Wake Word
@@ -446,8 +458,8 @@ export const ChatbotWidget = () => {
                             className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full border border-white/20 relative"
                         >
                             <div className="flex flex-col items-center text-center gap-4">
-                                <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-2">
-                                    <Mic className="w-8 h-8 text-blue-500" />
+                                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-2">
+                                    <Mic className="w-8 h-8 text-black" />
                                 </div>
 
                                 <h3 className="text-xl font-bold text-slate-800">Enable Voice Assistant?</h3>
@@ -459,7 +471,7 @@ export const ChatbotWidget = () => {
                                 <div className="flex gap-3 w-full mt-2">
                                     <button
                                         onClick={() => setShowPermissionModal(false)}
-                                        className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors"
+                                        className="flex-1 px-4 py-2.5 rounded-xl bg-black !bg-black text-white !text-white font-medium hover:bg-neutral-800 transition-colors shadow-md"
                                     >
                                         Not Now
                                     </button>
@@ -468,7 +480,7 @@ export const ChatbotWidget = () => {
                                             setPermissionGranted(true);
                                             setShowPermissionModal(false);
                                         }}
-                                        className="flex-1 px-4 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2"
+                                        className="flex-1 px-4 py-2.5 rounded-xl bg-black !bg-black text-white !text-white font-medium hover:bg-neutral-800 transition-colors shadow-lg flex items-center justify-center gap-2"
                                     >
                                         <Check className="w-4 h-4" />
                                         Enable
@@ -481,160 +493,120 @@ export const ChatbotWidget = () => {
             </AnimatePresence>
 
             <motion.div
-                drag
-                dragMomentum={false}
-                onDragStart={() => { isDraggingRef.current = true; }}
-                onDragEnd={() => { setTimeout(() => { isDraggingRef.current = false; }, 150); }}
-                whileDrag={{ cursor: "grabbing" }}
                 ref={containerRef}
-                className="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-6 font-sans touch-none"
+                className="fixed bottom-6 -mb-12 -mr-12 right-10 z-[100] flex flex-col items-end gap-2 font-sans touch-none"
+                initial={false}
             >
                 <AnimatePresence>
                     {isOpen && (
                         <motion.div
-                            initial={{ opacity: 0, scale: 0, y: 100, x: 100, transformOrigin: "bottom right" }}
-                            animate={{ opacity: 1, scale: 1, y: 0, x: 0, transition: { type: "spring", stiffness: 200, damping: 20 } }}
+                            initial={{ opacity: 0, scale: 0.9, y: 50, filter: "blur(10px)" }}
+                            animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 300, damping: 25 } }}
                             exit={{
                                 opacity: 0,
-                                scale: 0,
-                                y: 100,
-                                x: 50,
+                                scale: 0.9,
+                                y: 50,
                                 filter: "blur(10px)",
-                                transition: { duration: 0.8, ease: "easeInOut" }
+                                transition: { duration: 0.2 }
                             }}
                             style={{ transformOrigin: "bottom right" }}
-                            className="w-[360px] md:w-[420px] h-[600px] flex flex-col rounded-[2rem] shadow-2xl overflow-hidden border border-white/20 bg-white/80 backdrop-blur-xl ring-1 ring-black/5"
+                            className="w-[380px] md:w-[420px] h-[580px] mr-6 flex flex-col rounded-[24px] shadow-2xl overflow-hidden bg-white ring-1 ring-slate-900/5"
                         >
-                            {/* Header */}
-                            <div className="relative p-5 bg-gradient-to-r from-slate-800 to-slate-900 text-white shadow-lg z-10 shrink-0">
-                                {/* ... Header Content ... */}
-                                <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none">
-                                    <Sparkles className="w-12 h-12 text-white animate-pulse" />
-                                </div>
-
+                            {/* Modern Header */}
+                            <div className={`relative px-6 py-5 shrink-0 bg-gradient-to-r ${theme.gradient}`}>
                                 <div className="flex items-center justify-between relative z-10">
-                                    <div className="flex items-center gap-4">
-                                        <div className="relative flex items-center justify-center flex-none w-14 h-14 -ml-2">
-                                            <div className="w-full h-full overflow-hidden relative">
-                                                <Login3DCharacter focusedField={null} keyTrigger={0} className="w-full h-full min-h-[50px]" />
+                                    <div className="flex items-center gap-3">
+                                        {/* Avatar Halo */}
+                                        <div className="relative">
+                                            <div className="w-16 h-16 flex items-center justify-center -ml-2">
+                                                <Login3DCharacter focusedField={null} keyTrigger={0} disableTracking={true} className="w-[120%] h-[120%] translate-y-1" />
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-col">
-                                            <h3 className="font-bold text-lg leading-tight tracking-tight">{BOT_NAME}</h3>
-                                            <p className="text-xs text-blue-50 font-medium flex items-center gap-1.5 opacity-90">
+                                        <div className="flex flex-col text-white">
+                                            <h3 className="font-bold text-lg leading-none tracking-tight">{BOT_NAME}</h3>
+                                            <span className="text-[11px] font-medium text-white/80 mt-1 flex items-center gap-1.5">
                                                 {isSpeaking ? (
-                                                    <span className="flex gap-0.5">
-                                                        <span className="w-0.5 h-2 bg-green-300 animate-[bounce_0.5s_infinite]" />
-                                                        <span className="w-0.5 h-3 bg-green-300 animate-[bounce_0.4s_infinite]" />
-                                                        <span className="w-0.5 h-2 bg-green-300 animate-[bounce_0.6s_infinite]" />
-                                                        <span className="ml-1">Speaking...</span>
-                                                    </span>
-                                                ) : (
                                                     <>
-                                                        <span className="relative flex h-2 w-2">
-                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400"></span>
+                                                        <span className="flex gap-0.5 h-2 items-center">
+                                                            <span className="w-0.5 h-2 bg-white rounded-full animate-[music_1s_ease-in-out_infinite]" />
+                                                            <span className="w-0.5 h-3 bg-white rounded-full animate-[music_1.2s_ease-in-out_infinite]" />
+                                                            <span className="w-0.5 h-1 bg-white rounded-full animate-[music_0.8s_ease-in-out_infinite]" />
                                                         </span>
-                                                        Always online
+                                                        Speaking...
                                                     </>
+                                                ) : (
+                                                    "Always online"
                                                 )}
-                                                {permissionGranted && (
-                                                    <span className="ml-1 text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full border border-white/10">Voice Active</span>
-                                                )}
-                                            </p>
+                                            </span>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                        <button
-                                            onClick={() => {
-                                                if (isSpeaking) {
-                                                    synthRef.current?.cancel();
-                                                    setIsSpeaking(false);
-                                                }
-                                                setVoiceEnabled(!voiceEnabled)
-                                            }}
-                                            className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white/80"
-                                            title={voiceEnabled ? "Mute Voice" : "Enable Voice"}
-                                        >
-                                            {voiceEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-                                        </button>
-                                    </div>
-                                    <button
+
+                                    <i
                                         onClick={() => setIsOpen(false)}
-                                        className="p-2 !bg-white hover:bg-gray-100 rounded-lg transition-colors shadow-sm"
+                                        className="p-2 cursor-pointer bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md border border-white/10 hover:rotate-90 duration-300"
                                         aria-label="Close chat"
                                     >
-                                        <X className="w-5 h-5 !text-gray-500" />
-                                    </button>
+                                        <X className="w-5 h-5" />
+                                    </i>
                                 </div>
+
+                                {/* Decorative Background Elements */}
+                                <div className="absolute inset-0 bg-gradient-to-b from-black/5 to-transparent pointer-events-none" />
+                                <div className="absolute -right-10 -top-10 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none mix-blend-overlay" />
                             </div>
 
                             {/* Messages Area */}
                             <div
                                 onPointerDown={(e) => e.stopPropagation()}
-                                className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/50 relative custom-scrollbar"
+                                className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/50 relative custom-scrollbar scroll-smooth"
                             >
-                                <div className="text-center">
-                                    <span className="px-3 py-1 bg-slate-200/50 text-slate-500 text-[10px] font-bold rounded-full uppercase tracking-wider backdrop-blur-sm">
+                                <div className="flex justify-center py-2">
+                                    <span className="px-3 py-1 bg-slate-100 text-slate-400 text-[10px] font-bold rounded-full uppercase tracking-widest border border-slate-200/50">
                                         Today
                                     </span>
                                 </div>
 
                                 {messages.map((msg) => (
                                     <motion.div
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
+                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        transition={{ duration: 0.2 }}
                                         key={msg.id}
-                                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} items-end gap-3`}
+                                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} items-end gap-2.5`}
                                     >
                                         {msg.role === "bot" && (
-                                            <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden relative -ml-1 -mb-1">
-                                                <Login3DCharacter focusedField={null} keyTrigger={0} className="w-full h-full min-h-[40px]" />
+                                            <div className="w-10 h-10 flex items-center justify-center shrink-0 -ml-2 -mb-2">
+                                                <Login3DCharacter focusedField={null} keyTrigger={0} disableTracking={true} className="w-[140%] h-[140%] translate-y-1" />
                                             </div>
                                         )}
+
                                         <div
-                                            className={`max-w-[85%] p-4 text-sm leading-relaxed shadow-sm overflow-hidden ${msg.role === "user"
-                                                ? `${theme.sentMsgBg} text-white rounded-2xl rounded-tr-none shadow-${themeName}-500/20`
-                                                : "bg-white text-slate-700 border border-slate-100/60 rounded-2xl rounded-tl-none shadow-sm"
+                                            className={`max-w-[85%] px-4 py-3 text-[14px] leading-relaxed shadow-sm ${msg.role === "user"
+                                                ? `${theme.sentMsgBg} text-white rounded-[20px] rounded-br-sm shadow-md`
+                                                : "bg-white text-slate-700 border border-slate-100 rounded-[20px] rounded-bl-sm shadow-sm"
                                                 }`}
                                         >
                                             <ReactMarkdown
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
-                                                    p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
-                                                    // ... existing markdown components ...
-                                                    ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-4 mb-2 space-y-1" {...props} />,
-                                                    ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-4 mb-2 space-y-1" {...props} />,
+                                                    p: ({ node, ...props }) => <p className="mb-0 leading-relaxed" {...props} />,
+                                                    ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-4 my-1 space-y-1" {...props} />,
+                                                    ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-4 my-1 space-y-1" {...props} />,
                                                     li: ({ node, ...props }) => <li className="" {...props} />,
-                                                    h1: ({ node, ...props }) => <h1 className="text-base font-bold mb-2 mt-4 first:mt-0" {...props} />,
-                                                    h2: ({ node, ...props }) => <h2 className="text-sm font-bold mb-2 mt-3 first:mt-0" {...props} />,
-                                                    h3: ({ node, ...props }) => <h3 className="text-sm font-semibold mb-1 mt-2 first:mt-0" {...props} />,
-                                                    blockquote: ({ node, ...props }) => <blockquote className={`border-l-2 pl-3 py-1 mb-2 italic ${msg.role === 'user' ? 'border-white/40' : 'border-indigo-300 bg-indigo-50/50'}`} {...props} />,
-                                                    a: ({ node, ...props }) => <a className={`underline underline-offset-2 ${msg.role === 'user' ? 'text-white' : 'text-indigo-600 hover:text-indigo-700'}`} target="_blank" rel="noopener noreferrer" {...props} />,
                                                     code: ({ node, className, children, ...props }: any) => {
                                                         const match = /language-(\w+)/.exec(className || '')
                                                         return !match ? (
-                                                            <code className={`px-1.5 py-0.5 rounded text-xs font-mono ${msg.role === 'user' ? 'bg-white/20' : 'bg-slate-100 text-slate-800'}`} {...props}>
-                                                                {children}
-                                                            </code>
+                                                            <code className={`px-1 rounded bg-black/10 font-mono text-[11px]`} {...props}>{children}</code>
                                                         ) : (
-                                                            <div className="rounded-lg overflow-hidden my-2 border border-slate-200/50">
-                                                                <div className={`flex items-center px-3 py-1.5 text-xs font-mono font-bold ${msg.role === 'user' ? 'bg-white/10' : 'bg-slate-100/80 text-slate-600'}`}>
-                                                                    {match[1]}
-                                                                </div>
-                                                                <pre className={`p-3 overflow-x-auto text-xs font-mono ${msg.role === 'user' ? 'bg-black/20' : 'bg-slate-50'}`}>
-                                                                    <code className={className} {...props}>
-                                                                        {children}
-                                                                    </code>
+                                                            <div className="rounded-md overflow-hidden my-2 border border-white/20">
+                                                                <pre className="p-2 overflow-x-auto text-[11px] bg-black/20 text-white font-mono">
+                                                                    <code className={className} {...props}>{children}</code>
                                                                 </pre>
                                                             </div>
                                                         )
                                                     },
-                                                    table: ({ node, ...props }) => <div className="overflow-x-auto my-2 rounded-lg border border-slate-200"><table className="w-full text-left text-xs" {...props} /></div>,
-                                                    thead: ({ node, ...props }) => <thead className={msg.role === 'user' ? 'bg-white/10' : 'bg-slate-100'} {...props} />,
-                                                    th: ({ node, ...props }) => <th className="px-3 py-2 font-semibold border-b border-slate-200/50" {...props} />,
-                                                    td: ({ node, ...props }) => <td className="px-3 py-2 border-b border-slate-100 last:border-0" {...props} />,
+                                                    a: ({ node, ...props }) => <a className="underline underline-offset-2 opacity-90 hover:opacity-100 font-medium cursor-pointer" target="_blank" rel="noopener noreferrer" {...props} />,
                                                 }}
                                             >
                                                 {msg.text}
@@ -644,28 +616,28 @@ export const ChatbotWidget = () => {
                                 ))}
 
                                 {isLoading && (
-                                    <div className="flex justify-start items-end gap-3">
-                                        <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden relative -ml-1 -mb-1">
-                                            <Login3DCharacter focusedField={null} keyTrigger={0} className="w-full h-full min-h-[40px]" />
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        className="flex justify-start items-center gap-2.5"
+                                    >
+                                        <div className="w-10 h-10 flex items-center justify-center shrink-0 -ml-2 -mb-2">
+                                            <Login3DCharacter focusedField={null} keyTrigger={0} disableTracking={true} className="w-[140%] h-[140%] translate-y-1" />
                                         </div>
-                                        <div className="bg-white border border-slate-100 px-5 py-4 rounded-2xl rounded-tl-none shadow-sm">
-                                            <div className="flex gap-1.5 h-full items-center">
-                                                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                                            </div>
+                                        <div className="bg-white border border-slate-100 px-4 py-3 rounded-[20px] rounded-bl-sm shadow-sm flex items-center gap-1.5">
+                                            <TextShimmer className="text-sm font-medium" duration={1.2}>Thinking.....</TextShimmer>
                                         </div>
-                                    </div>
+                                    </motion.div>
                                 )}
                                 <div ref={messagesEndRef} />
                             </div>
 
-                            {/* Input Area (Existing) */}
+                            {/* Floating Input Area */}
                             <div
                                 onPointerDown={(e) => e.stopPropagation()}
-                                className="p-4 bg-white border-t border-slate-100 z-10 shrink-0"
+                                className="p-5 bg-white border-t border-slate-50 z-20 shrink-0"
                             >
-                                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-2 py-2 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-400 transition-all shadow-inner">
+                                <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-full shadow-sm ring-offset-2 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all overflow-hidden group">
                                     <input
                                         type="text"
                                         value={inputValue}
@@ -676,35 +648,42 @@ export const ChatbotWidget = () => {
                                             setKeyTrigger(prev => prev + 1);
                                             handleKeyDown(e);
                                         }}
-                                        placeholder={`Message ${BOT_NAME}...`}
-                                        className="flex-1 bg-transparent px-3 py-1.5 text-sm outline-none text-slate-800 placeholder:text-slate-400 placeholder:font-medium"
+                                        placeholder="Ask anything..."
+                                        className="flex-1 bg-transparent pl-5 pr-12 py-3.5 text-[14px] outline-none text-slate-700 placeholder:text-slate-400 font-medium"
                                         disabled={isLoading || isListening}
                                     />
-                                    <AIVoiceInput
-                                        isListening={isListening}
-                                        onStart={toggleListening}
-                                        onStop={() => toggleListening()}
-                                        className="w-auto py-0 flex-none"
-                                        buttonClassName={`p-2 rounded-xl transition-all w-9 h-9 ${isListening ? '' : 'text-slate-400 hover:bg-slate-100'}`}
-                                        visualizerClassName="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 bg-white/90 backdrop-blur-md border border-slate-200 p-2 rounded-xl shadow-2xl w-56 z-50 pointer-events-none"
-                                        visualizerBars={24}
-                                    />
-                                    <button
-                                        onClick={() => handleSendMessage()}
-                                        disabled={!inputValue.trim() || isLoading}
-                                        className={`p-2.5 rounded-xl ${inputValue.trim() ? theme.bg : "bg-slate-200"} ${inputValue.trim() ? "text-white" : "text-slate-400 cursor-not-allowed"} shadow-sm transition-all duration-200 hover:scale-105 active:scale-95`}
-                                    >
-                                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                    </button>
+
+                                    {/* Right-aligned Actions */}
+                                    <div className="absolute right-1.5 flex items-center gap-1">
+                                        <AIVoiceInput
+                                            isListening={isListening}
+                                            onStart={toggleListening}
+                                            onStop={() => toggleListening()}
+                                            className="w-auto py-0 flex-none"
+                                            buttonClassName={`!p-2 !rounded-full transition-all !w-9 !h-9 flex items-center justify-center [&>svg]:!w-5 [&>svg]:!h-5 ${isListening ? '!bg-red-500 !text-white shadow-md' : '!bg-slate-200 !text-black/50 [&>svg]:!text-black/50 hover:scale-105 active:scale-95 hover:!bg-slate-300'}`}
+                                            visualizerClassName="absolute bottom-full right-0 mb-6 bg-white border border-slate-100 p-3 rounded-2xl shadow-xl w-48 z-50 pointer-events-none"
+                                            visualizerBars={16}
+                                        />
+
+                                        <i
+                                            onClick={() => handleSendMessage()}
+                                            className={`p-2 cursor-pointer rounded-full w-9 h-9 flex items-center justify-center transition-all duration-300 ${inputValue.trim()
+                                                ? `${theme.bg} text-white shadow-md hover:scale-105 active:scale-95`
+                                                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                                }`}
+                                        >
+                                            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                        </i>
+                                    </div>
                                 </div>
-                                <div className="text-center mt-2">
-                                    <p className="text-[10px] text-slate-400 font-medium">Powered by Zenith AI</p>
-                                </div>
+
+
                             </div>
-                        </motion.div >
+                        </motion.div>
                     )}
-                </AnimatePresence >
-                {/* 3D Character Button (Existing) */}
+                </AnimatePresence>
+
+                {/* 3D Character Toggle Button */}
                 <div
                     onClick={(e) => {
                         if (isDraggingRef.current) { e.preventDefault(); e.stopPropagation(); return; }
@@ -715,18 +694,9 @@ export const ChatbotWidget = () => {
                     aria-label="Toggle Chatbot"
                 >
                     <div className="w-full h-full pointer-events-none">
-                        <Login3DCharacter focusedField={focusedField} keyTrigger={keyTrigger} className="min-h-0" />
+                        <Login3DCharacter focusedField={focusedField} keyTrigger={keyTrigger} disableTracking={true} className="min-h-0" />
                     </div>
-                    {!isOpen && (
-                        <motion.span
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute top-0 right-0 flex h-5 w-5 pointer-events-none"
-                        >
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-5 w-5 bg-red-500 border-2 border-white items-center justify-center text-[10px] font-bold text-white shadow-sm">1</span>
-                        </motion.span>
-                    )}
+
                 </div>
             </motion.div >
 
@@ -736,7 +706,7 @@ export const ChatbotWidget = () => {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md perspective-1000"
+                        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-xl perspective-1000"
                         onClick={() => {
                             setIsConversationMode(false);
                             setIsListening(false);
@@ -745,128 +715,122 @@ export const ChatbotWidget = () => {
                     >
                         {/* Tablet Container Animation */}
                         <motion.div
-                            initial={{ rotateX: 20, scale: 0.8, opacity: 0, y: 100 }}
-                            animate={{ rotateX: 0, scale: 1, opacity: 1, y: 0 }}
-                            exit={{ rotateX: 20, scale: 0.8, opacity: 0, y: 100 }}
-                            transition={{ type: "spring", damping: 20, stiffness: 100 }}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ type: "spring", damping: 25, stiffness: 300 }}
                             onClick={(e) => e.stopPropagation()}
-                            style={{ perspective: "1000px" }}
-                            className="relative w-full max-w-5xl mx-auto h-[90vh] p-4"
+                            className="relative w-full max-w-2xl mx-auto flex flex-col items-center justify-center p-6 gap-10"
                         >
-                            {/* Tablet Bezel (Removed - now just a clean container) */}
-                            <div className="h-full w-full bg-white rounded-[24px] shadow-2xl flex flex-col ring-1 ring-slate-200 overflow-hidden">
-                                {/* Tablet Screen */}
-                                <div className="h-full w-full relative flex flex-col">
 
-                                    {/* Header Status */}
-                                    <div className="flex items-center justify-between w-full p-6 border-b border-slate-100 bg-white/80 backdrop-blur-md shrink-0 z-10">
-                                        <div className="flex items-center gap-3">
-                                            {/* Tablet Icon (Login Character) - Moved Left, Removed Green Circle */}
-                                            <div className="w-16 h-16 overflow-hidden relative -ml-2">
-                                                <Login3DCharacter focusedField={null} keyTrigger={0} className="w-full h-full min-h-[50px]" />
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-bold tracking-widest uppercase text-slate-800">
-                                                    DOSE AI
-                                                </span>
-                                                <div className="flex items-center gap-2">
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${isListening ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-                                                    <span className="text-[10px] font-medium tracking-wide uppercase text-slate-400">
-                                                        {isSpeaking ? "Speaking" : isListening ? "Listening..." : "Online"}
-                                                    </span>
-                                                </div>
-                                            </div>
+
+                            {/* 3D Character - Large & Centered */}
+                            <div className="relative w-64 h-64 md:w-80 md:h-80 flex items-center justify-center">
+                                {/* Ambient Glow */}
+                                <div className={`absolute inset-0 bg-emerald-500/20 blur-[80px] rounded-full transition-all duration-700 ${isListening ? 'opacity-100 scale-125' : 'opacity-30 scale-90'}`} />
+
+                                {/* Active State Rings */}
+                                {isListening && (
+                                    <>
+                                        <div className="absolute inset-0 border border-emerald-500/30 rounded-full animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite]" />
+                                        <div className="absolute inset-4 border border-emerald-500/20 rounded-full animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite_0.5s]" />
+                                    </>
+                                )}
+
+                                <div className="relative w-full h-full z-10">
+                                    <Login3DCharacter focusedField={null} keyTrigger={0} disableTracking={true} className="w-full h-full" />
+                                </div>
+                            </div>
+
+                            {/* Status & Interaction Area */}
+                            <div className="flex flex-col items-center text-center gap-6 w-full max-w-lg z-20">
+                                {/* Status Pill */}
+                                <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-xl shadow-lg ring-1 ring-black/5">
+                                    <div className={`w-2 h-2 rounded-full shadow-[0_0_10px_currentColor] transition-colors duration-300 ${isListening ? 'bg-emerald-400 text-emerald-400 animate-pulse' : isLoading ? 'bg-amber-400 text-amber-400 animate-pulse' : isSpeaking ? 'bg-blue-400 text-blue-400' : 'bg-slate-400 text-slate-400'}`} />
+                                    <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-white/50">
+                                        {isListening ? "Listening" : isLoading ? "Thinking" : isSpeaking ? "Speaking" : "Ready"}
+                                    </span>
+                                </div>
+
+                                {/* Main Transcript Input/Display */}
+                                <div className="min-h-[100px] flex items-center justify-center w-full relative group">
+                                    {isLoading ? (
+                                        <TextShimmer className="text-2xl md:text-3xl font-light text-white/90" duration={1.2}>
+                                            Thinking...
+                                        </TextShimmer>
+                                    ) : isSpeaking ? (
+                                        <motion.p
+                                            key={messages[messages.length - 1]?.id}
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="text-2xl md:text-3xl font-light text-white leading-relaxed tracking-tight"
+                                        >
+                                            {messages[messages.length - 1]?.text}
+                                        </motion.p>
+                                    ) : (
+                                        <div className="relative w-full flex justify-center">
+                                            <input
+                                                value={inputValue}
+                                                onChange={(e) => setInputValue(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                                placeholder={isListening ? "" : "How can I help?"}
+                                                className="w-full bg-transparent !bg-transparent border-none !border-none !outline-none !ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none shadow-none !shadow-none appearance-none text-center text-2xl md:text-3xl font-light !text-white caret-white leading-relaxed tracking-tight placeholder:text-white/20 p-0"
+                                                autoFocus
+                                                style={{ backgroundColor: 'transparent', boxShadow: 'none', border: 'none', outline: 'none' }}
+                                            />
                                         </div>
-                                        <div className="flex items-center gap-2">
+                                    )}
+                                </div>
+
+                                {/* Controls & Visualizer */}
+                                <div className="h-16 flex items-center justify-center">
+                                    {isListening || isSpeaking ? (
+                                        <div className="flex gap-1.5 items-center justify-center cursor-pointer" onClick={() => isListening && setIsListening(false)}>
+                                            {[...Array(5)].map((_, i) => (
+                                                <motion.div
+                                                    key={i}
+                                                    initial={{ height: 10 }}
+                                                    animate={isListening ? {
+                                                        height: [16, 40, 16],
+                                                        transition: {
+                                                            duration: 1.2,
+                                                            repeat: Infinity,
+                                                            ease: "easeInOut",
+                                                            delay: i * 0.15, // Smooth orderly wave
+                                                        }
+                                                    } : {
+                                                        height: [12, 48, 24, 60, 12],
+                                                        transition: {
+                                                            duration: 0.6,
+                                                            repeat: Infinity,
+                                                            ease: "easeInOut",
+                                                            delay: i * 0.08, // Faster, energetic wave
+                                                            repeatType: "mirror"
+                                                        }
+                                                    }}
+                                                    className={`w-2 mx-0.5 rounded-full transition-colors duration-300 ${isListening ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]' : 'bg-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.8)]'}`}
+                                                />
+                                            ))}
+                                        </div>
+                                    ) : isLoading ? null : (
+                                        <div className="flex items-center gap-6">
                                             <button
-                                                onClick={() => setIsConversationMode(false)}
-                                                className="p-2 rounded-full bg-black text-white hover:bg-neutral-800 transition-colors shadow-md border-0"
+                                                onClick={() => setIsListening(true)}
+                                                className="p-4 rounded-full bg-white/5 hover:bg-white/10 text-white border border-white/10 backdrop-blur-md transition-all hover:scale-105 active:scale-95 group"
                                             >
-                                                <X className="w-5 h-5 border-none outline-none" />
+                                                <Mic className="w-6 h-6 opacity-70 group-hover:opacity-100" />
                                             </button>
-                                        </div>
-                                    </div>
 
-                                    {/* Chat History View */}
-                                    <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar scroll-smooth">
-                                        {messages.filter(m => m.id !== 'welcome-reset').map((msg) => (
-                                            <motion.div
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                key={msg.id}
-                                                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} items-end gap-3`}
-                                            >
-                                                {msg.role === "bot" && (
-                                                    <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 relative -ml-2 -mb-2">
-                                                        <Login3DCharacter focusedField={null} keyTrigger={0} className="w-full h-full min-h-[40px]" />
-                                                    </div>
-                                                )}
-                                                <div
-                                                    className={`max-w-[80%] p-4 text-sm leading-relaxed shadow-sm ${msg.role === "user"
-                                                        ? "bg-slate-900 text-white rounded-2xl rounded-tr-md"
-                                                        : "bg-white text-slate-700 border border-slate-200 rounded-2xl rounded-tl-md"
-                                                        }`}
-                                                >
-                                                    {msg.text}
-                                                </div>
-                                            </motion.div>
-                                        ))}
-                                        <div ref={messagesEndRef} />
-                                    </div>
-
-                                    {/* Live Input / Composer Area */}
-                                    <div className="p-6 pt-2 bg-gradient-to-t from-white via-white/90 to-transparent shrink-0">
-                                        <div className="relative w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm focus-within:ring-2 focus-within:ring-slate-100 transition-all">
-                                            <div className="flex-1 min-h-[48px] flex items-center">
-                                                {isSpeaking ? (
-                                                    <div className="flex items-center gap-1 h-full">
-                                                        <span className="text-slate-500 text-sm italic">Dose is speaking...</span>
-                                                        {/* Clean waveform animation */}
-                                                        <div className="flex gap-1 h-4 items-center ml-2">
-                                                            {[1, 2, 3].map(i => (
-                                                                <div key={i} className="w-1 bg-green-500 rounded-full animate-[voice-wave_1s_ease-in-out_infinite]" style={{ animationDelay: `${i * 0.1}s`, height: '60%' }} />
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <input
-                                                        type="text"
-                                                        value={inputValue}
-                                                        onChange={(e) => setInputValue(e.target.value)}
-                                                        placeholder={isListening ? "Listening..." : "Type or speak..."}
-                                                        className="w-full bg-transparent border-none p-0 text-xl font-light text-slate-900 placeholder:text-slate-400 focus:ring-0 focus:outline-none"
-                                                        autoFocus
-                                                    />
-                                                )}
-                                            </div>
-
-                                            {/* Action Button */}
-                                            {inputValue && !isSpeaking ? (
+                                            {inputValue && (
                                                 <button
                                                     onClick={() => handleSendMessage()}
-                                                    className="p-3 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors shadow-lg"
+                                                    className="p-4 rounded-full bg-black border border-white/10 text-white hover:bg-white/10 shadow-lg transition-all hover:scale-105 active:scale-95"
                                                 >
-                                                    <Send className="w-5 h-5" />
+                                                    <Send className="w-6 h-6" />
                                                 </button>
-                                            ) : (
-                                                <div className={`p-3 rounded-xl transition-all duration-500 ${isListening ? 'bg-white shadow-md border border-slate-100' : 'bg-slate-100 text-slate-400'}`}>
-                                                    {isListening ? (
-                                                        <div className="relative">
-                                                            <span className="absolute inset-0 animate-ping rounded-full bg-red-500/20"></span>
-                                                            <Mic className="w-5 h-5 relative z-10 text-red-500" />
-                                                        </div>
-                                                    ) : (
-                                                        <Mic className="w-5 h-5" />
-                                                    )}
-                                                </div>
                                             )}
                                         </div>
-                                        <div className="text-center mt-3">
-                                            <p className="text-[10px] text-slate-400 font-medium tracking-wide">
-                                                POWERED BY ZENITH AI
-                                            </p>
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
                         </motion.div>

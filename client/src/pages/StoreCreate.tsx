@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
 import { jsonFetch } from "../utils/api";
-import { motion, AnimatePresence } from "framer-motion";
+
 import { dashboardApi } from "../lib/api/endpoints";
 
 type StoreResponse = {
@@ -21,6 +21,8 @@ type StoreResponse = {
   };
 };
 
+import { DottedSurface } from "../components/ui/dotted-surface";
+
 const defaultTimezone = "Asia/Kolkata";
 const defaultCurrency = "INR";
 
@@ -35,8 +37,6 @@ const StoreCreate = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [theme] = useState("green");
-  const [avatar] = useState("fruit-strawberry");
   const [selectedRole, setSelectedRole] =
     useState<"STORE_OWNER" | "SUPPLIER" | null>(null);
   const [slugStatus, setSlugStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
@@ -164,7 +164,7 @@ const StoreCreate = () => {
           slug: slugify(slug),
           timezone,
           currency,
-          settings: { theme, avatar }, // Passing theme and avatar in settings
+          settings: { theme: "green", avatar: "fruit-strawberry" }, // Passing default theme and avatar
         }),
         token: auth.token,
       });
@@ -187,246 +187,193 @@ const StoreCreate = () => {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-[#fafafa] p-4 md:p-6">
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+    <div className="min-h-screen flex items-center justify-center bg-white p-6 font-sans relative overflow-hidden">
+      <DottedSurface className="z-0 opacity-60" />
 
-      {/* Background Blobs - Made smoother and more premium */}
-      <motion.div
-        animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.3, 0.4, 0.3],
-          x: [0, 50, 0],
-          y: [0, -30, 0],
-        }}
-        transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-indigo-200/30 rounded-full blur-[120px] pointer-events-none"
-      />
-      <motion.div
-        animate={{
-          scale: [1, 1.1, 1],
-          opacity: [0.2, 0.3, 0.2],
-          x: [0, -30, 0],
-          y: [0, 50, 0],
-        }}
-        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute bottom-[-20%] right-[-10%] w-[700px] h-[700px] bg-black rounded-full blur-[120px] pointer-events-none"
-      />
-
+      {/* Logout Button - Top Right Fixed */}
       <button
         onClick={handleLogout}
-        className="hidden md:flex absolute top-6 right-6 items-center gap-2 text-slate-500 hover:text-black transition-colors z-50 bg-white/80 backdrop-blur-md border border-slate-200/60 px-4 py-2 rounded-full hover:bg-white shadow-sm hover:shadow group"
+        className="absolute top-8 right-8 z-20 bg-[#45a089] hover:bg-[#347966] hover:scale-105 active:scale-95 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg shadow-[#45a089]/20 transition-all duration-300"
       >
-        <span className="text-sm font-semibold">Logout</span>
-        <LogOut className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+        <span>Logout</span>
+        <LogOut className="w-3 h-3" />
       </button>
 
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="w-full max-w-5xl bg-white/70 backdrop-blur-2xl border border-white/50 rounded-[2.5rem] shadow-2xl shadow-slate-200/50 overflow-hidden grid grid-cols-1 md:grid-cols-2 relative z-10"
-      >
-        {/* Left Panel: Info - Enhanced Gradient */}
-        <div className="relative p-10 md:p-14 bg-gradient-to-br from-indigo-50/80 via-white/50 to-emerald-50/80 md:border-r border-slate-100/50 flex flex-col justify-center">
-          {/* Mobile Logout Button */}
-          <button
-            onClick={handleLogout}
-            className="md:hidden absolute top-4 right-4 flex items-center gap-2 text-slate-500 hover:text-black transition-colors bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm text-xs border border-slate-100"
-          >
-            <span>Logout</span>
-            <LogOut className="w-3.5 h-3.5" />
-          </button>
+      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-0 bg-white/80 backdrop-blur-xl border border-white/50 rounded-[32px] overflow-hidden shadow-2xl shadow-slate-200/50 relative z-10 min-h-[450px]">
 
-          <div className="mb-10 relative">
-            <div className="absolute -top-6 -left-6 w-20 h-20 bg-indigo-100/50 rounded-full blur-xl animate-pulse"></div>
-            <div className="relative w-16 h-16 bg-white rounded-2xl shadow-xl shadow-indigo-100/50 ring-1 ring-slate-50 flex items-center justify-center mb-8">
-              <Rocket className="w-8 h-8 text-indigo-600" />
+        {/* Left Panel: Information */}
+        <div className="p-10 md:p-12 flex flex-col justify-center bg-gradient-to-br from-white via-slate-50/30 to-white">
+          <div className="mb-8">
+            <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center mb-5 shadow-sm ring-1 ring-emerald-100/50">
+              <Rocket className="w-6 h-6 text-[#45a089]" />
             </div>
 
-            <p className="text-indigo-600 text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2">
-              <span className="w-8 h-[1px] bg-indigo-600/30"></span>
-              Onboarding
+            <p className="text-[#45a089] text-[10px] font-extrabold tracking-[0.2em] uppercase mb-3 opacity-90">
+              ONBOARDING
             </p>
-            <h1 className="text-3xl md:text-5xl font-bold text-slate-900 mb-6 leading-[1.1] tracking-tight">
-              Create your <br />
-              <span className="bg-gradient-to-r from-indigo-600 to-emerald-500 bg-clip-text text-transparent">first store</span>
+
+            <h1 className="text-[32px] leading-tight font-bold text-slate-900 mb-4 tracking-tight">
+              Create your <span className="text-[#45a089]">first store</span>
             </h1>
-            <p className="text-slate-600 text-base leading-relaxed md:pr-8">
-              Welcome to SynapStore. Set up your digital storefront in minutes and start managing your inventory, suppliers, and orders from a premium unified dashboard.
+
+            <p className="text-slate-500 text-xs leading-relaxed max-w-xs font-medium">
+              We noticed you don't have an active store yet. Set up your first store to start managing inventory, suppliers, and orders from a single unified dashboard.
             </p>
           </div>
 
-          <div className="space-y-4">
-            <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/60 border border-white/80 shadow-sm backdrop-blur-sm hover:scale-[1.02] transition-transform duration-300">
-              <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 text-indigo-700 font-bold text-sm">1</div>
-              <p className="text-sm font-medium text-slate-700">Role assigned automatically</p>
+          <div className="space-y-3 max-w-xs">
+            <div className="flex items-center gap-4 p-3 rounded-xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow duration-300">
+              <span className="w-6 h-6 rounded-full bg-[#dcfce7] text-[#166534] flex items-center justify-center text-[10px] font-bold shrink-0 shadow-inner">1</span>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-600 leading-snug">Store owner role is assigned automatically to your account.</p>
+              </div>
             </div>
-            <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/60 border border-white/80 shadow-sm backdrop-blur-sm hover:scale-[1.02] transition-transform duration-300 delay-75">
-              <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0 text-emerald-700 font-bold text-sm">2</div>
-              <p className="text-sm font-medium text-slate-700">Configure settings later</p>
+            <div className="flex items-center gap-4 p-3 rounded-xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow duration-300">
+              <span className="w-6 h-6 rounded-full bg-[#dcfce7] text-[#166534] flex items-center justify-center text-[10px] font-bold shrink-0 shadow-inner">2</span>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-600 leading-snug">You can update timezone and currency settings anytime later.</p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Right Panel: Form - Enhanced Inputs */}
-        <div className="p-10 md:p-14 bg-white/30 flex flex-col justify-center backdrop-blur-sm relative">
-          <AnimatePresence mode="wait">
-            {/* Status messages */}
-            {(error || success) && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-6 overflow-hidden"
-              >
-                {error && (
-                  <div className="text-sm rounded-2xl border border-red-100 bg-red-50/80 text-red-600 px-5 py-4 flex items-center gap-3 shadow-sm backdrop-blur-sm">
-                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 shadow-lg shadow-red-500/30" />
-                    <span className="font-medium">{error}</span>
-                  </div>
-                )}
-                {success && (
-                  <div className="text-sm rounded-2xl border border-emerald-100 bg-black/80 text-emerald-600 px-5 py-4 flex items-center gap-3 shadow-sm backdrop-blur-sm">
-                    <span className="w-2 h-2 rounded-full bg-black shrink-0 shadow-lg shadow-emerald-500/30" />
-                    <span className="font-medium">{success}</span>
-                  </div>
-                )}
-              </motion.div>
-            )}
+        {/* Right Panel: Actions/Form */}
+        <div className="p-10 md:p-12 border-l border-slate-100/50 flex flex-col justify-center bg-white/50">
 
-            {/* Role selection */}
-            {selectedRole === null ? (
-              <motion.div
-                key="role-select"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-8"
-              >
-                <div>
-                  <h2 className="text-3xl font-bold text-slate-800 tracking-tight">
-                    Choose your path
-                  </h2>
-                  <p className="text-slate-500 mt-2 text-lg">How would you like to use SynapStore?</p>
+          {/* Status Messages */}
+          {(error || success) && (
+            <div className="mb-6 animate-in slide-in-from-top-2 duration-300">
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  {error}
                 </div>
-
-                <div className="grid grid-cols-1 gap-5">
-                  <motion.button
-                    whileHover={{ scale: 1.02, y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setSelectedRole("STORE_OWNER")}
-                    className="group relative w-full p-1 rounded-3xl bg-gradient-to-br from-indigo-100 via-white to-purple-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300"
-                  >
-                    <div className="relative bg-white/60 backdrop-blur-xl rounded-[1.3rem] p-6 text-left border border-white/50 flex items-center gap-6 overflow-hidden">
-                      <div className="absolute right-0 top-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-colors" />
-
-                      <div className="relative z-10 w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-110 transition-transform duration-300">
-                        <Building2 className="w-8 h-8 text-white" />
-                      </div>
-
-                      <div className="relative z-10 flex-1">
-                        <h3 className="text-xl font-bold text-slate-800 group-hover:text-indigo-700 transition-colors">Store Owner</h3>
-                        <p className="text-slate-500 text-sm font-medium mt-1">Manage inventory, sales & staff</p>
-                      </div>
-
-                      <div className="relative z-10 w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors group-hover:translate-x-1 duration-300">
-                        <ArrowRight className="w-5 h-5 text-indigo-600" />
-                      </div>
-                    </div>
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.02, y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setSelectedRole("SUPPLIER")}
-                    className="group relative w-full p-1 rounded-3xl bg-gradient-to-br from-blue-100 via-white to-cyan-100 shadow-sm hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300"
-                  >
-                    <div className="relative bg-white/60 backdrop-blur-xl rounded-[1.3rem] p-6 text-left border border-white/50 flex items-center gap-6 overflow-hidden">
-                      <div className="absolute right-0 top-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-colors" />
-
-                      <div className="relative z-10 w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform duration-300">
-                        <Truck className="w-8 h-8 text-white" />
-                      </div>
-
-                      <div className="relative z-10 flex-1">
-                        <h3 className="text-xl font-bold text-slate-800 group-hover:text-blue-700 transition-colors">Supplier</h3>
-                        <p className="text-slate-500 text-sm font-medium mt-1">Distribute products to stores</p>
-                      </div>
-
-                      <div className="relative z-10 w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors group-hover:translate-x-1 duration-300">
-                        <ArrowRight className="w-5 h-5 text-blue-600" />
-                      </div>
-                    </div>
-                  </motion.button>
+              )}
+              {success && (
+                <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-600 font-medium flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {success}
                 </div>
-              </motion.div>
-            ) : selectedRole === "SUPPLIER" ? (
-              <motion.div
-                key="supplier-view"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="text-center py-6"
-              >
-                <div className="w-20 h-20 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                  <Truck className="w-10 h-10" />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-3">
-                  Become a Supplier
-                </h2>
-                <p className="text-slate-500 text-sm mb-8 leading-relaxed max-w-sm mx-auto">
-                  We are manually onboarding premium suppliers. Please contact our support team to get verified and listed.
-                </p>
-                <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-5 mb-8 border border-white shadow-sm">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-2">Contact Support</p>
-                  <a href="mailto:contact@synapstore.me" className="text-lg text-indigo-600 font-bold hover:underline">
-                    contact@synapstore.me
-                  </a>
-                </div>
+              )}
+            </div>
+          )}
+
+          {/* Main Content Area */}
+          {selectedRole === null ? (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 tracking-tight">How do you want to get started?</h2>
+              </div>
+
+              <div className="grid gap-4">
                 <button
-                  onClick={() => setSelectedRole(null)}
-                  className="text-slate-500 hover:text-slate-800 text-sm font-bold bg-white/50 px-4 py-2 rounded-lg hover:bg-white transition-all"
+                  onClick={() => setSelectedRole("STORE_OWNER")}
+                  className="group w-full p-3 rounded-2xl bg-white border-2 border-slate-100 hover:border-[#45a089] hover:bg-slate-50 transition-all duration-300 text-left flex items-center gap-4 shadow-sm hover:shadow-md hover:-translate-y-0.5"
                 >
-                  ← Back to selection
-                </button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="store-form"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-              >
-                <form onSubmit={createStore} className="space-y-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-2xl font-bold text-slate-800">
-                      Store Details
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole(null)}
-                      className="text-xs font-bold text-slate-400 hover:text-black bg-slate-50 px-3 py-1.5 rounded-lg hover:bg-slate-200 transition-all"
-                    >
-                      Change Role
-                    </button>
+                  <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-300">
+                    <Building2 className="w-6 h-6" />
                   </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-slate-800 text-base group-hover:text-[#45a089] transition-colors">I want to be a Store Owner</h3>
+                    <p className="text-slate-500 text-[11px] mt-0.5 font-medium group-hover:text-slate-600">Manage inventory, sales, and staff</p>
+                  </div>
+                  <div className="pr-2">
+                    <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-[#45a089] transition-colors" />
+                  </div>
+                </button>
 
-                  <div className="space-y-5">
-                    <div className="group">
-                      <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-2 ml-1">
-                        Store Name
-                      </label>
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => handleNameChange(e.target.value)}
-                        className="w-full px-5 py-3.5 bg-white/80 border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-medium shadow-sm"
-                        placeholder="e.g. Sunrise Pharmacy"
-                        disabled={loading}
-                        autoFocus
-                      />
-                    </div>
+                <button
+                  onClick={() => setSelectedRole("SUPPLIER")}
+                  className="group w-full p-3 rounded-2xl bg-white border-2 border-slate-100 hover:border-[#45a089] hover:bg-slate-50 transition-all duration-300 text-left flex items-center gap-4 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600 shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-300">
+                    <Truck className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-slate-800 text-base group-hover:text-[#45a089] transition-colors">I want to be a Supplier</h3>
+                    <p className="text-slate-500 text-[11px] mt-0.5 font-medium group-hover:text-slate-600">Supply products to stores</p>
+                  </div>
+                  <div className="pr-2">
+                    <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-[#45a089] transition-colors" />
+                  </div>
+                </button>
+              </div>
+            </div>
+          ) : selectedRole === "SUPPLIER" ? (
+            <div className="text-center py-6 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="w-20 h-20 bg-[#f0fdf4] rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner ring-1 ring-emerald-100">
+                <Truck className="w-10 h-10 text-[#45a089]" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 mb-2">Become a Supplier</h2>
+              <p className="text-slate-500 text-xs mb-6 leading-relaxed max-w-xs mx-auto font-medium">
+                We are manually onboarding premium suppliers. Please contact our support team to get verified and listed.
+              </p>
+              <div className="p-4 bg-slate-50/80 rounded-xl mb-6 border border-slate-100/60">
+                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Email Support</p>
+                <a href="mailto:contact@synapstore.me" className="text-lg text-[#45a089] font-bold hover:underline">
+                  contact@synapstore.me
+                </a>
+              </div>
+              <button
+                onClick={() => setSelectedRole(null)}
+                className="text-slate-400 hover:text-slate-800 text-[10px] font-bold transition-colors flex items-center justify-center gap-2 mx-auto uppercase tracking-wider bg-white px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+              >
+                ← Back to selection
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={createStore} className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  Store Details
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole(null)}
+                  className="text-[10px] font-bold text-slate-500 hover:text-[#45a089] bg-slate-100 px-2.5 py-1 rounded-lg hover:bg-emerald-50 transition-all border border-transparent hover:border-emerald-200"
+                >
+                  Change Role
+                </button>
+              </div>
 
+              <div className="space-y-4">
+                <div className="relative group">
+                  <label className="block text-slate-700 text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1">
+                    Store Name
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    className="w-full px-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#45a089] focus:ring-4 focus:ring-[#45a089]/10 transition-all text-sm font-semibold shadow-sm group-hover:border-slate-200"
+                    placeholder="e.g. Sunrise Pharmacy"
+                    disabled={loading}
+                    autoFocus
+                  />
+                </div>
+
+                <div className="relative group">
+                  <label className="block text-slate-700 text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1">
+                    Store Slug
+                  </label>
+                  <input
+                    type="text"
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50/50 border-2 border-slate-100 rounded-xl text-slate-600 placeholder:text-slate-400 focus:outline-none focus:border-[#45a089] focus:bg-white transition-all text-sm font-mono shadow-sm group-hover:border-slate-200"
+                    placeholder="e.g. sunrise-pharmacy"
+                    disabled={loading}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-700 text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1">
+                      Timezone
+                    </label>
+                    <div className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-slate-500 text-sm font-semibold flex items-center justify-between">
+                      Asia/Kolkata
+                      <div className="w-2 h-2 rounded-full bg-slate-300" />
                     <div className="group">
                       <div className="flex justify-start gap-2 mb-2 ml-1">
                         <label className="text-slate-700 text-xs font-bold uppercase tracking-wider">
@@ -460,34 +407,35 @@ const StoreCreate = () => {
                         <p className="text-[10px] text-emerald-600 font-bold mt-1.5 ml-1">Perfect! This slug is available.</p>
                       )}
                     </div>
-
-                    <div className="grid grid-cols-2 gap-5">
-                      <div className="group opacity-70">
-                        <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-2 ml-1">
-                          Timezone
-                        </label>
-                        <input
-                          type="text"
-                          value="Asia/Kolkata"
-                          readOnly
-                          className="w-full px-5 py-3.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 font-medium focus:outline-none cursor-not-allowed text-sm"
-                        />
-                      </div>
-
-                      <div className="group opacity-70">
-                        <label className="block text-slate-700 text-xs font-bold uppercase tracking-wider mb-2 ml-1">
-                          Currency
-                        </label>
-                        <input
-                          type="text"
-                          value="INR (₹)"
-                          readOnly
-                          className="w-full px-5 py-3.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 font-medium focus:outline-none cursor-not-allowed text-sm"
-                        />
-                      </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1">
+                      Currency
+                    </label>
+                    <div className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-slate-500 text-sm font-semibold flex items-center justify-between">
+                      INR (₹)
+                      <div className="w-2 h-2 rounded-full bg-slate-300" />
                     </div>
                   </div>
+                </div>
+              </div>
 
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-[#45a089] hover:bg-[#347966] text-white py-3.5 rounded-xl font-bold text-sm shadow-xl shadow-[#45a089]/20 hover:shadow-2xl hover:shadow-[#45a089]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed mt-4 active:scale-[0.98]"
+              >
+                {loading ? (
+                  <Loader2 className="animate-spin w-5 h-5" />
+                ) : (
+                  <>
+                    <span>Launch Store</span>
+                    <ArrowRight className="w-5 h-5" />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
                   <div className="pt-4">
                     <button
                       type="submit"
@@ -511,8 +459,8 @@ const StoreCreate = () => {
             )}
           </AnimatePresence>
         </div>
-      </motion.div >
-    </div >
+      </div>
+    </div>
   );
 };
 
