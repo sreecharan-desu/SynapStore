@@ -24,7 +24,9 @@ const PAYMENT_METHODS: PaymentMethod[] = [
 async function seedSalesForForecasting() {
   console.log("📈 Seeding forecast-ready sales (20 unique days)");
 
-  const store = await prisma.store.findFirst();
+  const store = await prisma.store.findFirst({
+    where: { isActive: true , id : 'daca5fe7-a868-4e81-899c-98918d5910ae'},
+  });
   if (!store) throw new Error("No store found");
 
   const owner = await prisma.user.findFirst({
@@ -48,7 +50,7 @@ async function seedSalesForForecasting() {
   }
 
   const START = addDays(new Date(), -30); // past 30 days
-  const UNIQUE_DAYS = 20;
+  const UNIQUE_DAYS = 50;
 
   for (const med of medicines) {
     console.log(`💊 Seeding sales for ${med.brandName}`);
@@ -157,8 +159,9 @@ async function seedSalesForForecasting() {
 
 async function main() {
   try {
+    
     // await prisma.medicine.deleteMany();
-    console.log("Deleted medicines");
+    // console.log("Deleted medicines");
     await seedSalesForForecasting();
   } catch (error) {
     console.error("❌ Seeding failed:", error);
