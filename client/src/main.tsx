@@ -22,8 +22,8 @@ createRoot(document.getElementById("root")!).render(
   <RecoilRoot>
     <AuthProvider>
       <Toaster position="top-center" reverseOrder={false} />
-      <ChatbotWidget />
       <BrowserRouter>
+        <ChatbotWidget />
         <Routes>
           <Route path="/" element={<App />} />
           <Route

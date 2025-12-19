@@ -4,20 +4,20 @@ import React from "react";
 import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Settings, LogOut, Users, Package,  Search, X, Sparkles, Lock, Truck,  Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store,  XCircle, Send, History as HistoryIcon, ClipboardList, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, Loader2, Clock, AlertTriangle} from "lucide-react";
+import { Bell, Settings, LogOut, Users, Package, Search, X, Sparkles, Lock, Truck, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, XCircle, Send, History as HistoryIcon, ClipboardList, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, Loader2, Clock, AlertTriangle } from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
 import { dashboardApi } from "../lib/api/endpoints";
 import { Button } from "../components/ui/button-1";
-import FeedbackToast from "../components/ui/feedback-toast";
 
 
-import { 
-    Card as MetricCard, 
-    CardHeader as MetricCardHeader, 
-    CardContent as MetricCardContent, 
-    CardTitle as MetricCardTitle, 
+
+import {
+    Card as MetricCard,
+    CardHeader as MetricCardHeader,
+    CardContent as MetricCardContent,
+    CardTitle as MetricCardTitle,
     CardDescription as MetricCardDescription,
     CardToolbar
 } from "@/components/ui/card";
@@ -47,7 +47,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FaRupeeSign } from "react-icons/fa";
-import {  TrendingUp, TrendingDown, Zap, CheckCircle, Share2, Filter, RefreshCw, Calendar, Download, MoreHorizontal } from "lucide-react";
+import { TrendingUp, TrendingDown, Zap, CheckCircle, Share2, Filter, RefreshCw, Calendar, Download, MoreHorizontal } from "lucide-react";
 import type { Supplier, SupplierRequest } from "@/lib/types";
 import { capitalize } from "lodash";
 
@@ -319,10 +319,10 @@ const StoreOwnerDashboard: React.FC = () => {
         setIsReorderLoading(true);
         try {
             const isReturnMode = inventoryFilter === 'expired';
-            const res = await dashboardApi.getInventory({ 
-                limit: 1000, 
-                filter: isReturnMode ? 'all' : inventoryFilter, 
-                return: isReturnMode 
+            const res = await dashboardApi.getInventory({
+                limit: 1000,
+                filter: isReturnMode ? 'all' : inventoryFilter,
+                return: isReturnMode
             });
             if (res.data.success) {
                 setInventoryList(res.data.data.inventory);
@@ -385,24 +385,24 @@ const StoreOwnerDashboard: React.FC = () => {
         try {
             let res;
             if (cartMode === 'return') {
-                 // REORDER TAB -> RETURN FLOW
-                 // We need to map items to include inventoryBatchId for deduction
-                 // Note: executeReorder uses 'cart' (medicineId -> qty), so we need to find the batch from inventoryList
-                 const returnItems = items.map(i => {
-                     const m = inventoryList.find(x => x.id === i.medicineId);
-                     // If expired filter is on, 'm' likely represents the batch or has batches.
-                     // The backend 'filtered' list returns medicines with 'inventory' (batches).
-                     // We should pick the first expired/relevant batch or spread across them?
-                     // For simplicity, pick the first batch available in the list which should be the expired one.
-                     const batchId = m?.batches?.[0]?.id || m?.inventory?.[0]?.id;
-                     return { ...i, inventoryBatchId: batchId };
-                 });
+                // REORDER TAB -> RETURN FLOW
+                // We need to map items to include inventoryBatchId for deduction
+                // Note: executeReorder uses 'cart' (medicineId -> qty), so we need to find the batch from inventoryList
+                const returnItems = items.map(i => {
+                    const m = inventoryList.find(x => x.id === i.medicineId);
+                    // If expired filter is on, 'm' likely represents the batch or has batches.
+                    // The backend 'filtered' list returns medicines with 'inventory' (batches).
+                    // We should pick the first expired/relevant batch or spread across them?
+                    // For simplicity, pick the first batch available in the list which should be the expired one.
+                    const batchId = m?.batches?.[0]?.id || m?.inventory?.[0]?.id;
+                    return { ...i, inventoryBatchId: batchId };
+                });
 
-                 res = await dashboardApi.createReturn({
+                res = await dashboardApi.createReturn({
                     supplierId: reorderSupplierId,
                     items: returnItems,
                     note: reorderNote
-                 });
+                });
             } else {
                 res = await dashboardApi.reorder({
                     supplierId: reorderSupplierId,
@@ -445,7 +445,7 @@ const StoreOwnerDashboard: React.FC = () => {
         const items = Array.from(returnCart.entries()).map(([key, quantity]) => {
             const [medicineId, batchNumber] = key.split('_');
             const item = returnList.find((r: any) => r.id === medicineId && r.batchNumber === batchNumber);
-            
+
             return {
                 medicineId,
                 quantity,
@@ -488,38 +488,38 @@ const StoreOwnerDashboard: React.FC = () => {
             // Determine type based on current filter or tab
             // If user is looking at "Expired (Returns)", we fetch return suggestions
             const isReturnMode = activeTab === 'return' || inventoryFilter === 'expired';
-            
+
             // Enforce mode based on suggestions
             setCartMode(isReturnMode ? 'return' : 'reorder');
 
             if (isReturnMode) {
-                 const res = await dashboardApi.getReturnSuggestions();
-                 if (res.data.success) {
+                const res = await dashboardApi.getReturnSuggestions();
+                if (res.data.success) {
                     const returns = res.data.data.returns || [];
                     if (returns.length === 0) {
                         alert("No expiring items found to return.");
                         setIsAiLoading(false);
                         return;
                     }
-                    
+
                     setCart(() => {
                         const newCart = new Map();
                         returns.forEach((r: any) => {
-                             const current = newCart.get(r.id) || 0;
-                             newCart.set(r.id, current + r.suggestedQty);
+                            const current = newCart.get(r.id) || 0;
+                            newCart.set(r.id, current + r.suggestedQty);
                         });
                         return newCart;
                     });
-                    
+
                     const storeName = data?.store?.name || "Our Pharmacy";
                     setReorderNote(`Return Request for ${returns.length} expired items from ${storeName}.`);
                     alert(`AI identified ${returns.length} expiring batches. Auto-filled.`);
-                 }
+                }
             } else {
-                 const res = await dashboardApi.getReorderSuggestions();
-                 if (res.data.success) {
+                const res = await dashboardApi.getReorderSuggestions();
+                if (res.data.success) {
                     const suggestions = res.data.data.suggestions || [];
-                     if (suggestions.length === 0) {
+                    if (suggestions.length === 0) {
                         alert("No low stock items found.");
                         setIsAiLoading(false);
                         return;
@@ -535,12 +535,12 @@ const StoreOwnerDashboard: React.FC = () => {
                         });
                         return newCart;
                     });
-                    
+
                     const storeName = data?.store?.name || "Our Pharmacy";
                     const aiNote = `Hello,\n\nI would like to place an urgent restock request for ${suggestions.length} items for ${storeName}. Please prioritize immediate dispatch.\n\nGenerated by SynapStore AI 🤖`;
                     setReorderNote(aiNote);
                     alert(`AI identified ${suggestions.length} low stock items. Auto-filled.`);
-                 }
+                }
             }
         } catch (err: any) {
             console.error("Failed to get suggestions", err);
@@ -574,7 +574,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const [stopAutoForecast, setStopAutoForecast] = React.useState(false);
     const [_topForecasts, setTopForecasts] = React.useState<{ medicine: any, forecast: any }[]>([]);
 
-    
+
     const searchForecastMedicines = async (q: string) => {
         setIsForecastSearching(true);
         try {
@@ -600,7 +600,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const handleRunForecast = async (medicine: any, isFeatured: boolean = false) => {
         console.log("handleRunForecast triggered for:", medicine.brandName, { isFeatured });
-        
+
         if (failedForecasts.has(medicine.id)) {
             console.log("Forecast cached as failed for:", medicine.id);
             setForecastError("Not enough data to forecast (Cached)");
@@ -622,7 +622,7 @@ const StoreOwnerDashboard: React.FC = () => {
         }
 
         setSelectedForecastMedicine(medicine);
-        setForecastQuery(""); 
+        setForecastQuery("");
         setIsForecastLoading(true);
         setIsFeaturedMedicine(isFeatured);
         setForecastError(null);
@@ -636,11 +636,11 @@ const StoreOwnerDashboard: React.FC = () => {
             });
             console.log("Forecast response received:", res.data);
             setForecastData(res.data);
-            setTopForecasts([]); 
+            setTopForecasts([]);
         } catch (err: any) {
             console.error("Forecast failed:", err);
             const detail = err.response?.data?.detail;
-            
+
             if (detail && typeof detail === "string" && (detail.toLowerCase().includes("not enough") || detail.toLowerCase().includes("data"))) {
                 setForecastError(`Forecast Failed: ${detail}`);
                 setFailedForecasts(prev => {
@@ -651,7 +651,7 @@ const StoreOwnerDashboard: React.FC = () => {
             } else {
                 setForecastError("Failed to generate forecast");
             }
-            
+
             // Mark as failed to prevent auto-fetch loop even on generic errors
             setFailedForecasts(prev => {
                 const next = new Set(prev);
@@ -675,11 +675,11 @@ const StoreOwnerDashboard: React.FC = () => {
             if (activeTab === 'overview' && !forecastData && !isForecastLoading && data && !forecastError && !stopAutoForecast) {
                 try {
                     let medicineToForecast: any = null;
-                    
+
                     // Call new backend API to get the best candidate
                     console.log("Fetching featured medicine from backend...");
                     const featuredRes = await dashboardApi.getFeaturedMedicine();
-                    
+
                     if (featuredRes.data.success && featuredRes.data.data.medicine) {
                         medicineToForecast = featuredRes.data.data.medicine;
                     }
@@ -740,10 +740,10 @@ const StoreOwnerDashboard: React.FC = () => {
             const processedFore = limitedFore.map((f: any) => {
                 const c = conf.find((x: any) => x.date === f.date);
                 const val = typeof f.qty === 'number' ? f.qty : 0;
-                
+
                 let low = val;
                 let high = val;
-                
+
                 if (c) {
                     low = typeof c.low === 'number' ? c.low : val;
                     high = typeof c.high === 'number' ? c.high : val;
@@ -763,10 +763,10 @@ const StoreOwnerDashboard: React.FC = () => {
             // 3. Seamless Stitching
             if (processedHist.length > 0 && processedFore.length > 0) {
                 const lastHist = processedHist[processedHist.length - 1];
-                
+
                 lastHist.forecast = lastHist.history;
                 lastHist.confRange = [lastHist.history, lastHist.history];
-                
+
                 if (lastHist.priceHistory !== null) {
                     lastHist.priceForecast = lastHist.priceHistory;
                 }
@@ -779,7 +779,7 @@ const StoreOwnerDashboard: React.FC = () => {
         }
     }, [forecastData, forecastDaysFilter]);
 
-  
+
     // Debounced search for POS
 
     React.useEffect(() => {
@@ -927,7 +927,7 @@ const StoreOwnerDashboard: React.FC = () => {
             if (storeRes.data.success) {
                 const fetchedUser = storeRes.data.data.user;
                 const fetchedStore = storeRes.data.data.store;
-                
+
                 let shouldUpdate = false;
                 let newAuth: any = { ...auth };
 
@@ -935,7 +935,7 @@ const StoreOwnerDashboard: React.FC = () => {
                 if (auth.user && fetchedUser.globalRole !== auth.user.globalRole) {
                     newAuth.user = { ...newAuth.user, globalRole: fetchedUser.globalRole };
                     shouldUpdate = true;
-                    
+
                     if (fetchedUser.globalRole === "SUPPLIER") {
                         setShowFeedback(true);
                         alert("Access Updated: Congrats you are now a SUPPLIER!");
@@ -944,8 +944,8 @@ const StoreOwnerDashboard: React.FC = () => {
 
                 // 2. Check Store (Fix for missing store name on first login)
                 if (fetchedStore && (!auth.effectiveStore || auth.effectiveStore.id !== fetchedStore.id || auth.effectiveStore.name !== fetchedStore.name)) {
-                     newAuth.effectiveStore = fetchedStore;
-                     shouldUpdate = true;
+                    newAuth.effectiveStore = fetchedStore;
+                    shouldUpdate = true;
                 }
 
                 if (shouldUpdate) {
@@ -1593,356 +1593,356 @@ const StoreOwnerDashboard: React.FC = () => {
 
                         {/* --- AI FORECAST SECTION --- */}
                         <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm mb-8 relative overflow-hidden">
-                                                {/* Background Effect */}
-                                                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
-                    
-                                                <div className="relative z-10">
-                                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-                                                        <div>
-                                                            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                                                <Sparkles className="w-5 h-5 text-indigo-500" />
-                                                                AI Inventory Forecast
-                                                            </h3>
-                                                            <p className="text-slate-500 text-sm mt-1">Search for medicines or view featured forecast</p>
-                                                        </div>
+                            {/* Background Effect */}
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
 
-                                                        {/* Search Bar */}
-                                                        <div className="relative w-full md:w-96">
-                                                            <div className="relative">
-                                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Search medicine to forecast..."
-                                                                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 outline-none transition-all"
-                                                                    value={forecastQuery}
-                                                                    onChange={(e) => setForecastQuery(e.target.value)}
-                                                                />
-                                                                {isForecastSearching && (
-                                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                                                        <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                                                                    </div>
+                            <div className="relative z-10">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                            <Sparkles className="w-5 h-5 text-indigo-500" />
+                                            AI Inventory Forecast
+                                        </h3>
+                                        <p className="text-slate-500 text-sm mt-1">Search for medicines or view featured forecast</p>
+                                    </div>
+
+                                    {/* Search Bar */}
+                                    <div className="relative w-full md:w-96">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search medicine to forecast..."
+                                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 outline-none transition-all"
+                                                value={forecastQuery}
+                                                onChange={(e) => setForecastQuery(e.target.value)}
+                                            />
+                                            {isForecastSearching && (
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                    <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Dropdown Results */}
+                                        {forecastQuery.length > 0 && forecastResults.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 max-h-60 overflow-y-auto z-50 custom-scrollbar">
+                                                {forecastResults.map(med => (
+                                                    <div
+                                                        key={med.id}
+                                                        className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-none flex items-center justify-between group"
+                                                        onClick={() => handleRunForecast(med)}
+                                                    >
+                                                        <div className="flex-1 pr-4">
+                                                            <div className="font-bold text-slate-700 text-sm group-hover:text-indigo-600 transition-colors">{med.brandName}</div>
+                                                            <div className="text-xs text-slate-400">{med.genericName} • {med.strength}</div>
+                                                            <div className="flex flex-wrap gap-2 mt-1.5">
+                                                                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                    {med.inventory && med.inventory.length > 0 ? `₹${med.inventory[0].mrp}` : "Out of Stock"}
+                                                                </span>
+                                                                {med.inventory && med.inventory.length > 0 && (
+                                                                    <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100 font-medium">
+                                                                        Batch: {med.inventory[0].batchNumber} {med.inventory.length > 1 && `+${med.inventory.length - 1}`}
+                                                                    </span>
                                                                 )}
                                                             </div>
-                    
-                                                            {/* Dropdown Results */}
-                                                            {forecastQuery.length > 0 && forecastResults.length > 0 && (
-                                                                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 max-h-60 overflow-y-auto z-50 custom-scrollbar">
-                                                                    {forecastResults.map(med => (
-                                                                        <div
-                                                                            key={med.id}
-                                                                            className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-none flex items-center justify-between group"
-                                                                            onClick={() => handleRunForecast(med)}
-                                                                        >
-                                                                            <div className="flex-1 pr-4">
-                                                                                <div className="font-bold text-slate-700 text-sm group-hover:text-indigo-600 transition-colors">{med.brandName}</div>
-                                                                                <div className="text-xs text-slate-400">{med.genericName} • {med.strength}</div>
-                                                                                <div className="flex flex-wrap gap-2 mt-1.5">
-                                                                                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
-                                                                                        {med.inventory && med.inventory.length > 0 ? `₹${med.inventory[0].mrp}` : "Out of Stock"}
-                                                                                    </span>
-                                                                                    {med.inventory && med.inventory.length > 0 && (
-                                                                                        <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100 font-medium">
-                                                                                            Batch: {med.inventory[0].batchNumber} {med.inventory.length > 1 && `+${med.inventory.length - 1}`}
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
-                                                                            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
                                                         </div>
+                                                        <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
                                                     </div>
-                    
-                                                    {/* Loading State */}
-                                                    {isForecastLoading && (
-                                                        <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-4">
-                                                            <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center relative">
-                                                                <Sparkles className="w-8 h-8 text-indigo-500 animate-pulse" />
-                                                                <div className="absolute inset-0 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin" />
-                                                            </div>
-                                                            <div className="text-center">
-                                                                <p className="font-bold text-slate-700 animate-pulse">Generating Forecast...</p>
-                                                                <p className="text-xs text-slate-400 mt-1">Analyzing historical trends and seasonality</p>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                    
-                                                    {/* Forecast Data Display */}
-                                                    {!isForecastLoading && forecastData && (
-                                                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                                            {/* Top Cards */}
-                                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                                                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                                                                    <div className="flex items-center justify-between mb-2">
-                                                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Medicine Details</div>
-                                                                        {isFeaturedMedicine && (
-                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-2 py-0.5 rounded-full">
-                                                                                <Sparkles className="w-2.5 h-2.5" />
-                                                                                Featured
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="font-bold text-lg text-slate-800 leading-tight">{forecastData.medicine_name}</div>
-                                                                    {_selectedForecastMedicine && (
-                                                                        <div className="text-xs text-slate-500 mt-3 space-y-1.5 border-t border-slate-200 pt-2">
-                                                                            <div className="grid grid-cols-2 gap-x-2">
-                                                                                <span className="text-slate-400">Generic:</span>
-                                                                                <span className="font-medium text-slate-700 truncate">{_selectedForecastMedicine.genericName}</span>
-                                                                            </div>
-                                                                            <div className="grid grid-cols-2 gap-x-2">
-                                                                                <span className="text-slate-400">Strength:</span>
-                                                                                <span className="font-medium text-slate-700">{_selectedForecastMedicine.strength}</span>
-                                                                            </div>
-                                                                            <div className="grid grid-cols-2 gap-x-2">
-                                                                                <span className="text-slate-400">Mfr:</span>
-                                                                                <span className="font-medium text-slate-700 truncate">{_selectedForecastMedicine.manufacturer}</span>
-                                                                            </div>
-                                                                            <div className="block mt-1">
-                                                                                <span className="text-slate-400 block mb-0.5">Batch Numbers:</span>
-                                                                                <span className="font-medium text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded text-[10px] break-all">
-                                                                                    {_selectedForecastMedicine.inventory?.map((b: any) => b.batchNumber).join(", ") || "N/A"}
-                                                                                </span>
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-200">Current Stock: <span className="font-bold text-slate-900">{forecastData.current_stock}</span></div>
-                                                                </div>
-                    
-                                                                <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
-                                                                    <div className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2">Forecast (30 Days)</div>
-                                                                    <div className="text-2xl font-bold text-indigo-700">{forecastData.demand_forecast["30"] || 0} <span className="text-sm font-medium text-indigo-400">units</span></div>
-                                                                    <div className="text-xs text-indigo-400 mt-1">Predicted Demand</div>
-                                                                </div>
-                    
-                                                                <div className={`rounded-2xl p-4 border ${forecastData.reorder_now ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
-                                                                    <div className={`text-xs font-bold uppercase tracking-wider mb-2 ${forecastData.reorder_now ? 'text-amber-500' : 'text-emerald-500'}`}>Recommendation</div>
-                                                                    <div className={`text-lg font-bold flex items-center gap-2 ${forecastData.reorder_now ? 'text-amber-700' : 'text-emerald-700'}`}>
-                                                                        {forecastData.reorder_now ? (
-                                                                            <>
-                                                                                <Zap className="w-5 h-5" /> Reorder Now
-                                                                            </>
-                                                                        ) : (
-                                                                            <>
-                                                                                <CheckCircle className="w-5 h-5" /> Sufficient Stock
-                                                                            </>
-                                                                        )}
-                                                                    </div>
-                                                                    {forecastData.reorder_now && (
-                                                                        <div className="text-xs text-amber-600/80 mt-1">Suggested Qty: <strong>{forecastData.reorder_quantity?.["30"] || 0}</strong></div>
-                                                                    )}
-                                                                </div>
-                    
-                                                                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                                                                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Confidence Score</div>
-                                                                    <div className="flex items-end gap-2">
-                                                                        <div className="text-2xl font-bold text-slate-800">High</div>
-                                                                        <div className="mb-1 text-xs px-2 py-0.5 bg-emerald-100 text-emerald-600 font-bold rounded-full">92%</div>
-                                                                    </div>
-                                                                    <div className="text-xs text-slate-400 mt-1">Based on solid historical data</div>
-                                                                </div>
-                                                            </div>
-                    
-                                                            {/* Consolidated Premium Forecast Chart */}
-                                                            <div className="w-full">
-                                                                <MetricCard className="w-full border-slate-100 shadow-sm rounded-[2rem] overflow-hidden bg-white">
-                                                                    <MetricCardHeader className="border-0 min-h-auto pt-6 pb-6">
-                                                                        <div className="space-y-1">
-                                                                            <MetricCardTitle className="text-lg font-bold text-slate-800">Market Intelligence</MetricCardTitle>
-                                                                            <MetricCardDescription className="text-slate-500 text-xs font-medium uppercase tracking-wider">Demand vs Price Trends</MetricCardDescription>
-                                                                        </div>
-                                                                        <CardToolbar>
-                                                                            <div className="flex items-center gap-4 text-xs font-semibold mr-4">
-                                                                                <div className="flex items-center gap-1.5 text-slate-500">
-                                                                                    <div className="size-2.5 border-2 rounded-full border-slate-400 bg-white"></div>
-                                                                                    History
-                                                                                </div>
-                                                                                <div className="flex items-center gap-1.5 text-indigo-500">
-                                                                                    <div className="size-2.5 border-2 rounded-full border-indigo-500 bg-white"></div>
-                                                                                    Demand Forecast
-                                                                                </div>
-                                                                                <div className="flex items-center gap-1.5 text-emerald-500">
-                                                                                    <div className="size-2.5 border-2 rounded-full border-emerald-500 bg-white"></div>
-                                                                                    Price Prediction
-                                                                                </div>
-                                                                            </div>
-                                                                            <DropdownMenu>
-                                                                                <DropdownMenuTrigger asChild>
-                                                                                    <button className="p-2 hover:bg-slate-50 rounded-full transition-colors">
-                                                                                        <MoreHorizontal className="size-5 text-slate-400" />
-                                                                                    </button>
-                                                                                </DropdownMenuTrigger>
-                                                                                <DropdownMenuContent align="end" side="bottom">
-                                                                                    <DropdownMenuItem className="gap-2">
-                                                                                        <Download className="size-4" /> Download Report
-                                                                                    </DropdownMenuItem>
-                                                                                    <DropdownMenuItem className="gap-2">
-                                                                                        <Share2 className="size-4" /> Share Analytics
-                                                                                    </DropdownMenuItem>
-                                                                                    <DropdownMenuSeparator />
-                                                                                    <DropdownMenuItem className="gap-2">
-                                                                                        <RefreshCw className="size-4" /> Recalculate
-                                                                                    </DropdownMenuItem>
-                                                                                </DropdownMenuContent>
-                                                                            </DropdownMenu>
-                                                                        </CardToolbar>
-                                                                    </MetricCardHeader>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
 
-                                                                    <MetricCardContent className="px-4 pb-8">
-                                                                        {chartData && chartData.length > 0 ? (
-                                                                            <ChartContainer config={forecastChartConfig} className="h-[400px] w-full">
-                                                                                <ComposedChart
-                                                                                    data={JSON.parse(JSON.stringify(chartData))}
-                                                                                    margin={{ top: 20, right: 30, left: 10, bottom: 0 }}
-                                                                                >
-                                                                                    <defs>
-                                                                                        <linearGradient id="premiumDemandGradient" x1="0" y1="0" x2="0" y2="1">
-                                                                                            <stop offset="0%" stopColor="#818cf8" stopOpacity={0.25} />
-                                                                                            <stop offset="100%" stopColor="#818cf8" stopOpacity={0.01} />
-                                                                                        </linearGradient>
-                                                                                        <linearGradient id="premiumPriceGradient" x1="0" y1="0" x2="0" y2="1">
-                                                                                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.15} />
-                                                                                            <stop offset="100%" stopColor="#10b981" stopOpacity={0.01} />
-                                                                                        </linearGradient>
-                                                                                    </defs>
+                                {/* Loading State */}
+                                {isForecastLoading && (
+                                    <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-4">
+                                        <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center relative">
+                                            <Sparkles className="w-8 h-8 text-indigo-500 animate-pulse" />
+                                            <div className="absolute inset-0 rounded-full border-4 border-indigo-100 border-t-indigo-500 animate-spin" />
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="font-bold text-slate-700 animate-pulse">Generating Forecast...</p>
+                                            <p className="text-xs text-slate-400 mt-1">Analyzing historical trends and seasonality</p>
+                                        </div>
+                                    </div>
+                                )}
 
-                                                                                    <CartesianGrid strokeDasharray="4 12" stroke="#e2e8f0" vertical={false} />
-
-                                                                                    <XAxis 
-                                                                                        dataKey="date" 
-                                                                                        axisLine={false}
-                                                                                        tickLine={false}
-                                                                                        tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }}
-                                                                                        tickMargin={15}
-                                                                                        tickFormatter={(val) => {
-                                                                                            const d = new Date(val);
-                                                                                            return isNaN(d.getTime()) ? val : `${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'short' })}`;
-                                                                                        }}
-                                                                                    />
-
-                                                                                    <YAxis 
-                                                                                        yAxisId="demand"
-                                                                                        orientation="left"
-                                                                                        axisLine={false}
-                                                                                        tickLine={false}
-                                                                                        tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }}
-                                                                                        tickMargin={10}
-                                                                                    />
-
-                                                                                    <YAxis 
-                                                                                        yAxisId="price"
-                                                                                        orientation="right"
-                                                                                        axisLine={false}
-                                                                                        tickLine={false}
-                                                                                        tick={{ fontSize: 11, fill: '#10b981', fontWeight: 600 }}
-                                                                                        tickMargin={10}
-                                                                                        tickFormatter={(val) => `₹${val}`}
-                                                                                    />
-
-                                                                                     <ChartTooltip
-                                                                                        cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
-                                                                                        content={
-                                                                                            <ChartTooltipContent 
-                                                                                                className="w-48 bg-white/95 backdrop-blur-md border border-slate-100 shadow-2xl rounded-2xl p-3"
-                                                                                                formatter={(value:any, name:any) => (
-                                                                                                    <div className="flex items-center justify-between w-full">
-                                                                                                        <span className="text-slate-500 font-medium">{name}:</span>
-                                                                                                        <span className="font-bold text-slate-900 ml-2">
-                                                                                                            {Array.isArray(value) 
-                                                                                                                ? `${value[0]} - ${value[1]}` 
-                                                                                                                : (name.toLowerCase().includes('price') ? `₹${value}` : value)
-                                                                                                            }
-                                                                                                        </span>
-                                                                                                    </div>
-                                                                                                )}
-                                                                                            />
-                                                                                        }
-                                                                                    />
-
-                                                                                    {/* Confidence Range Shading */}
-                                                                                    <Area
-                                                                                        yAxisId="demand"
-                                                                                        dataKey="confRange"
-                                                                                        type="monotone"
-                                                                                        stroke="none"
-                                                                                        fill="url(#premiumDemandGradient)"
-                                                                                        activeDot={false}
-                                                                                    />
-
-                                                                                    {/* Demand History */}
-                                                                                    <Line
-                                                                                        yAxisId="demand"
-                                                                                        type="monotone"
-                                                                                        dataKey="history"
-                                                                                        stroke="var(--color-history)"
-                                                                                        strokeWidth={4}
-                                                                                        dot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-history)' }}
-                                                                                        activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-history)' }}
-                                                                                        connectNulls
-                                                                                    />
-
-                                                                                    {/* Demand Forecast */}
-                                                                                    <Line
-                                                                                        yAxisId="demand"
-                                                                                        type="monotone"
-                                                                                        dataKey="forecast"
-                                                                                        stroke="var(--color-forecast)"
-                                                                                        strokeWidth={4}
-                                                                                        strokeDasharray="8 4"
-                                                                                        dot={false}
-                                                                                        activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-forecast)' }}
-                                                                                        connectNulls
-                                                                                    />
-
-                                                                                    {/* Price History */}
-                                                                                    <Line
-                                                                                        yAxisId="price"
-                                                                                        type="monotone"
-                                                                                        dataKey="priceHistory"
-                                                                                        stroke="var(--color-priceHistory)"
-                                                                                        strokeWidth={2}
-                                                                                        dot={false}
-                                                                                        activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-priceHistory)' }}
-                                                                                        connectNulls
-                                                                                    />
-
-                                                                                    {/* Price Forecast */}
-                                                                                    <Line
-                                                                                        yAxisId="price"
-                                                                                        type="monotone"
-                                                                                        dataKey="priceForecast"
-                                                                                        stroke="var(--color-priceForecast)"
-                                                                                        strokeWidth={2}
-                                                                                        strokeDasharray="5 5"
-                                                                                        dot={false}
-                                                                                        activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-priceForecast)' }}
-                                                                                        connectNulls
-                                                                                    />
-                                                                                </ComposedChart>
-                                                                            </ChartContainer>
-                                                                        ) : (
-                                                                            <div className="h-[400px] w-full flex items-center justify-center text-slate-300 text-sm italic">
-                                                                                Fetching latest market signals...
-                                                                            </div>
-                                                                        )}
-                                                                    </MetricCardContent>
-                                                                </MetricCard>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                    
-                                                    {!isForecastLoading && !forecastData && (
-                                                        <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-2xl">
-                                                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                                <Sparkles className="w-8 h-8 text-slate-300" />
-                                                            </div>
-                                                            <h4 className="font-bold text-slate-600">No Forecast Generated</h4>
-                                                            <p className="text-slate-400 text-sm mt-1 max-w-sm mx-auto">Search and select a medicine above to generate an AI-powered demand forecast.</p>
-                                                        </div>
+                                {/* Forecast Data Display */}
+                                {!isForecastLoading && forecastData && (
+                                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                        {/* Top Cards */}
+                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Medicine Details</div>
+                                                    {isFeaturedMedicine && (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-2 py-0.5 rounded-full">
+                                                            <Sparkles className="w-2.5 h-2.5" />
+                                                            Featured
+                                                        </span>
                                                     )}
                                                 </div>
+                                                <div className="font-bold text-lg text-slate-800 leading-tight">{forecastData.medicine_name}</div>
+                                                {_selectedForecastMedicine && (
+                                                    <div className="text-xs text-slate-500 mt-3 space-y-1.5 border-t border-slate-200 pt-2">
+                                                        <div className="grid grid-cols-2 gap-x-2">
+                                                            <span className="text-slate-400">Generic:</span>
+                                                            <span className="font-medium text-slate-700 truncate">{_selectedForecastMedicine.genericName}</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-x-2">
+                                                            <span className="text-slate-400">Strength:</span>
+                                                            <span className="font-medium text-slate-700">{_selectedForecastMedicine.strength}</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-x-2">
+                                                            <span className="text-slate-400">Mfr:</span>
+                                                            <span className="font-medium text-slate-700 truncate">{_selectedForecastMedicine.manufacturer}</span>
+                                                        </div>
+                                                        <div className="block mt-1">
+                                                            <span className="text-slate-400 block mb-0.5">Batch Numbers:</span>
+                                                            <span className="font-medium text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded text-[10px] break-all">
+                                                                {_selectedForecastMedicine.inventory?.map((b: any) => b.batchNumber).join(", ") || "N/A"}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-200">Current Stock: <span className="font-bold text-slate-900">{forecastData.current_stock}</span></div>
                                             </div>
+
+                                            <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
+                                                <div className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2">Forecast (30 Days)</div>
+                                                <div className="text-2xl font-bold text-indigo-700">{forecastData.demand_forecast["30"] || 0} <span className="text-sm font-medium text-indigo-400">units</span></div>
+                                                <div className="text-xs text-indigo-400 mt-1">Predicted Demand</div>
+                                            </div>
+
+                                            <div className={`rounded-2xl p-4 border ${forecastData.reorder_now ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                                                <div className={`text-xs font-bold uppercase tracking-wider mb-2 ${forecastData.reorder_now ? 'text-amber-500' : 'text-emerald-500'}`}>Recommendation</div>
+                                                <div className={`text-lg font-bold flex items-center gap-2 ${forecastData.reorder_now ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                                    {forecastData.reorder_now ? (
+                                                        <>
+                                                            <Zap className="w-5 h-5" /> Reorder Now
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <CheckCircle className="w-5 h-5" /> Sufficient Stock
+                                                        </>
+                                                    )}
+                                                </div>
+                                                {forecastData.reorder_now && (
+                                                    <div className="text-xs text-amber-600/80 mt-1">Suggested Qty: <strong>{forecastData.reorder_quantity?.["30"] || 0}</strong></div>
+                                                )}
+                                            </div>
+
+                                            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Confidence Score</div>
+                                                <div className="flex items-end gap-2">
+                                                    <div className="text-2xl font-bold text-slate-800">High</div>
+                                                    <div className="mb-1 text-xs px-2 py-0.5 bg-emerald-100 text-emerald-600 font-bold rounded-full">92%</div>
+                                                </div>
+                                                <div className="text-xs text-slate-400 mt-1">Based on solid historical data</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Consolidated Premium Forecast Chart */}
+                                        <div className="w-full">
+                                            <MetricCard className="w-full border-slate-100 shadow-sm rounded-[2rem] overflow-hidden bg-white">
+                                                <MetricCardHeader className="border-0 min-h-auto pt-6 pb-6">
+                                                    <div className="space-y-1">
+                                                        <MetricCardTitle className="text-lg font-bold text-slate-800">Market Intelligence</MetricCardTitle>
+                                                        <MetricCardDescription className="text-slate-500 text-xs font-medium uppercase tracking-wider">Demand vs Price Trends</MetricCardDescription>
+                                                    </div>
+                                                    <CardToolbar>
+                                                        <div className="flex items-center gap-4 text-xs font-semibold mr-4">
+                                                            <div className="flex items-center gap-1.5 text-slate-500">
+                                                                <div className="size-2.5 border-2 rounded-full border-slate-400 bg-white"></div>
+                                                                History
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 text-indigo-500">
+                                                                <div className="size-2.5 border-2 rounded-full border-indigo-500 bg-white"></div>
+                                                                Demand Forecast
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 text-emerald-500">
+                                                                <div className="size-2.5 border-2 rounded-full border-emerald-500 bg-white"></div>
+                                                                Price Prediction
+                                                            </div>
+                                                        </div>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <button className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                                                                    <MoreHorizontal className="size-5 text-slate-400" />
+                                                                </button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end" side="bottom">
+                                                                <DropdownMenuItem className="gap-2">
+                                                                    <Download className="size-4" /> Download Report
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem className="gap-2">
+                                                                    <Share2 className="size-4" /> Share Analytics
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem className="gap-2">
+                                                                    <RefreshCw className="size-4" /> Recalculate
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </CardToolbar>
+                                                </MetricCardHeader>
+
+                                                <MetricCardContent className="px-4 pb-8">
+                                                    {chartData && chartData.length > 0 ? (
+                                                        <ChartContainer config={forecastChartConfig} className="h-[400px] w-full">
+                                                            <ComposedChart
+                                                                data={JSON.parse(JSON.stringify(chartData))}
+                                                                margin={{ top: 20, right: 30, left: 10, bottom: 0 }}
+                                                            >
+                                                                <defs>
+                                                                    <linearGradient id="premiumDemandGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                        <stop offset="0%" stopColor="#818cf8" stopOpacity={0.25} />
+                                                                        <stop offset="100%" stopColor="#818cf8" stopOpacity={0.01} />
+                                                                    </linearGradient>
+                                                                    <linearGradient id="premiumPriceGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.15} />
+                                                                        <stop offset="100%" stopColor="#10b981" stopOpacity={0.01} />
+                                                                    </linearGradient>
+                                                                </defs>
+
+                                                                <CartesianGrid strokeDasharray="4 12" stroke="#e2e8f0" vertical={false} />
+
+                                                                <XAxis
+                                                                    dataKey="date"
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }}
+                                                                    tickMargin={15}
+                                                                    tickFormatter={(val) => {
+                                                                        const d = new Date(val);
+                                                                        return isNaN(d.getTime()) ? val : `${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'short' })}`;
+                                                                    }}
+                                                                />
+
+                                                                <YAxis
+                                                                    yAxisId="demand"
+                                                                    orientation="left"
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }}
+                                                                    tickMargin={10}
+                                                                />
+
+                                                                <YAxis
+                                                                    yAxisId="price"
+                                                                    orientation="right"
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    tick={{ fontSize: 11, fill: '#10b981', fontWeight: 600 }}
+                                                                    tickMargin={10}
+                                                                    tickFormatter={(val) => `₹${val}`}
+                                                                />
+
+                                                                <ChartTooltip
+                                                                    cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
+                                                                    content={
+                                                                        <ChartTooltipContent
+                                                                            className="w-48 bg-white/95 backdrop-blur-md border border-slate-100 shadow-2xl rounded-2xl p-3"
+                                                                            formatter={(value: any, name: any) => (
+                                                                                <div className="flex items-center justify-between w-full">
+                                                                                    <span className="text-slate-500 font-medium">{name}:</span>
+                                                                                    <span className="font-bold text-slate-900 ml-2">
+                                                                                        {Array.isArray(value)
+                                                                                            ? `${value[0]} - ${value[1]}`
+                                                                                            : (name.toLowerCase().includes('price') ? `₹${value}` : value)
+                                                                                        }
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+                                                                        />
+                                                                    }
+                                                                />
+
+                                                                {/* Confidence Range Shading */}
+                                                                <Area
+                                                                    yAxisId="demand"
+                                                                    dataKey="confRange"
+                                                                    type="monotone"
+                                                                    stroke="none"
+                                                                    fill="url(#premiumDemandGradient)"
+                                                                    activeDot={false}
+                                                                />
+
+                                                                {/* Demand History */}
+                                                                <Line
+                                                                    yAxisId="demand"
+                                                                    type="monotone"
+                                                                    dataKey="history"
+                                                                    stroke="var(--color-history)"
+                                                                    strokeWidth={4}
+                                                                    dot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-history)' }}
+                                                                    activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-history)' }}
+                                                                    connectNulls
+                                                                />
+
+                                                                {/* Demand Forecast */}
+                                                                <Line
+                                                                    yAxisId="demand"
+                                                                    type="monotone"
+                                                                    dataKey="forecast"
+                                                                    stroke="var(--color-forecast)"
+                                                                    strokeWidth={4}
+                                                                    strokeDasharray="8 4"
+                                                                    dot={false}
+                                                                    activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-forecast)' }}
+                                                                    connectNulls
+                                                                />
+
+                                                                {/* Price History */}
+                                                                <Line
+                                                                    yAxisId="price"
+                                                                    type="monotone"
+                                                                    dataKey="priceHistory"
+                                                                    stroke="var(--color-priceHistory)"
+                                                                    strokeWidth={2}
+                                                                    dot={false}
+                                                                    activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-priceHistory)' }}
+                                                                    connectNulls
+                                                                />
+
+                                                                {/* Price Forecast */}
+                                                                <Line
+                                                                    yAxisId="price"
+                                                                    type="monotone"
+                                                                    dataKey="priceForecast"
+                                                                    stroke="var(--color-priceForecast)"
+                                                                    strokeWidth={2}
+                                                                    strokeDasharray="5 5"
+                                                                    dot={false}
+                                                                    activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-priceForecast)' }}
+                                                                    connectNulls
+                                                                />
+                                                            </ComposedChart>
+                                                        </ChartContainer>
+                                                    ) : (
+                                                        <div className="h-[400px] w-full flex items-center justify-center text-slate-300 text-sm italic">
+                                                            Fetching latest market signals...
+                                                        </div>
+                                                    )}
+                                                </MetricCardContent>
+                                            </MetricCard>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {!isForecastLoading && !forecastData && (
+                                    <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-2xl">
+                                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <Sparkles className="w-8 h-8 text-slate-300" />
+                                        </div>
+                                        <h4 className="font-bold text-slate-600">No Forecast Generated</h4>
+                                        <p className="text-slate-400 text-sm mt-1 max-w-sm mx-auto">Search and select a medicine above to generate an AI-powered demand forecast.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             {/* Premium Sales Chart */}
@@ -1966,7 +1966,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                     </div>
                                                 </div>
                                             </div>
-                                            
+
                                             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                                                 <SelectTrigger
                                                     className="w-[140px] rounded-xl border-2 font-bold shadow-sm focus:ring-0 h-10"
@@ -2081,11 +2081,11 @@ const StoreOwnerDashboard: React.FC = () => {
                                                             />
 
                                                             {trendData.length > 0 && (
-                                                                <ReferenceLine 
-                                                                    x={trendData[trendData.length - 1].date} 
-                                                                    stroke={theme.hex} 
-                                                                    strokeDasharray="4 4" 
-                                                                    strokeWidth={1.5} 
+                                                                <ReferenceLine
+                                                                    x={trendData[trendData.length - 1].date}
+                                                                    stroke={theme.hex}
+                                                                    strokeDasharray="4 4"
+                                                                    strokeWidth={1.5}
                                                                 />
                                                             )}
 
@@ -2131,7 +2131,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                     const high = Math.max(...revenues);
                                                                     const low = Math.min(...revenues);
                                                                     const val = trendData[index].value;
-                                                                    
+
                                                                     if (index === 0 || index === trendData.length - 1 || val === high || (val === low && low !== high)) {
                                                                         return (
                                                                             <circle
@@ -2180,7 +2180,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </div>
                                     Network Pulse
                                 </h3>
-                                
+
                                 <div className="relative pl-2 space-y-5 flex-1 overflow-visible">
                                     <div className="absolute left-[27px] top-6 bottom-6 w-[2px] bg-slate-50"></div>
 
@@ -2265,16 +2265,16 @@ const StoreOwnerDashboard: React.FC = () => {
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                                
+
                                 {/* Recommended/Search Suppliers */}
                                 {(searchQuery || (directorySuppliers && directorySuppliers.filter(s => s.connectionStatus === 'NONE' && !data?.lists?.suppliers?.some(conn => conn.id === s.id)).length > 0)) && (
                                     <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                         <div className="flex items-center justify-between mb-4">
                                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                                 {searchQuery ? (
-                                                     <><Search className="w-5 h-5 text-indigo-500" /> Search Results</>
+                                                    <><Search className="w-5 h-5 text-indigo-500" /> Search Results</>
                                                 ) : (
-                                                     <><Sparkles className="w-5 h-5 text-indigo-500 fill-indigo-100" /> Recommended Suppliers</>
+                                                    <><Sparkles className="w-5 h-5 text-indigo-500 fill-indigo-100" /> Recommended Suppliers</>
                                                 )}
                                             </h3>
                                         </div>
@@ -2304,7 +2304,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                 Connect
                                                             </Button>
                                                         </div>
-                                                        
+
                                                         <div className="mt-4 pt-3 border-t border-slate-50 grid grid-cols-2 gap-2">
                                                             <div className="max-w-full overflow-hidden">
                                                                 <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Email</div>
@@ -2402,7 +2402,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                 )}
 
                                 <div className="mb-4">
-                                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                         <Link className="w-5 h-5 text-slate-500" />
                                         Connected Network
                                     </h3>
@@ -2501,7 +2501,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
-                        </div>
+                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -2880,7 +2880,7 @@ const StoreOwnerDashboard: React.FC = () => {
                     </motion.div>
                 )}
 
-             
+
                 {/* --- RETURNS TAB --- */}
                 {activeTab === 'return' && (
                     <div className="flex flex-col gap-6 h-full pb-8">
@@ -2896,8 +2896,8 @@ const StoreOwnerDashboard: React.FC = () => {
                                         key={tab.id}
                                         onClick={() => setReturnSubTab(tab.id as any)}
                                         className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 cursor-pointer ${returnSubTab === tab.id
-                                                ? "bg-black text-white shadow-lg shadow-black/20"
-                                                : "text-slate-500 hover:bg-white hover:text-slate-900"
+                                            ? "bg-black text-white shadow-lg shadow-black/20"
+                                            : "text-slate-500 hover:bg-white hover:text-slate-900"
                                             }`}
                                     >
                                         <tab.icon className={`w-4 h-4 ${returnSubTab === tab.id ? 'animate-spin-slow' : ''}`} />
@@ -3125,8 +3125,8 @@ const StoreOwnerDashboard: React.FC = () => {
                                                     const supplier = data?.lists?.suppliers?.find(s => s.id === req.supplierId);
                                                     const statusConfig = req.status === 'ACCEPTED' ? { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' } :
                                                         req.status === 'REJECTED' ? { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200' } :
-                                                        req.status === 'FULFILLED' ? { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200' } :
-                                                            { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' };
+                                                            req.status === 'FULFILLED' ? { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200' } :
+                                                                { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' };
 
                                                     return (
                                                         <div key={req.id} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-center justify-between gap-6 group">
@@ -3583,12 +3583,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
 
             </main >
-            <FeedbackToast
-                visible={showFeedback}
-                onClose={() => setShowFeedback(false)}
-                message={feedbackMessage}
-                onFeedback={(type) => console.log("Feedback:", type)}
-            />
+
 
             {/* Logout Confirmation Modal */}
             <AnimatePresence>
@@ -4066,6 +4061,38 @@ const StoreOwnerDashboard: React.FC = () => {
                                 className="w-full h-12 cursor-pointer rounded-xl font-bold !bg-black !text-white hover:!bg-slate-800"
                             >
                                 Close
+                            </Button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Feedback / Notification Modal */}
+            <AnimatePresence>
+                {showFeedback && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center relative overflow-hidden"
+                        >
+                            <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 bg-blue-100 text-blue-600">
+                                <Sparkles className="w-8 h-8" />
+                            </div>
+
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">
+                                Notification
+                            </h3>
+                            <p className="text-slate-500 mb-8 leading-relaxed">
+                                {feedbackMessage}
+                            </p>
+
+                            <Button
+                                onClick={() => setShowFeedback(false)}
+                                className="w-full h-12 cursor-pointer rounded-xl font-bold !bg-black !text-white hover:!bg-slate-800"
+                            >
+                                Got it
                             </Button>
                         </motion.div>
                     </div>
