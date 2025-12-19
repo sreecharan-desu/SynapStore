@@ -100,7 +100,7 @@ export interface SupplierRequest {
     id: string;
     supplierId: string;
     storeId: string;
-    status: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";
+    status: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED" | "FULFILLED";
     message?: string;
     createdAt: string;
     updatedAt: string;

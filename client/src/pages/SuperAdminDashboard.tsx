@@ -73,7 +73,7 @@ const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 const StatusBadge = ({ isActive }: { isActive: boolean }) => (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isActive
-        ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+        ? "bg-black text-emerald-800 border border-emerald-200"
         : "bg-red-100 text-red-800 border border-red-200"
         }`}>
         {isActive ? "Active" : "Suspended"}
@@ -656,7 +656,7 @@ const SuperAdminDashboard: React.FC = () => {
 
                                         {/* Swapped: Active Supply Partners (Previously Inventory Value was here) */}
                                         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center gap-4">
-                                            <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                                            <div className="p-3 bg-black rounded-xl text-emerald-600">
                                                 <Truck className="w-6 h-6" />
                                             </div>
                                             <div>
@@ -775,7 +775,7 @@ const SuperAdminDashboard: React.FC = () => {
                                             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col justify-center">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <div className="p-2 bg-purple-50 rounded-lg text-purple-600"><Package className="w-5 h-5" /></div>
-                                                    <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">Assets</span>
+                                                    <span className="text-xs font-bold bg-black text-emerald-700 px-2 py-1 rounded-full">Assets</span>
                                                 </div>
                                                 <div className="text-2xl font-bold text-slate-800">
                                                     ₹{Number(analytics.overview.financials.inventoryValue).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
@@ -884,8 +884,8 @@ const SuperAdminDashboard: React.FC = () => {
                                         <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                                         <span className="text-xs text-blue-700 font-medium">User</span>
                                     </div>
-                                    <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100">
-                                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                    <div className="flex items-center gap-2 px-3 py-1 bg-black rounded-full border border-emerald-100">
+                                        <span className="w-2 h-2 rounded-full bg-black"></span>
                                         <span className="text-xs text-emerald-700 font-medium">Store</span>
                                     </div>
                                     <div className="flex items-center gap-2 px-3 py-1 bg-pink-50 rounded-full border border-pink-100">
@@ -1577,7 +1577,7 @@ const SuperAdminDashboard: React.FC = () => {
                                 className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
                             >
                                 <div className="flex flex-col items-center text-center gap-4">
-                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${notificationResult.success ? "bg-emerald-50" : "bg-red-50"}`}>
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${notificationResult.success ? "bg-black" : "bg-red-50"}`}>
                                         {notificationResult.success ? (
                                             <CheckCircle2 className="w-8 h-8 text-emerald-500 translate-x-0.5" />
                                         ) : (
@@ -1728,7 +1728,7 @@ const SuperAdminDashboard: React.FC = () => {
                                 className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
                             >
                                 <div className="flex flex-col items-center text-center gap-4">
-                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${storeToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${storeToToggle.isActive ? "bg-amber-50" : "bg-black"}`}>
                                         {storeToToggle.isActive ? (
                                             <Lock className="w-8 h-8 text-amber-500" />
                                         ) : (
@@ -1836,7 +1836,7 @@ const SuperAdminDashboard: React.FC = () => {
                                 className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
                             >
                                 <div className="flex flex-col items-center text-center gap-4">
-                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${supplierToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${supplierToToggle.isActive ? "bg-amber-50" : "bg-black"}`}>
                                         {supplierToToggle.isActive ? (
                                             <Lock className="w-8 h-8 text-amber-500" />
                                         ) : (
@@ -1995,7 +1995,7 @@ const SuperAdminDashboard: React.FC = () => {
                                 className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
                             >
                                 <div className="flex flex-col items-center text-center gap-4">
-                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${userToToggle.isActive ? "bg-amber-50" : "bg-emerald-50"}`}>
+                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-2 ${userToToggle.isActive ? "bg-amber-50" : "bg-black"}`}>
                                         {userToToggle.isActive ? (
                                             <Lock className="w-8 h-8 text-amber-500" />
                                         ) : (

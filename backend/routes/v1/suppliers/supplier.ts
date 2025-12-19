@@ -5,11 +5,29 @@ import { authenticate } from "../../../middleware/authenticate";
 import { RequestWithUser } from "../../../middleware/store";
 import { z } from "zod";
 import { sendMail } from "../../../lib/mailer";
-import { getSupplierRequestEmailTemplate, getNotificationEmailTemplate, getDisconnectionEmailTemplate, getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate } from "../../../lib/emailTemplates";
+import { getSupplierRequestEmailTemplate, getNotificationEmailTemplate, getDisconnectionEmailTemplate, getRequestAcceptedEmailTemplate, getRequestRejectedEmailTemplate, getReceiptEmailTemplate } from "../../../lib/emailTemplates";
 import { sendSuccess, sendError, handleZodError, handlePrismaError, sendInternalError } from "../../../lib/api";
 import { notificationQueue } from "../../../lib/queue";
 import { InventoryService } from "../../../lib/inventory";
-import { getReceiptEmailTemplate } from "../../../lib/emailTemplates";
+
+// Helper to clean up inventory after a return is accepted/fulfilled
+async function cleanupReturnInventory(tx: any, payload: any) {
+  if (payload.type === "RETURN" && payload.items) {
+    for (const item of payload.items) {
+      if (item.inventoryBatchId) {
+        const batch = await tx.inventoryBatch.findUnique({
+          where: { id: item.inventoryBatchId }
+        });
+        // Delete if exhausted (qtyAvailable <= 0)
+        if (batch && batch.qtyAvailable <= 0) {
+          await tx.inventoryBatch.delete({
+            where: { id: item.inventoryBatchId }
+          });
+        }
+      }
+    }
+  }
+}
 
 const router = Router();
 
@@ -639,12 +657,18 @@ router.post(
         if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
         if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
 
-        // Transaction: Update Request -> Create Connection -> Log
+        // Transaction: Update Request -> Create Connection -> Handle Inventory cleanup -> Log
+        const payload = (request.payload as any) || {};
+        const isReturn = payload.type === "RETURN";
+
         await prisma.$transaction(async (tx) => {
             await tx.supplierRequest.update({
                 where: { id: requestId },
                 data: { status: "ACCEPTED" }
             });
+
+            // If it's a return, cleanup inventory batches that are now zeroed out
+            await cleanupReturnInventory(tx, payload);
             
             await tx.supplierStore.upsert({
                 where: {
@@ -666,7 +690,7 @@ router.post(
                     storeId: request.storeId,
                     userId: user.id,
                     action: "supplier_request_accepted_inbound",
-                    payload: { requestId }
+                    payload: { requestId, isReturn }
                 }
             });
         });
@@ -723,21 +747,41 @@ router.post(
         if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
         if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
 
-        await prisma.supplierRequest.update({
-            where: { id: requestId },
-            data: { 
-                status: "REJECTED",
-                // Optionally store the reason in the request itself if schema supported it
-            }
-        });
+        const payload = (request.payload as any) || {};
+        const isReturn = payload.type === "RETURN";
 
-        await prisma.activityLog.create({
-            data: {
-                storeId: request.storeId,
-                userId: user.id,
-                action: "supplier_request_rejected",
-                payload: { requestId, reason }
+        await prisma.$transaction(async (tx) => {
+            await tx.supplierRequest.update({
+                where: { id: requestId },
+                data: { 
+                    status: "REJECTED"
+                }
+            });
+
+            // Restore inventory if return is rejected
+            if (isReturn && payload.items) {
+                for (const item of payload.items) {
+                    if (item.inventoryBatchId && item.quantity > 0) {
+                        try {
+                            await tx.inventoryBatch.update({
+                                where: { id: item.inventoryBatchId },
+                                data: { qtyAvailable: { increment: item.quantity } }
+                            });
+                        } catch (e) {
+                            console.error(`Failed to restore inventory for rejected return: ${item.inventoryBatchId}`, e);
+                        }
+                    }
+                }
             }
+
+            await tx.activityLog.create({
+                data: {
+                    storeId: request.storeId,
+                    userId: user.id,
+                    action: "supplier_request_rejected",
+                    payload: { requestId, reason, isReturn }
+                }
+            });
         });
 
         // Notify Store with Reason
@@ -811,9 +855,15 @@ router.post(
 
         // Logic for RETURN requests
         if (requestType === "RETURN") {
-            await prisma.supplierRequest.update({
-                where: { id: requestId },
-                data: { status: "FULFILLED" }
+            await prisma.$transaction(async (tx) => {
+                await tx.supplierRequest.update({
+                    where: { id: requestId },
+                    data: { status: "FULFILLED" }
+                });
+
+                // Clean up inventory even in fulfillment path for returns
+                // @ts-ignore
+                await cleanupReturnInventory(tx, request.payload);
             });
 
              // Notify Store Owner

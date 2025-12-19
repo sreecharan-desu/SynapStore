@@ -604,6 +604,131 @@ dashboardRouter.get(
   }
 );
 
+/**
+ * GET /v1/dashboard/featured-medicine
+ * Description: Returns the "best" candidate for forecasting (e.g., low stock + high sales).
+ * Headers: 
+ *  - Authorization: Bearer <token>
+ * Responses:
+ *  - 200: { success: true, data: { medicine: {...} } }
+ */
+dashboardRouter.get(
+  "/featured-medicine",
+  authenticate,
+  storeContext,
+  requireStore,
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const store = req.store!;
+      const storeId = String(store.id);
+
+      // 1. Get Top Movers in last 30 days (by quantity)
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const topMoversRaw = await prisma.saleItem.groupBy({
+        by: ["medicineId"],
+        where: {
+          sale: {
+            storeId,
+            createdAt: { gte: thirtyDaysAgo },
+            paymentStatus: "PAID",
+          },
+        },
+        _sum: { qty: true },
+        orderBy: [{ _sum: { qty: "desc" } }],
+        take: 20,
+      });
+
+      const topMoverIds = topMoversRaw.map(t => t.medicineId);
+
+      // 2. Get low stock medicines
+      const lowStockMeds = await prisma.medicine.findMany({
+        where: {
+          storeId,
+          isActive: true,
+          inventory: {
+            some: { qtyAvailable: { lte: 20 } } // Stricter threshold for "featured"
+          }
+        },
+        include: {
+          inventory: {
+            where: { qtyAvailable: { gt: 0 } }
+          }
+        },
+        take: 20
+      });
+
+      // 3. Combine and Score
+      const allCandidateIds = Array.from(new Set([...topMoverIds, ...lowStockMeds.map(m => m.id)]));
+      
+      const candidates = await prisma.medicine.findMany({
+        where: { id: { in: allCandidateIds }, isActive: true },
+        include: {
+          inventory: {
+            where: { qtyAvailable: { gt: 0 } },
+            orderBy: { expiryDate: 'asc' }
+          }
+        }
+      });
+
+      const dek = dekFromEnv();
+      const scored = candidates.map(m => {
+        let score = 0;
+        const totalQty = m.inventory.reduce((acc, b) => acc + (b.qtyAvailable || 0), 0);
+        
+        // Priority points
+        if (totalQty <= 10) score += 10;
+        else if (totalQty <= 50) score += 5;
+
+        // Sales points
+        const moverData = topMoversRaw.find(t => t.medicineId === m.id);
+        if (moverData) {
+          score += 5; // Is a top mover
+          score += Math.min(Number(moverData._sum.qty || 0) / 10, 10); // Volume bonus
+        }
+
+        // Expiry warning points
+        const hasExpiring = m.inventory.some(b => b.expiryDate && new Date(b.expiryDate) < new Date(Date.now() + 60 * 24 * 60 * 60 * 1000));
+        if (hasExpiring) score += 3;
+
+        // Decrypt display name
+        let brandName = m.brandName;
+        try {
+          const d = decryptCell(m.brandName, dek);
+          if (d) brandName = d;
+        } catch (e) {}
+
+        // Decrypt batch numbers
+        const decryptedInventory = m.inventory.map(b => {
+          let batchNumber = b.batchNumber;
+          try {
+            if (batchNumber) {
+              const d = decryptCell(batchNumber, dek);
+              if (d) batchNumber = d;
+            }
+          } catch (e) {}
+          return { ...b, batchNumber };
+        });
+
+        return {
+          ...m,
+          brandName,
+          inventory: decryptedInventory,
+          score
+        };
+      });
+
+      // Sort by score descending
+      scored.sort((a, b) => b.score - a.score);
+
+      const featured = scored[0] || null;
+
+      return sendSuccess(res, "Featured medicine found", { medicine: featured });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 
 
 

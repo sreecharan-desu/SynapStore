@@ -94,7 +94,7 @@ export const SuppliersPage = () => {
                             <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold text-lg">
                                 {s.name.charAt(0)}
                             </div>
-                            <span className="text-xs font-medium bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full">Active</span>
+                            <span className="text-xs font-medium bg-black text-emerald-700 px-2 py-1 rounded-full">Active</span>
                         </div>
                         <h3 className="font-bold text-lg text-slate-900 mb-1">{s.name}</h3>
                         <div className="space-y-2 text-sm text-slate-500">

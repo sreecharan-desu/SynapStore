@@ -82,7 +82,7 @@ export default function FeedbackToast({ visible, onClose, onFeedback, message = 
                                                 size="icon"
                                                 aria-label="Thumbs up"
                                                 onClick={() => handleThumb('up')}
-                                                className="cursor-pointer hover:bg-emerald-50"
+                                                className="cursor-pointer hover:bg-black"
                                             >
                                                 <ThumbsUp className="h-4 w-4 text-emerald-600" />
                                             </Button>
@@ -150,7 +150,7 @@ export default function FeedbackToast({ visible, onClose, onFeedback, message = 
                             </>
                         ) : (
                             <motion.p layout className="text-slate-800 text-sm font-medium flex items-center gap-2">
-                                <span className="text-emerald-500 bg-emerald-50 p-1 rounded-full"><CheckCircle className="w-4 h-4" /></span> Thanks for the feedback!
+                                <span className="text-emerald-500 bg-black p-1 rounded-full"><CheckCircle className="w-4 h-4" /></span> Thanks for the feedback!
                             </motion.p>
                         )}
                     </motion.div>

@@ -4,7 +4,7 @@ import React from "react";
 import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Settings, LogOut, Users, Package, Calendar, Search, X, Sparkles, Lock, Truck, Zap, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, CheckCircle, XCircle, Send, History as HistoryIcon, ClipboardList, Download, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, MoreHorizontal, Loader2, RefreshCw, Filter, Clock, AlertTriangle} from "lucide-react";
+import { Bell, Settings, LogOut, Users, Package,  Search, X, Sparkles, Lock, Truck,  Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store,  XCircle, Send, History as HistoryIcon, ClipboardList, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, Loader2, Clock, AlertTriangle} from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 
 import { formatDistanceToNow } from "date-fns";
@@ -13,20 +13,23 @@ import { dashboardApi } from "../lib/api/endpoints";
 import { Button } from "../components/ui/button";
 import FeedbackToast from "../components/ui/feedback-toast";
 
+
 import { 
     Card as MetricCard, 
     CardHeader as MetricCardHeader, 
     CardContent as MetricCardContent, 
     CardTitle as MetricCardTitle, 
-    CardDescription as MetricCardDescription 
-} from "@/components/ui/card-custom";
+    CardDescription as MetricCardDescription,
+    CardToolbar
+} from "@/components/ui/card";
 import {
     Line,
     XAxis,
     YAxis,
     CartesianGrid,
     Area,
-    ComposedChart
+    ComposedChart,
+    ReferenceLine
 } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/line-charts-9";
 
@@ -37,7 +40,15 @@ import {
     SelectTrigger,
     SelectValue,
 } from "../components/ui/select";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu-premium";
 import { FaRupeeSign } from "react-icons/fa";
+import {  TrendingUp, TrendingDown, Zap, CheckCircle, Share2, Filter, RefreshCw, Calendar, Download, MoreHorizontal } from "lucide-react";
 import type { Supplier, SupplierRequest } from "@/lib/types";
 import { capitalize } from "lodash";
 
@@ -46,12 +57,7 @@ const Skeleton = ({ className }: { className?: string }) => (
     <div className={`animate-pulse bg-slate-200 rounded-md ${className}`} />
 );
 
-const chartConfig = {
-    revenue: {
-        label: "Revenue",
-        color: "hsl(var(--chart-1))",
-    },
-} satisfies ChartConfig;
+
 
 const forecastChartConfig = {
     history: {
@@ -65,6 +71,14 @@ const forecastChartConfig = {
     confRange: {
         label: "Confidence Interval",
         color: "#818cf8", // indigo-400
+    },
+    priceHistory: {
+        label: "Historical Price",
+        color: "#10b981", // emerald-500
+    },
+    priceForecast: {
+        label: "Price Prediction",
+        color: "#059669", // emerald-600
     }
 } satisfies ChartConfig;
 
@@ -226,9 +240,9 @@ const StoreOwnerDashboard: React.FC = () => {
                 // Fallback for demonstration if no suggestions found
                 if (returns.length === 0) {
                     returns = [
-                        { id: 'mock_1', brandName: 'Augmentin 625 Duo', batchNumber: 'BAT-AU-991', expiryDate: '2023-11-15', suggestedQty: 12, reason: 'Expired', purchasePrice: 420, inventoryBatchId: 'b_mock_1' },
-                        { id: 'mock_2', brandName: 'Pan 40 Tablet', batchNumber: 'BAT-PN-442', expiryDate: '2023-12-05', suggestedQty: 25, reason: 'Expired', purchasePrice: 135, inventoryBatchId: 'b_mock_2' },
-                        { id: 'mock_3', brandName: 'Telma 40mg', batchNumber: 'BAT-TL-553', expiryDate: '2024-01-10', suggestedQty: 15, reason: 'Expiring Soon', purchasePrice: 190, inventoryBatchId: 'b_mock_3' }
+                        { id: 'd3b1b4b2-4b2a-4b2a-8b2a-000000000001', brandName: 'Augmentin 625 Duo', batchNumber: 'BAT-AU-991', expiryDate: '2023-11-15', suggestedQty: 12, reason: 'Expired', purchasePrice: 420, inventoryBatchId: 'd3b1b4b2-4b2a-4b2a-8b2a-100000000001' },
+                        { id: 'd3b1b4b2-4b2a-4b2a-8b2a-000000000002', brandName: 'Pan 40 Tablet', batchNumber: 'BAT-PN-442', expiryDate: '2023-12-05', suggestedQty: 25, reason: 'Expired', purchasePrice: 135, inventoryBatchId: 'd3b1b4b2-4b2a-4b2a-8b2a-100000000002' },
+                        { id: 'd3b1b4b2-4b2a-4b2a-8b2a-000000000003', brandName: 'Telma 40mg', batchNumber: 'BAT-TL-553', expiryDate: '2024-01-10', suggestedQty: 15, reason: 'Expiring Soon', purchasePrice: 190, inventoryBatchId: 'd3b1b4b2-4b2a-4b2a-8b2a-100000000003' }
                     ];
                 }
 
@@ -268,6 +282,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const [returnSupplierId, setReturnSupplierId] = React.useState<string>("");
     const [returnNote, setReturnNote] = React.useState("");
     const [isSendingReturn, setIsSendingReturn] = React.useState(false);
+    const [returnSubTab, setReturnSubTab] = React.useState<"new" | "pending" | "history">("new");
 
     // POS Payment & Receipt Preview State
     const [posPaymentMethod, setPosPaymentMethod] = React.useState<string>("CASH");
@@ -670,20 +685,12 @@ const StoreOwnerDashboard: React.FC = () => {
                 try {
                     let medicineToForecast: any = null;
                     
-                    // Priority 1: Use first medicine from low stock list (critical priority)
-                    if (data?.lists?.lowStock && data.lists.lowStock.length > 0) {
-                        // Find first one valid that hasn't failed before
-                        const valid = data.lists.lowStock.find((m: any) => m.id && !failedForecasts.has(m.id));
-                        if (valid) medicineToForecast = valid;
-                    } 
+                    // Call new backend API to get the best candidate
+                    console.log("Fetching featured medicine from backend...");
+                    const featuredRes = await dashboardApi.getFeaturedMedicine();
                     
-                    // Priority 2: If no low stock, search for any available medicine
-                    if (!medicineToForecast) {
-                        const searchRes = await dashboardApi.searchMedicines("");
-                        if (searchRes.data.success && searchRes.data.data.medicines.length > 0) {
-                            const valid = searchRes.data.data.medicines.find((m: any) => m.id && !failedForecasts.has(m.id));
-                            if (valid) medicineToForecast = valid;
-                        }
+                    if (featuredRes.data.success && featuredRes.data.data.medicine) {
+                        medicineToForecast = featuredRes.data.data.medicine;
                     }
 
                     // Trigger forecast for the selected medicine with featured flag
@@ -704,9 +711,23 @@ const StoreOwnerDashboard: React.FC = () => {
         if (!forecastData?.plot_data) return [];
 
         try {
-            const hist = Array.isArray(forecastData.plot_data.history) ? forecastData.plot_data.history : [];
-            const fore = Array.isArray(forecastData.plot_data.forecast) ? forecastData.plot_data.forecast : [];
-            const conf = Array.isArray(forecastData.plot_data.confidence) ? forecastData.plot_data.confidence : [];
+            const demand = forecastData.plot_data?.demand || forecastData.plot_data || {};
+            const price = forecastData.price_plot_data || forecastData.plot_data?.price || {};
+
+            const hist = Array.isArray(demand.history) ? demand.history : [];
+            const fore = Array.isArray(demand.forecast) ? demand.forecast : [];
+            const conf = Array.isArray(demand.confidence) ? demand.confidence : [];
+
+            const pHist = price && Array.isArray(price.history) ? price.history : [];
+            const pFore = price && Array.isArray(price.forecast) ? price.forecast : [];
+
+            // Helper to get price for a date
+            const getPrice = (date: string, isForecast: boolean) => {
+                const source = isForecast ? pFore : pHist;
+                if (!source) return null;
+                const match = source.find((p: any) => p.date === date);
+                return match ? (typeof match.qty === 'number' ? match.qty : (typeof match.price === 'number' ? match.price : 0)) : null;
+            };
 
             // 1. Process History
             const processedHist = hist.map((h: any) => ({
@@ -714,7 +735,9 @@ const StoreOwnerDashboard: React.FC = () => {
                 history: typeof h.qty === 'number' ? h.qty : 0,
                 forecast: null,
                 confHigh: null,
-                confRange: null
+                confRange: null,
+                priceHistory: getPrice(h.date, false),
+                priceForecast: null
             }));
 
             // 2. Process Forecast
@@ -734,18 +757,23 @@ const StoreOwnerDashboard: React.FC = () => {
                     date: f.date,
                     history: null,
                     forecast: val,
-                    confHigh: high, // Keep for backward compat or tooltip
-                    confRange: [low, high]
+                    confHigh: high,
+                    confRange: [low, high],
+                    priceHistory: null,
+                    priceForecast: getPrice(f.date, true)
                 };
             });
 
             // 3. Seamless Stitching
             if (processedHist.length > 0 && processedFore.length > 0) {
                 const lastHist = processedHist[processedHist.length - 1];
-                // Clone to allow mutation without side-effects if needed, though here we created objects above
+                
                 lastHist.forecast = lastHist.history;
-                lastHist.confHigh = lastHist.history;
                 lastHist.confRange = [lastHist.history, lastHist.history];
+                
+                if (lastHist.priceHistory !== null) {
+                    lastHist.priceForecast = lastHist.priceHistory;
+                }
             }
 
             return [...processedHist, ...processedFore];
@@ -1719,110 +1747,193 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                 </div>
                                                             </div>
                     
-                                                            {/* Chart Container */}
-                                        <div className="grid grid-cols-1 gap-8">
-                                            <MetricCard className="h-full border-slate-100 shadow-sm rounded-3xl overflow-hidden bg-white">
-                                                <MetricCardHeader className="flex flex-row items-center justify-between pb-2">
-                                                    <div className="space-y-1">
-                                                        <MetricCardTitle className="text-xl mt-2 font-bold text-slate-800">Forecast Trend</MetricCardTitle>
-                                                        <MetricCardDescription className="text-slate-500 font-medium">
-                                                            AI-generated demand prediction
-                                                        </MetricCardDescription>
-                                                    </div>
-                                                </MetricCardHeader>
-                                                <MetricCardContent>
-                                                    {chartData && Array.isArray(chartData) && chartData.length > 0 ? (
-                                                        <ChartContainer config={forecastChartConfig} className="w-full h-[350px] min-h-[350px]">
-                                                            <ComposedChart
-                                                                data={JSON.parse(JSON.stringify(chartData))}
-                                                                margin={{ top: 20, right: 10, left: -20, bottom: 0 }}
-                                                            >
-                                                                <defs>
-                                                                    <linearGradient id="gridGradient" x1="0" y1="0" x2="0" y2="1">
-                                                                        <stop offset="5%" stopColor="#f8fafc" stopOpacity={0.8} />
-                                                                        <stop offset="95%" stopColor="#f8fafc" stopOpacity={0} />
-                                                                    </linearGradient>
-                                                                    <linearGradient id="confGradient" x1="0" y1="0" x2="0" y2="1">
-                                                                        <stop offset="5%" stopColor="#818cf8" stopOpacity={0.25} />
-                                                                        <stop offset="95%" stopColor="#818cf8" stopOpacity={0.05} />
-                                                                    </linearGradient>
-                                                                </defs>
-                                                                
-                                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                                
-                                                                <XAxis 
-                                                                    dataKey="date" 
-                                                                    tickLine={false}
-                                                                    axisLine={false}
-                                                                    tickMargin={12}
-                                                                    tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
-                                                                    tickFormatter={(val) => {
-                                                                        const d = new Date(val);
-                                                                        return isNaN(d.getTime()) ? val : `${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'short' })}`;
-                                                                    }}
-                                                                />
-                                                                
-                                                                <YAxis 
-                                                                    tickLine={false}
-                                                                    axisLine={false}
-                                                                    tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
-                                                                />
-                                                                
-                                                                <ChartTooltip
-                                                                    cursor={{ stroke: '#6366f1', strokeWidth: 1, strokeDasharray: '4 4' }}
-                                                                    content={
-                                                                        <ChartTooltipContent
-                                                                            className="w-40 bg-white/95 backdrop-blur-md border-slate-100 shadow-xl rounded-xl"
-                                                                            labelFormatter={(label) => {
-                                                                                const d = new Date(label);
-                                                                                return isNaN(d.getTime()) ? label : d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-                                                                            }}
-                                                                        />
-                                                                    }
-                                                                />
-                                                                
-                                                                <Area
-                                                                    dataKey="confRange"
-                                                                    type="monotone"
-                                                                    stroke="none"
-                                                                    fill="url(#confGradient)"
-                                                                    activeDot={false}
-                                                                    isAnimationActive={true}
-                                                                />
+                                                            {/* Consolidated Premium Forecast Chart */}
+                                                            <div className="w-full">
+                                                                <MetricCard className="w-full border-slate-100 shadow-sm rounded-[2rem] overflow-hidden bg-white">
+                                                                    <MetricCardHeader className="border-0 min-h-auto pt-6 pb-6">
+                                                                        <div className="space-y-1">
+                                                                            <MetricCardTitle className="text-lg font-bold text-slate-800">Market Intelligence</MetricCardTitle>
+                                                                            <MetricCardDescription className="text-slate-500 text-xs font-medium uppercase tracking-wider">Demand vs Price Trends</MetricCardDescription>
+                                                                        </div>
+                                                                        <CardToolbar>
+                                                                            <div className="flex items-center gap-4 text-xs font-semibold mr-4">
+                                                                                <div className="flex items-center gap-1.5 text-slate-500">
+                                                                                    <div className="size-2.5 border-2 rounded-full border-slate-400 bg-white"></div>
+                                                                                    History
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1.5 text-indigo-500">
+                                                                                    <div className="size-2.5 border-2 rounded-full border-indigo-500 bg-white"></div>
+                                                                                    Demand Forecast
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1.5 text-emerald-500">
+                                                                                    <div className="size-2.5 border-2 rounded-full border-emerald-500 bg-white"></div>
+                                                                                    Price Prediction
+                                                                                </div>
+                                                                            </div>
+                                                                            <DropdownMenu>
+                                                                                <DropdownMenuTrigger asChild>
+                                                                                    <button className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                                                                                        <MoreHorizontal className="size-5 text-slate-400" />
+                                                                                    </button>
+                                                                                </DropdownMenuTrigger>
+                                                                                <DropdownMenuContent align="end" side="bottom">
+                                                                                    <DropdownMenuItem className="gap-2">
+                                                                                        <Download className="size-4" /> Download Report
+                                                                                    </DropdownMenuItem>
+                                                                                    <DropdownMenuItem className="gap-2">
+                                                                                        <Share2 className="size-4" /> Share Analytics
+                                                                                    </DropdownMenuItem>
+                                                                                    <DropdownMenuSeparator />
+                                                                                    <DropdownMenuItem className="gap-2">
+                                                                                        <RefreshCw className="size-4" /> Recalculate
+                                                                                    </DropdownMenuItem>
+                                                                                </DropdownMenuContent>
+                                                                            </DropdownMenu>
+                                                                        </CardToolbar>
+                                                                    </MetricCardHeader>
 
-                                                                <Line
-                                                                    type="monotone"
-                                                                    dataKey="history"
-                                                                    stroke="var(--color-history)"
-                                                                    strokeWidth={3}
-                                                                    dot={{ r: 0, strokeWidth: 0 }}
-                                                                    activeDot={{ r: 6, stroke: '#fff', strokeWidth: 3, fill: 'var(--color-history)' }}
-                                                                    connectNulls
-                                                                />
+                                                                    <MetricCardContent className="px-4 pb-8">
+                                                                        {chartData && chartData.length > 0 ? (
+                                                                            <ChartContainer config={forecastChartConfig} className="h-[400px] w-full">
+                                                                                <ComposedChart
+                                                                                    data={JSON.parse(JSON.stringify(chartData))}
+                                                                                    margin={{ top: 20, right: 30, left: 10, bottom: 0 }}
+                                                                                >
+                                                                                    <defs>
+                                                                                        <linearGradient id="premiumDemandGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                                            <stop offset="0%" stopColor="#818cf8" stopOpacity={0.25} />
+                                                                                            <stop offset="100%" stopColor="#818cf8" stopOpacity={0.01} />
+                                                                                        </linearGradient>
+                                                                                        <linearGradient id="premiumPriceGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.15} />
+                                                                                            <stop offset="100%" stopColor="#10b981" stopOpacity={0.01} />
+                                                                                        </linearGradient>
+                                                                                    </defs>
 
-                                                                <Line
-                                                                    type="monotone"
-                                                                    dataKey="forecast"
-                                                                    stroke="var(--color-forecast)"
-                                                                    strokeWidth={3}
-                                                                    strokeDasharray="4 4"
-                                                                    dot={{ r: 0, strokeWidth: 0 }}
-                                                                    activeDot={{ r: 6, stroke: '#fff', strokeWidth: 3, fill: 'var(--color-forecast)' }}
-                                                                    connectNulls
-                                                                    animationDuration={1500}
-                                                                />
-                                                            </ComposedChart>
-                                                        </ChartContainer>
-                                                    ) : (
-                                                        <div className="h-[350px] w-full flex items-center justify-center text-slate-400">
-                                                            No Data Available
+                                                                                    <CartesianGrid strokeDasharray="4 12" stroke="#e2e8f0" vertical={false} />
+
+                                                                                    <XAxis 
+                                                                                        dataKey="date" 
+                                                                                        axisLine={false}
+                                                                                        tickLine={false}
+                                                                                        tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }}
+                                                                                        tickMargin={15}
+                                                                                        tickFormatter={(val) => {
+                                                                                            const d = new Date(val);
+                                                                                            return isNaN(d.getTime()) ? val : `${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'short' })}`;
+                                                                                        }}
+                                                                                    />
+
+                                                                                    <YAxis 
+                                                                                        yAxisId="demand"
+                                                                                        orientation="left"
+                                                                                        axisLine={false}
+                                                                                        tickLine={false}
+                                                                                        tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }}
+                                                                                        tickMargin={10}
+                                                                                    />
+
+                                                                                    <YAxis 
+                                                                                        yAxisId="price"
+                                                                                        orientation="right"
+                                                                                        axisLine={false}
+                                                                                        tickLine={false}
+                                                                                        tick={{ fontSize: 11, fill: '#10b981', fontWeight: 600 }}
+                                                                                        tickMargin={10}
+                                                                                        tickFormatter={(val) => `₹${val}`}
+                                                                                    />
+
+                                                                                     <ChartTooltip
+                                                                                        cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
+                                                                                        content={
+                                                                                            <ChartTooltipContent 
+                                                                                                className="w-48 bg-white/95 backdrop-blur-md border border-slate-100 shadow-2xl rounded-2xl p-3"
+                                                                                                formatter={(value:any, name:any) => (
+                                                                                                    <div className="flex items-center justify-between w-full">
+                                                                                                        <span className="text-slate-500 font-medium">{name}:</span>
+                                                                                                        <span className="font-bold text-slate-900 ml-2">
+                                                                                                            {Array.isArray(value) 
+                                                                                                                ? `${value[0]} - ${value[1]}` 
+                                                                                                                : (name.toLowerCase().includes('price') ? `₹${value}` : value)
+                                                                                                            }
+                                                                                                        </span>
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            />
+                                                                                        }
+                                                                                    />
+
+                                                                                    {/* Confidence Range Shading */}
+                                                                                    <Area
+                                                                                        yAxisId="demand"
+                                                                                        dataKey="confRange"
+                                                                                        type="monotone"
+                                                                                        stroke="none"
+                                                                                        fill="url(#premiumDemandGradient)"
+                                                                                        activeDot={false}
+                                                                                    />
+
+                                                                                    {/* Demand History */}
+                                                                                    <Line
+                                                                                        yAxisId="demand"
+                                                                                        type="monotone"
+                                                                                        dataKey="history"
+                                                                                        stroke="#475569"
+                                                                                        strokeWidth={4}
+                                                                                        dot={{ r: 4, stroke: '#fff', strokeWidth: 2, fill: '#475569' }}
+                                                                                        activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#475569' }}
+                                                                                        connectNulls
+                                                                                    />
+
+                                                                                    {/* Demand Forecast */}
+                                                                                    <Line
+                                                                                        yAxisId="demand"
+                                                                                        type="monotone"
+                                                                                        dataKey="forecast"
+                                                                                        stroke="#6366f1"
+                                                                                        strokeWidth={4}
+                                                                                        strokeDasharray="8 4"
+                                                                                        dot={false}
+                                                                                        activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#6366f1' }}
+                                                                                        connectNulls
+                                                                                    />
+
+                                                                                    {/* Price History */}
+                                                                                    <Line
+                                                                                        yAxisId="price"
+                                                                                        type="monotone"
+                                                                                        dataKey="priceHistory"
+                                                                                        stroke="#10b981"
+                                                                                        strokeWidth={2}
+                                                                                        dot={false}
+                                                                                        activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: '#10b981' }}
+                                                                                        connectNulls
+                                                                                    />
+
+                                                                                    {/* Price Forecast */}
+                                                                                    <Line
+                                                                                        yAxisId="price"
+                                                                                        type="monotone"
+                                                                                        dataKey="priceForecast"
+                                                                                        stroke="#059669"
+                                                                                        strokeWidth={2}
+                                                                                        strokeDasharray="5 5"
+                                                                                        dot={false}
+                                                                                        activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2, fill: '#059669' }}
+                                                                                        connectNulls
+                                                                                    />
+                                                                                </ComposedChart>
+                                                                            </ChartContainer>
+                                                                        ) : (
+                                                                            <div className="h-[400px] w-full flex items-center justify-center text-slate-300 text-sm italic">
+                                                                                Fetching latest market signals...
+                                                                            </div>
+                                                                        )}
+                                                                    </MetricCardContent>
+                                                                </MetricCard>
+                                                            </div>
                                                         </div>
                                                     )}
-                                                </MetricCardContent>
-                                            </MetricCard>
-                                        </div>
-                                    </div>
-                                )}
                     
                                                     {!isForecastLoading && !forecastData && (
                                                         <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-2xl">
@@ -1837,107 +1948,222 @@ const StoreOwnerDashboard: React.FC = () => {
                                             </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                            {/* Sales Chart */}
+                            {/* Premium Sales Chart */}
                             <div className="lg:col-span-2">
-                                <MetricCard className="h-full border-slate-100 shadow-sm rounded-3xl overflow-hidden bg-white">
-                                    <MetricCardHeader className="flex flex-row items-center justify-between pb-2">
-                                        <div className="space-y-1">
-                                            <MetricCardTitle className="text-xl mt-3 font-bold text-slate-800">Sales Trend</MetricCardTitle>
-                                            <MetricCardDescription className="text-slate-500 font-medium">
-                                                Revenue performance over time
-                                            </MetricCardDescription>
-                                        </div>
-                                        <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                                            <SelectTrigger
-                                                className="w-[130px] rounded-xl border-2 font-bold shadow-sm focus:ring-0"
-                                                style={{ color: theme.hex, borderColor: theme.hex, backgroundColor: theme.hex + '15' }}
-                                            >
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent align="end" className="rounded-xl border-slate-100 shadow-xl">
-                                                <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
-                                                <SelectItem value="15d" className="rounded-lg">Last 15 days</SelectItem>
-                                                <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
-                                                <SelectItem value="all" className="rounded-lg">All Time</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </MetricCardHeader>
-                                    <MetricCardContent>
-                                        <div className="flex items-center gap-4 mb-6">
-                                            <div className="flex items-baseline gap-2">
-                                                <span className="text-3xl font-bold text-slate-800">
-                                                    ₹{data?.charts.salesByDay
-                                                        .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0)
-                                                        .reduce((acc, curr) => acc + curr.revenue, 0)
-                                                        .toLocaleString()}
-                                                </span>
-                                                <span className="text-sm font-medium text-slate-500">total revenue</span>
+                                <MetricCard className="w-full h-full shadow-lg border-slate-100 rounded-3xl overflow-hidden bg-white">
+                                    <MetricCardContent className="flex flex-col items-stretch gap-5 p-8">
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between mb-5">
+                                            <div>
+                                                <h1 className="text-base text-muted-foreground font-medium mb-1">Total Revenue</h1>
+                                                <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-3.5">
+                                                    <span className="text-4xl font-black text-slate-900 tracking-tight">
+                                                        ₹{(data?.charts.salesByDay
+                                                            .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0)
+                                                            .reduce((acc, curr) => acc + curr.revenue, 0) || 0).toLocaleString()}
+                                                    </span>
+                                                    <div className="flex items-center gap-1 text-emerald-600">
+                                                        <TrendingUp className="w-4 h-4" />
+                                                        <span className="font-bold">+12.7%</span>
+                                                        <span className="text-muted-foreground font-medium opacity-60">Vs last {selectedPeriod === 'all' ? 'month' : selectedPeriod}</span>
+                                                    </div>
+                                                </div>
                                             </div>
+                                            
+                                            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                                                <SelectTrigger
+                                                    className="w-[140px] rounded-xl border-2 font-bold shadow-sm focus:ring-0 h-10"
+                                                    style={{ color: theme.hex, borderColor: theme.hex, backgroundColor: theme.hex + '10' }}
+                                                >
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent align="end" className="rounded-xl border-slate-100 shadow-xl overflow-hidden">
+                                                    <SelectItem value="7d" className="font-medium">Last 7 days</SelectItem>
+                                                    <SelectItem value="15d" className="font-medium">Last 15 days</SelectItem>
+                                                    <SelectItem value="30d" className="font-medium">Last 30 days</SelectItem>
+                                                    <SelectItem value="all" className="font-medium">All Time</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
 
-                                        <ChartContainer config={chartConfig} className="w-full h-[300px] min-h-[300px]">
-                                            <ComposedChart
-                                                data={data?.charts.salesByDay
+                                        <div className="grow">
+                                            {/* Stats Row */}
+                                            {(() => {
+                                                const currentTrendData = data?.charts.salesByDay
+                                                    .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0) || [];
+                                                const revenues = currentTrendData.map(d => d.revenue);
+                                                const highValue = revenues.length ? Math.max(...revenues) : 0;
+                                                const lowValue = revenues.length ? Math.min(...revenues) : 0;
+                                                const lastRevenue = revenues.length ? revenues[revenues.length - 1] : 0;
+                                                const change = revenues.length > 1 ? ((revenues[revenues.length - 1] - revenues[revenues.length - 2]) / (revenues[revenues.length - 2] || 1) * 100).toFixed(1) : 0;
+
+                                                return (
+                                                    <div className="flex items-center justify-between flex-wrap gap-2.5 text-sm mb-6">
+                                                        <div className="flex items-center gap-6">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-muted-foreground font-medium">Latest Sale:</span>
+                                                                <span className="font-bold text-slate-800">₹{lastRevenue.toLocaleString()}</span>
+                                                                <div className={`flex items-center gap-1 ${Number(change) >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-bold`}>
+                                                                    {Number(change) >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                                                    <span>({Number(change) >= 0 ? '+' : ''}{change}%)</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-6 text-muted-foreground">
+                                                            <span>
+                                                                High: <span className="text-sky-600 font-bold">₹{highValue.toLocaleString()}</span>
+                                                            </span>
+                                                            <span>
+                                                                Low: <span className="text-amber-600 font-bold">₹{lowValue.toLocaleString()}</span>
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* Chart */}
+                                            {(() => {
+                                                const trendData = data?.charts.salesByDay
                                                     .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0)
                                                     .map(d => ({
                                                         date: new Date(d.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
-                                                        revenue: d.revenue
-                                                    })) || []}
-                                                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                                            >
-                                                <defs>
-                                                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor={theme.hex} stopOpacity={0.2} />
-                                                        <stop offset="95%" stopColor={theme.hex} stopOpacity={0} />
-                                                    </linearGradient>
-                                                </defs>
-                                                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#f1f5f9" />
-                                                <XAxis
-                                                    dataKey="date"
-                                                    tickLine={false}
-                                                    axisLine={false}
-                                                    tickMargin={12}
-                                                    tick={{ fill: '#94a3b8', fontSize: 12 }}
-                                                />
-                                                <YAxis
-                                                    tickLine={false}
-                                                    axisLine={false}
-                                                    tickMargin={12}
-                                                    tick={{ fill: '#94a3b8', fontSize: 12 }}
-                                                    tickFormatter={(value) => `₹${value}`}
-                                                />
-                                                <ChartTooltip
-                                                    cursor={{ stroke: '#e2e8f0' }}
-                                                    content={
-                                                        <ChartTooltipContent
-                                                            className="w-40 bg-white/95 backdrop-blur-md border-slate-100 shadow-xl rounded-xl"
-                                                        />
+                                                        value: d.revenue,
+                                                        fullDate: d.date
+                                                    })) || [];
+
+                                                const CustomTooltip = ({ active, payload }: any) => {
+                                                    if (active && payload && payload.length) {
+                                                        const d = payload[0].payload;
+                                                        return (
+                                                            <div className="bg-white/95 border-2 border-slate-100 rounded-2xl p-4 shadow-2xl backdrop-blur-md">
+                                                                <div className="text-[10px] font-black text-slate-400 mb-1 uppercase tracking-[0.1em]">{d.date}</div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="text-xl font-black text-slate-900 tracking-tighter">₹{d.value.toLocaleString()}</div>
+                                                                    <div className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${theme.text} ${theme.light} border-current`}>REVENUE</div>
+                                                                </div>
+                                                            </div>
+                                                        );
                                                     }
-                                                />
-                                                <Area
-                                                    tooltipType="none"
-                                                    type="monotone"
-                                                    dataKey="revenue"
-                                                    stroke={theme.hex}
-                                                    strokeWidth={2}
-                                                    fillOpacity={1}
-                                                    fill="url(#colorRevenue)"
-                                                />
-                                                <Line
-                                                    type="monotone"
-                                                    dataKey="revenue"
-                                                    stroke={theme.hex}
-                                                    strokeWidth={2}
-                                                    dot={false}
-                                                    activeDot={{
-                                                        r: 6,
-                                                        fill: theme.hex,
-                                                        stroke: "#fff",
-                                                        strokeWidth: 3
-                                                    }}
-                                                />
-                                            </ComposedChart>
-                                        </ChartContainer>
+                                                    return null;
+                                                };
+
+                                                return (
+                                                    <ChartContainer
+                                                        config={{ value: { label: 'Revenue', color: theme.hex } }}
+                                                        className="h-96 w-full [&_.recharts-curve.recharts-tooltip-cursor]:stroke-initial"
+                                                    >
+                                                        <ComposedChart
+                                                            data={trendData}
+                                                            margin={{ top: 20, right: 10, left: 5, bottom: 20 }}
+                                                        >
+                                                            <defs>
+                                                                <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="0%" stopColor={theme.hex} stopOpacity={0.15} />
+                                                                    <stop offset="100%" stopColor={theme.hex} stopOpacity={0} />
+                                                                </linearGradient>
+                                                                <pattern id="dotGrid" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+                                                                    <circle cx="10" cy="10" r="1" fill="var(--border)" fillOpacity="0.3" />
+                                                                </pattern>
+                                                                <filter id="dotShadow" x="-50%" y="-50%" width="200%" height="200%">
+                                                                    <feDropShadow dx="2" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.1)" />
+                                                                </filter>
+                                                                <filter id="lineShadow" x="-100%" y="-100%" width="300%" height="300%">
+                                                                    <feDropShadow dx="0" dy="10" stdDeviation="15" floodColor={`${theme.hex}44`} />
+                                                                </filter>
+                                                            </defs>
+
+                                                            <rect x="0" y="0" width="100%" height="100%" fill="url(#dotGrid)" style={{ pointerEvents: 'none' }} />
+
+                                                            <CartesianGrid
+                                                                strokeDasharray="4 8"
+                                                                stroke="#f1f5f9"
+                                                                strokeOpacity={1}
+                                                                horizontal={true}
+                                                                vertical={false}
+                                                            />
+
+                                                            {trendData.length > 0 && (
+                                                                <ReferenceLine 
+                                                                    x={trendData[trendData.length - 1].date} 
+                                                                    stroke={theme.hex} 
+                                                                    strokeDasharray="4 4" 
+                                                                    strokeWidth={1.5} 
+                                                                />
+                                                            )}
+
+                                                            <XAxis
+                                                                dataKey="date"
+                                                                axisLine={false}
+                                                                tickLine={false}
+                                                                tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 800 }}
+                                                                tickMargin={15}
+                                                                interval="preserveStartEnd"
+                                                            />
+
+                                                            <YAxis
+                                                                axisLine={false}
+                                                                tickLine={false}
+                                                                tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 800 }}
+                                                                tickFormatter={(v) => `₹${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`}
+                                                                tickMargin={15}
+                                                            />
+
+                                                            <ChartTooltip
+                                                                content={<CustomTooltip />}
+                                                                cursor={{ strokeDasharray: '4 4', stroke: '#cbd5e1', strokeOpacity: 0.8 }}
+                                                            />
+
+                                                            <Area
+                                                                type="monotone"
+                                                                dataKey="value"
+                                                                stroke="none"
+                                                                fill="url(#areaGradient)"
+                                                                animationDuration={3000}
+                                                            />
+
+                                                            <Line
+                                                                type="monotone"
+                                                                dataKey="value"
+                                                                stroke={theme.hex}
+                                                                strokeWidth={4}
+                                                                filter="url(#lineShadow)"
+                                                                dot={(props) => {
+                                                                    const { cx, cy, index } = props;
+                                                                    const revenues = trendData.map(d => d.value);
+                                                                    const high = Math.max(...revenues);
+                                                                    const low = Math.min(...revenues);
+                                                                    const val = trendData[index].value;
+                                                                    
+                                                                    if (index === 0 || index === trendData.length - 1 || val === high || (val === low && low !== high)) {
+                                                                        return (
+                                                                            <circle
+                                                                                key={`dot-${index}`}
+                                                                                cx={cx}
+                                                                                cy={cy}
+                                                                                r={6}
+                                                                                fill={theme.hex}
+                                                                                stroke="white"
+                                                                                strokeWidth={3}
+                                                                                filter="url(#dotShadow)"
+                                                                            />
+                                                                        );
+                                                                    }
+                                                                    return <g key={`dot-${index}`} />;
+                                                                }}
+                                                                activeDot={{
+                                                                    r: 8,
+                                                                    fill: theme.hex,
+                                                                    stroke: 'white',
+                                                                    strokeWidth: 4,
+                                                                    filter: 'url(#dotShadow)',
+                                                                }}
+                                                            />
+                                                        </ComposedChart>
+                                                    </ChartContainer>
+                                                );
+                                            })()}
+                                        </div>
                                     </MetricCardContent>
                                 </MetricCard>
                             </div>
@@ -1947,79 +2173,64 @@ const StoreOwnerDashboard: React.FC = () => {
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: 0.4 }}
-                                className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm flex flex-col relative"
+                                className="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl flex flex-col relative overflow-hidden"
                             >
-                                <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                    <Activity className={`w-5 h-5 ${theme.text}`} />
-                                    Recent Activity
-                                </h3>
-                                <div className="relative pl-2 space-y-6 flex-1 overflow-visible">
-                                    {/* Timeline Connector */}
-                                    <div className="absolute left-[27px] top-4 bottom-4 w-[2px] bg-slate-100"></div>
+                                <div className={`absolute top-0 right-0 w-64 h-64 opacity-[0.03] -mr-12 -mt-12 rounded-full ${theme.primary} blur-3xl`} />
 
-                                    {data?.lists.activity && data.lists.activity.slice(0, isActivityExpanded ? 10 : 3).map((log, i) => {
+                                <h3 className="text-xl font-black text-slate-900 mb-8 flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-2xl ${theme.primary} flex items-center justify-center shadow-lg ${theme.shadow}`}>
+                                        <Activity className="w-5 h-5 text-white" />
+                                    </div>
+                                    Network Pulse
+                                </h3>
+                                
+                                <div className="relative pl-2 space-y-5 flex-1 overflow-visible">
+                                    <div className="absolute left-[27px] top-6 bottom-6 w-[2px] bg-slate-50"></div>
+
+                                    {(data?.lists.activity || []).slice(0, isActivityExpanded ? 10 : 5).map((log, i) => {
                                         const config = getActivityConfig(log.action);
                                         return (
                                             <motion.div
                                                 key={log.id}
                                                 initial={{ opacity: 0, x: -10 }}
                                                 animate={{ opacity: 1, x: 0 }}
-                                                transition={{ delay: i * 0.1 }}
+                                                transition={{ delay: i * 0.05 }}
                                                 className="relative flex items-center gap-4 group z-10"
                                             >
-                                                <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center ${config.bg} ${config.color} border ${config.border} shadow-sm group-hover:scale-110 transition-transform duration-300`}>
+                                                <div className={`relative w-14 h-14 rounded-[1.25rem] flex items-center justify-center ${config.bg} ${config.color} border-4 border-white shadow-xl group-hover:scale-110 transition-transform duration-500 ease-out`}>
                                                     <config.icon className="w-5 h-5" />
                                                 </div>
-                                                <div className="flex-1 p-3 rounded-2xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all duration-200">
-                                                    <p className="text-sm font-bold text-slate-700 leading-tight group-hover:text-emerald-800 transition-colors">
+                                                <div className="flex-1">
+                                                    <p className="text-[10px] font-black text-slate-400 leading-tight uppercase tracking-[0.15em] mb-1">
+                                                        {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+                                                    </p>
+                                                    <p className="text-sm font-black text-slate-800 leading-snug group-hover:text-slate-900 transition-colors">
                                                         {log.action.replace(/_/g, " ")}
                                                     </p>
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                                                            {log.action.split('_')[0]}
-                                                        </span>
-                                                        <span className="text-xs text-slate-400 font-medium">
-                                                            {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
-                                                        </span>
-                                                    </div>
                                                 </div>
                                             </motion.div>
                                         );
                                     })}
 
                                     {(!data?.lists.activity || data.lists.activity.length === 0) && (
-                                        <div className="text-center py-12 flex flex-col items-center">
-                                            <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3">
-                                                <FileText className="w-5 h-5 text-slate-300" />
+                                        <div className="text-center py-20 flex flex-col items-center">
+                                            <div className="w-20 h-20 bg-slate-50 rounded-[2rem] flex items-center justify-center mb-6 rotate-12 shadow-inner">
+                                                <FileText className="w-10 h-10 text-slate-200" />
                                             </div>
-                                            <p className="text-sm text-slate-400">No activity recorded yet</p>
+                                            <p className="text-sm font-black text-slate-300 uppercase tracking-widest">Quiet for now</p>
                                         </div>
                                     )}
                                 </div>
 
-                                {data?.lists.activity && data.lists.activity.length > 3 && (
-                                    <>
-                                        {!isActivityExpanded && (
-                                            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-white/95 via-white/60 to-transparent backdrop-blur-[2px] flex items-end justify-center pb-4 rounded-b-3xl pointer-events-none">
-                                                <p
-                                                    onClick={() => setIsActivityExpanded(true)}
-                                                    className="pointer-events-auto p-2 bg-white/80 backdrop-blur-md rounded-full shadow-lg border border-slate-100 text-slate-400 hover:text-emerald-600 hover:scale-110 transition-all cursor-pointer"
-                                                >
-                                                    <ChevronDown className="w-5 h-5" />
-                                                </p>
-                                            </div>
-                                        )}
-                                        {isActivityExpanded && (
-                                            <div className="mt-6 flex justify-center">
-                                                <p
-                                                    onClick={() => setIsActivityExpanded(false)}
-                                                    className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all cursor-pointer"
-                                                >
-                                                    <ChevronUp className="w-5 h-5" />
-                                                </p>
-                                            </div>
-                                        )}
-                                    </>
+                                {data?.lists.activity && data.lists.activity.length > 5 && (
+                                    <div className="mt-8 pt-6 border-t border-slate-50 flex justify-center">
+                                        <button
+                                            onClick={() => setIsActivityExpanded(!isActivityExpanded)}
+                                            className="px-8 py-3 bg-slate-900 hover:bg-black rounded-full text-white font-black text-[10px] uppercase tracking-[0.2em] transition-all shadow-xl hover:shadow-2xl active:scale-95 flex items-center gap-3"
+                                        >
+                                            {isActivityExpanded ? 'Compact View' : 'Full Log'} {isActivityExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                        </button>
+                                    </div>
                                 )}
                             </motion.div>
                         </div>
@@ -2317,94 +2528,95 @@ const StoreOwnerDashboard: React.FC = () => {
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                                {myRequests.length > 0 ? (
-                                    <div className="grid grid-cols-1 gap-4">
-                                        {myRequests
+                                {(() => {
+                                    const filteredReorders = myRequests
+                                        .filter(r => r.payload?.type === 'REORDER')
+                                        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-                                            .filter(r => r.payload?.type === 'REORDER' || r.payload?.type === 'RETURN')
-                                            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                                            .map(req => {
-                                                const supplierName = data?.lists?.suppliers?.find(s => s.id === req.supplierId)?.name || "Unknown Supplier";
-                                                const statusConfig = req.status === 'ACCEPTED' ? { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200', icon: CheckCircle } :
-                                                    req.status === 'REJECTED' ? { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200', icon: X } :
-                                                        { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', icon: Activity };
-                                                const StatusIcon = statusConfig.icon;
+                                    if (filteredReorders.length > 0) {
+                                        return (
+                                            <div className="grid grid-cols-1 gap-4">
+                                                {filteredReorders.map(req => {
+                                                    const supplierName = data?.lists?.suppliers?.find(s => s.id === req.supplierId)?.name || "Unknown Supplier";
+                                                    const statusConfig = req.status === 'ACCEPTED' ? { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200', icon: CheckCircle } :
+                                                        req.status === 'REJECTED' ? { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200', icon: X } :
+                                                            { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', icon: Activity };
+                                                    const StatusIcon = statusConfig.icon;
 
-                                                return (
-                                                    <div key={req.id} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-center justify-between gap-6 group">
-                                                        <div className="flex items-center gap-5 flex-1">
-                                                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${statusConfig.bg} ${statusConfig.text}`}>
-                                                                <StatusIcon className="w-7 h-7" />
-                                                            </div>
-                                                            <div className="min-w-0">
+                                                    return (
+                                                        <div key={req.id} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-center justify-between gap-6 group">
+                                                            <div className="flex items-center gap-5 flex-1">
+                                                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${statusConfig.bg} ${statusConfig.text}`}>
+                                                                    <StatusIcon className="w-7 h-7" />
+                                                                </div>
+                                                                <div className="min-w-0">
                                                                     <div className="flex items-center gap-2 mb-1.5 ">
                                                                         <h4 className="font-bold text-slate-800 text-lg truncate flex items-center gap-2">
                                                                             Order #{req.id.slice(0, 8).toUpperCase()}
-                                                                            {req.payload?.type === 'RETURN' && (
-                                                                                <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold border border-red-200 uppercase tracking-wide">
-                                                                                    Return
-                                                                                </span>
-                                                                            )}
                                                                         </h4>
-                                                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1.5 shrink-0 ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
-                                                                        {req.status === 'PENDING' && <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse opacity-60" />}
-                                                                        {req.status}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="flex items-center gap-4 text-sm text-slate-500 truncate">
-                                                                    <span className="flex items-center gap-1.5 truncate">
-                                                                        <Store className="w-3.5 h-3.5 text-slate-400" />
-                                                                        To: <span className="font-medium text-slate-700 truncate">{supplierName}</span>
-                                                                    </span>
-                                                                    <span className="hidden md:flex items-center gap-1.5 border-l border-slate-200 pl-4 shrink-0">
-                                                                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                                                                        {new Date(req.createdAt).toLocaleDateString()}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-slate-100 pt-4 md:pt-0">
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Items</span>
-                                                                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
-                                                                    <ClipboardList className="w-4 h-4 text-slate-500" />
-                                                                    <span className="font-bold text-slate-800">{req.payload?.items?.length || 0}</span>
+                                                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1.5 shrink-0 ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
+                                                                            {req.status === 'PENDING' && <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse opacity-60" />}
+                                                                            {req.status}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-4 text-sm text-slate-500 truncate">
+                                                                        <span className="flex items-center gap-1.5 truncate">
+                                                                            <Store className="w-3.5 h-3.5 text-slate-400" />
+                                                                            To: <span className="font-medium text-slate-700 truncate">{supplierName}</span>
+                                                                        </span>
+                                                                        <span className="hidden md:flex items-center gap-1.5 border-l border-slate-200 pl-4 shrink-0">
+                                                                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                                                            {new Date(req.createdAt).toLocaleDateString()}
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
                                                             </div>
 
-                                                            <Button
-                                                                size="sm"
-                                                                onClick={() => {
-                                                                    setSelectedReorder(req);
-                                                                    setShowReorderDetails(true);
-                                                                }}
-                                                                className="!bg-black cursor-pointer !text-white hover:!bg-slate-800 shadow-md shadow-black/10 border-none rounded-xl px-5 h-10 font-semibold gap-2 transition-all"
-                                                            >
-                                                                Details <ChevronDown className="w-4 h-4 opacity-60" />
-                                                            </Button>
+                                                            <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-slate-100 pt-4 md:pt-0">
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Items</span>
+                                                                    <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                                                                        <ClipboardList className="w-4 h-4 text-slate-500" />
+                                                                        <span className="font-bold text-slate-800">{req.payload?.items?.length || 0}</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <Button
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        setSelectedReorder(req);
+                                                                        setShowReorderDetails(true);
+                                                                    }}
+                                                                    className="!bg-black cursor-pointer !text-white hover:!bg-slate-800 shadow-md shadow-black/10 border-none rounded-xl px-5 h-10 font-semibold gap-2 transition-all"
+                                                                >
+                                                                    Details <ChevronDown className="w-4 h-4 opacity-60" />
+                                                                </Button>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                );
-                                            })}
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-6">
-                                        <div className="w-24 h-24 rounded-full bg-white shadow-sm flex items-center justify-center">
-                                            <Package className={`w-10 h-10 ${theme.text} opacity-50`} />
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-6">
+                                            <div className="w-24 h-24 rounded-full bg-white shadow-sm flex items-center justify-center">
+                                                <Package className={`w-10 h-10 ${theme.text} opacity-50`} />
+                                            </div>
+                                            <div className="text-center space-y-2">
+                                                <h3 className="text-lg font-bold text-slate-700">No Reorders Given</h3>
+                                                <p className="max-w-xs mx-auto text-sm">Your sent reorder requests will appear here once you place orders with suppliers.</p>
+                                            </div>
+                                            <Button
+                                                onClick={() => setActiveTab('reorder')}
+                                                className="!bg-slate-900 text-white hover:opacity-90 shadow-lg shadow-slate-900/20 border-none font-bold rounded-xl pointer-events-auto"
+                                            >
+                                                Create New Reorder
+                                            </Button>
                                         </div>
-                                        <div className="text-center space-y-2">
-                                            <h3 className="text-lg font-bold text-slate-700">No Reorders Given</h3>
-                                            <p className="max-w-xs mx-auto text-sm">Your sent reorder requests will appear here once you place orders with suppliers.</p>
-                                        </div>
-                                        <Button
-                                            onClick={() => setActiveTab('reorder')}
-                                            className="!bg-slate-900 text-white hover:opacity-90 shadow-lg shadow-slate-900/20 border-none font-bold rounded-xl"
-                                        >
-                                            Create New Reorder
-                                        </Button>
-                                    </div>
-                                )}
+                                    );
+                                })()}
                             </div>
                         </div>
                     </motion.div>
@@ -2671,179 +2883,306 @@ const StoreOwnerDashboard: React.FC = () => {
                     </motion.div>
                 )}
 
-                {/* --- NEW SALE (POS) TAB --- */}
+             
                 {/* --- RETURNS TAB --- */}
                 {activeTab === 'return' && (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.98 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="flex flex-col md:flex-row gap-6 h-[calc(100vh-140px)] min-h-[600px]"
-                    >
-                         {/* Left: Expiring Inventory */}
-                        <div className="flex-1 bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden relative">
-                            <div className="p-5 border-b border-slate-100 bg-white z-10 flex flex-col gap-4">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h2 className="text-xl font-bold text-red-600 tracking-tight flex items-center gap-2">
-                                            <RefreshCw className="w-5 h-5" /> Returns Management
-                                        </h2>
-                                        <p className="text-sm text-slate-500">Expiring or damaged items to return to suppliers</p>
-                                    </div>
-                                    <Button
-                                         size="sm"
-                                         onClick={handleSmartFill}
-                                         disabled={isAiLoading}
-                                         className="cursor-pointer gap-2 !bg-red-50 !text-red-600 hover:!bg-red-100 border-red-200"
+                    <div className="flex flex-col gap-6 h-full pb-8">
+                        {/* Return Sub-Tabs */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex gap-2 p-1 bg-white/50 backdrop-blur-md rounded-2xl border border-slate-200 w-fit shadow-sm">
+                                {[
+                                    { id: 'new', label: 'Process New', icon: RefreshCw },
+                                    { id: 'pending', label: 'Pending Returns', icon: Clock },
+                                    { id: 'history', label: 'Return History', icon: HistoryIcon }
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setReturnSubTab(tab.id as any)}
+                                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 cursor-pointer ${returnSubTab === tab.id
+                                                ? "bg-black text-white shadow-lg shadow-black/20"
+                                                : "text-slate-500 hover:bg-white hover:text-slate-900"
+                                            }`}
                                     >
-                                        <Sparkles className="w-4 h-4" /> Refresh Suggestions
-                                    </Button>
-                                </div>
-                            </div>
-                            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-                                <div className="grid grid-cols-1 gap-2">
-                                    {isReorderLoading ? (
-                                        [1, 2, 3].map((i) => (
-                                            <div key={i} className="flex items-center p-3 rounded-2xl border border-slate-100 bg-white opacity-50 animate-pulse">
-                                                <div className="w-10 h-10 rounded-xl bg-slate-100 mr-4" />
-                                                <div className="flex-1 space-y-2">
-                                                    <div className="h-4 bg-slate-100 rounded w-1/3" />
-                                                    <div className="h-2 bg-slate-50 rounded w-1/2" />
-                                                </div>
-                                                <div className="w-20 h-8 bg-slate-50 rounded-lg" />
-                                            </div>
-                                        ))
-                                    ) : returnList.length === 0 ? (
-                                        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
-                                                <CheckCircle className="w-8 h-8 text-red-200" />
-                                            </div>
-                                            <p className="font-medium text-slate-500">No expiring items found</p>
-                                            <p className="text-sm opacity-70">Your inventory looks healthy!</p>
-                                        </div>
-                                    ) : (
-                                        returnList.map((item) => {
-                                            const key = `${item.id}_${item.batchNumber}`;
-                                            const inCart = returnCart.get(key) || 0;
-                                            return (
-                                                <div key={key} className="group flex items-center p-3 rounded-2xl border border-red-50 bg-white hover:border-red-200 hover:shadow-sm transition-all duration-200">
-                                                    <div className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center mr-4">
-                                                        <Clock className="w-5 h-5" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0 mr-4">
-                                                        <div className="flex items-center gap-2">
-                                                            <h4 className="font-bold text-slate-800 truncate">{item.brandName}</h4>
-                                                            {item.id.includes('mock') ? (
-                                                                <span className="text-[9px] font-bold text-slate-400 bg-slate-50 px-1.5 rounded-sm uppercase tracking-tight">Sample</span>
-                                                            ) : (
-                                                                <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 px-1.5 rounded-sm uppercase tracking-tight border border-indigo-100/50">AI Identified</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                                                            <span className="font-mono bg-slate-50 px-1 rounded text-[10px]">#{item.batchNumber}</span>
-                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${item.reason === 'Expired' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
-                                                                {item.reason}
-                                                            </span>
-                                                            <span className="text-[10px] text-slate-400">Est. Refund: ₹{item.purchasePrice || 0}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-3">
-                                                         <div className="text-right mr-2 hidden sm:block">
-                                                            <div className="text-xs font-bold text-slate-500">{item.suggestedQty} Units</div>
-                                                         </div>
-                                                         {inCart > 0 ? (
-                                                                <div className="flex items-center !bg-red-600 rounded-lg p-1 shadow-md shadow-red-600/20">
-                                                                     <i onClick={() => handleReturnAddToCart(key, inCart - 1)} className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:bg-white/10 rounded-md">-</i>
-                                                                     <span className="w-8 text-center font-bold text-sm !text-white">{inCart}</span>
-                                                                     <i onClick={() => handleReturnAddToCart(key, inCart + 1)} className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:bg-white/10 rounded-md">+</i>
-                                                                </div>
-                                                         ) : (
-                                                             <button onClick={() => handleReturnAddToCart(key, item.suggestedQty)} className="!bg-red-600 border-transparent !text-white hover:!bg-red-700 px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-red-600/10">
-                                                                 Return
-                                                             </button>
-                                                         )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })
-                                    )}
-                                </div>
+                                        <tab.icon className={`w-4 h-4 ${returnSubTab === tab.id ? 'animate-spin-slow' : ''}`} />
+                                        {tab.label}
+                                        {tab.id === 'pending' && myRequests.filter(r => r.payload?.type === 'RETURN' && r.status === 'PENDING').length > 0 && (
+                                            <span className="ml-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full text-[10px]">
+                                                {myRequests.filter(r => r.payload?.type === 'RETURN' && r.status === 'PENDING').length}
+                                            </span>
+                                        )}
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
-                        {/* Right: Return Summary */}
-                        <div className="w-full md:w-[400px] flex flex-col gap-4">
-                             <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-200 flex-1 flex flex-col overflow-hidden">
-                                <div className="p-5 border-b border-slate-100 bg-red-50/50">
-                                    <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                                        <RefreshCw className="w-5 h-5 text-red-600" /> Return Summary
+                        {returnSubTab === 'new' ? (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="flex flex-col md:flex-row gap-6 h-[calc(100vh-220px)] min-h-[500px]"
+                            >
+                                {/* Left: Expiring Inventory */}
+                                <div className="flex-1 bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden relative">
+                                    <div className="p-5 border-b border-slate-100 bg-white z-10 flex flex-col gap-4">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <h2 className="text-xl font-bold text-red-600 tracking-tight flex items-center gap-2">
+                                                    <RefreshCw className="w-5 h-5" /> Returns Management
+                                                </h2>
+                                                <p className="text-sm text-slate-500">Expiring or damaged items to return to suppliers</p>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                onClick={handleSmartFill}
+                                                disabled={isAiLoading}
+                                                className="cursor-pointer gap-2 !bg-red-50 !text-red-600 hover:!bg-red-100 border-red-200"
+                                            >
+                                                <Sparkles className="w-4 h-4" /> Refresh Suggestions
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {isReorderLoading ? (
+                                                [1, 2, 3].map((i) => (
+                                                    <div key={i} className="flex items-center p-3 rounded-2xl border border-slate-100 bg-white opacity-50 animate-pulse">
+                                                        <div className="w-10 h-10 rounded-xl bg-slate-100 mr-4" />
+                                                        <div className="flex-1 space-y-2">
+                                                            <div className="h-4 bg-slate-100 rounded w-1/3" />
+                                                            <div className="h-2 bg-slate-50 rounded w-1/2" />
+                                                        </div>
+                                                        <div className="w-20 h-8 bg-slate-50 rounded-lg" />
+                                                    </div>
+                                                ))
+                                            ) : returnList.length === 0 ? (
+                                                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                                                    <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                                                        <CheckCircle className="w-8 h-8 text-red-200" />
+                                                    </div>
+                                                    <p className="font-medium text-slate-500">No expiring items found</p>
+                                                    <p className="text-sm opacity-70">Your inventory looks healthy!</p>
+                                                </div>
+                                            ) : (
+                                                returnList.map((item) => {
+                                                    const key = `${item.id}_${item.batchNumber}`;
+                                                    const inCart = returnCart.get(key) || 0;
+                                                    return (
+                                                        <div key={key} className="group flex items-center p-3 rounded-2xl border border-red-50 bg-white hover:border-red-200 hover:shadow-sm transition-all duration-200">
+                                                            <div className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center mr-4">
+                                                                <Clock className="w-5 h-5" />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0 mr-4">
+                                                                <div className="flex items-center gap-2">
+                                                                    <h4 className="font-bold text-slate-800 truncate">{item.brandName}</h4>
+                                                                    {item.id.includes('mock') ? (
+                                                                        <span className="text-[9px] font-bold text-slate-400 bg-slate-50 px-1.5 rounded-sm uppercase tracking-tight">Sample</span>
+                                                                    ) : (
+                                                                        <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 px-1.5 rounded-sm uppercase tracking-tight border border-indigo-100/50">AI Identified</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                                                                    <span className="font-mono bg-slate-50 px-1 rounded text-[10px]">#{item.batchNumber}</span>
+                                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${item.reason === 'Expired' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                                        {item.reason}
+                                                                    </span>
+                                                                    <span className="text-[10px] text-slate-400">Est. Refund: ₹{item.purchasePrice || 0}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="text-right mr-2 hidden sm:block">
+                                                                    <div className="text-xs font-bold text-slate-500">{item.suggestedQty} Units</div>
+                                                                </div>
+                                                                {inCart > 0 ? (
+                                                                    <div className="flex items-center !bg-red-600 rounded-lg p-1 shadow-md shadow-red-600/20">
+                                                                        <i onClick={() => handleReturnAddToCart(key, inCart - 1)} className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:bg-white/10 rounded-md">-</i>
+                                                                        <span className="w-8 text-center font-bold text-sm !text-white">{inCart}</span>
+                                                                        <i onClick={() => handleReturnAddToCart(key, inCart + 1)} className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:bg-white/10 rounded-md">+</i>
+                                                                    </div>
+                                                                ) : (
+                                                                    <button onClick={() => handleReturnAddToCart(key, item.suggestedQty)} className="!bg-red-600 border-transparent cursor-pointer !text-white hover:!bg-red-700 px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-red-600/10">
+                                                                        Return
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Right: Return Summary */}
+                                <div className="w-full md:w-[400px] flex flex-col gap-4">
+                                    <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-200 flex-1 flex flex-col overflow-hidden">
+                                        <div className="p-5 border-b border-slate-100 bg-red-50/50">
+                                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                                <RefreshCw className="w-5 h-5 text-red-600" /> Return Summary
+                                            </h3>
+                                        </div>
+                                        <div className="p-5 flex-1 overflow-hidden bg-white flex flex-col gap-5">
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Select Supplier</label>
+                                                <Select value={returnSupplierId} onValueChange={setReturnSupplierId} disabled={!data?.lists?.suppliers?.length}>
+                                                    <SelectTrigger className="w-full !bg-slate-900 border-none h-12 rounded-xl !text-white shadow-lg focus:ring-0">
+                                                        <span className="text-white font-bold truncate">
+                                                            {returnSupplierId ? data?.lists?.suppliers?.find(s => s.id === returnSupplierId)?.name : "Select a supplier..."}
+                                                        </span>
+                                                    </SelectTrigger>
+                                                    <SelectContent className="bg-white rounded-xl border-slate-200 shadow-xl p-1 z-50">
+                                                        {data?.lists?.suppliers?.map((s) => (
+                                                            <SelectItem key={s.id} value={s.id} textValue={s.name} className="rounded-lg cursor-pointer py-3">
+                                                                <div className="font-bold text-slate-800">{s.name}</div>
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="flex-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 relative min-h-[120px] overflow-y-auto custom-scrollbar">
+                                                {returnCart.size === 0 ? (
+                                                    <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+                                                        <span className="text-sm font-medium">No items selected</span>
+                                                    </div>
+                                                ) : (
+                                                    <ul className="space-y-3">
+                                                        {Array.from(returnCart.entries()).map(([key, qty]) => {
+                                                            const [medId, batch] = key.split('_');
+                                                            const item = returnList.find(r => r.id === medId && r.batchNumber === batch);
+                                                            return (
+                                                                <li key={key} className="flex justify-between items-start text-sm">
+                                                                    <div className="flex-1 pr-2">
+                                                                        <span className="font-bold text-slate-700 block">{item?.brandName}</span>
+                                                                        <span className="text-xs text-slate-400">Batch: {batch}</span>
+                                                                    </div>
+                                                                    <div className="bg-white px-2 py-1 rounded border border-slate-200 font-mono font-bold text-slate-800 text-xs shadow-sm">
+                                                                        x{qty}
+                                                                    </div>
+                                                                </li>
+                                                            );
+                                                        })}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Note</label>
+                                                <textarea
+                                                    className="w-full p-3 text-sm bg-slate-50 border border-slate-100 rounded-xl resize-none focus:outline-none focus:bg-white focus:border-slate-300 transition-all font-medium"
+                                                    rows={2}
+                                                    placeholder="Reason for return..."
+                                                    value={returnNote}
+                                                    onChange={e => setReturnNote(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="p-5 border-t border-slate-100 bg-slate-50/50">
+                                            <Button
+                                                className="w-full h-14 cursor-pointer !bg-red-600 text-white hover:!bg-red-700 shadow-xl shadow-red-600/30 font-bold text-base rounded-2xl flex items-center justify-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-[0px]"
+                                                disabled={returnCart.size === 0 || !returnSupplierId || isSendingReturn}
+                                                onClick={executeReturn}
+                                            >
+                                                {isSendingReturn ? (
+                                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                ) : (
+                                                    <ArrowRight className="w-4 h-4" />
+                                                )}
+                                                {isSendingReturn ? "Sending..." : "Submit Return Request"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ) : (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="flex-1 bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden"
+                            >
+                                <div className="p-6 border-b border-slate-100 bg-slate-50/30">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                        {returnSubTab === 'pending' ? <Clock className="w-5 h-5 text-amber-500" /> : <HistoryIcon className="w-5 h-5 text-indigo-500" />}
+                                        {returnSubTab === 'pending' ? 'Pending Return Requests' : 'Return Request History'}
                                     </h3>
                                 </div>
-                                <div className="p-5 flex-1 overflow-hidden bg-white flex flex-col gap-5">
-                                    <div>
-                                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Select Supplier</label>
-                                         <Select value={returnSupplierId} onValueChange={setReturnSupplierId} disabled={!data?.lists?.suppliers?.length}>
-                                            <SelectTrigger className="w-full !bg-slate-900 border-none h-12 rounded-xl !text-white shadow-lg focus:ring-0">
-                                                <span className="text-white font-bold truncate">
-                                                    {returnSupplierId ? data?.lists?.suppliers?.find(s => s.id === returnSupplierId)?.name : "Select a supplier..."}
-                                                </span>
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-white rounded-xl border-slate-200 shadow-xl p-1 z-50">
-                                                {data?.lists?.suppliers?.map((s) => (
-                                                    <SelectItem key={s.id} value={s.id} textValue={s.name} className="rounded-lg cursor-pointer py-3">
-                                                        <div className="font-bold text-slate-800">{s.name}</div>
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="flex-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 relative min-h-[120px] overflow-y-auto custom-scrollbar">
-                                         {returnCart.size === 0 ? (
-                                            <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
-                                                <span className="text-sm font-medium">No items selected</span>
-                                            </div>
-                                         ) : (
-                                             <ul className="space-y-3">
-                                                {Array.from(returnCart.entries()).map(([key, qty]) => {
-                                                    const [medId, batch] = key.split('_');
-                                                    const item = returnList.find(r => r.id === medId && r.batchNumber === batch);
+                                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-50">
+                                    {(() => {
+                                        const filtered = myRequests.filter(r => {
+                                            const isReturnType = r.payload?.type === 'RETURN';
+                                            if (!isReturnType) return false;
+                                            return returnSubTab === 'pending' ? r.status === 'PENDING' : r.status !== 'PENDING';
+                                        }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+                                        if (filtered.length === 0) {
+                                            return (
+                                                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                                                    <div className="w-16 h-16 bg-slate-200/50 rounded-full flex items-center justify-center mb-4">
+                                                        <Package className="w-8 h-8 opacity-30" />
+                                                    </div>
+                                                    <p className="font-medium text-slate-500">No {returnSubTab} returns found</p>
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <div className="grid grid-cols-1 gap-4">
+                                                {filtered.map(req => {
+                                                    const supplier = data?.lists?.suppliers?.find(s => s.id === req.supplierId);
+                                                    const statusConfig = req.status === 'ACCEPTED' ? { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' } :
+                                                        req.status === 'REJECTED' ? { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200' } :
+                                                        req.status === 'FULFILLED' ? { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200' } :
+                                                            { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' };
+
                                                     return (
-                                                        <li key={key} className="flex justify-between items-start text-sm">
-                                                            <div className="flex-1 pr-2">
-                                                                <span className="font-bold text-slate-700 block">{item?.brandName}</span>
-                                                                <span className="text-xs text-slate-400">Batch: {batch}</span>
+                                                        <div key={req.id} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-center justify-between gap-6 group">
+                                                            <div className="flex items-center gap-5 flex-1">
+                                                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${statusConfig.bg} ${statusConfig.text}`}>
+                                                                    <RefreshCw className="w-7 h-7" />
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <div className="flex items-center gap-3 mb-1.5 ">
+                                                                        <h4 className="font-bold text-slate-800 text-lg truncate flex items-center gap-2">
+                                                                            Return #{req.id.slice(0, 8).toUpperCase()}
+                                                                        </h4>
+                                                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
+                                                                            {req.status}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+                                                                        <span className="flex items-center gap-1.5">
+                                                                            <Store className="w-3.5 h-3.5 text-slate-400" />
+                                                                            <span className="font-medium text-slate-700">{supplier?.name || "Unknown Supplier"}</span>
+                                                                        </span>
+                                                                        <span className="flex items-center gap-1.5 border-l border-slate-200 pl-4">
+                                                                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                                                            {new Date(req.createdAt).toLocaleDateString()}
+                                                                        </span>
+                                                                        <span className="flex items-center gap-1.5 border-l border-slate-200 pl-4">
+                                                                            <Package className="w-3.5 h-3.5 text-slate-400" />
+                                                                            {req.payload?.items?.length || 0} Items
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                            <div className="bg-white px-2 py-1 rounded border border-slate-200 font-mono font-bold text-slate-800 text-xs shadow-sm">
-                                                                x{qty}
-                                                            </div>
-                                                        </li>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => {
+                                                                    setSelectedReorder(req);
+                                                                    setShowReorderDetails(true);
+                                                                }}
+                                                                className="!border-slate-200 cursor-pointer !bg-white hover:!bg-slate-50 !text-slate-600 px-5 h-10 font-bold rounded-xl gap-2 transition-all"
+                                                            >
+                                                                View Details <ChevronDown className="w-4 h-4 opacity-40" />
+                                                            </Button>
+                                                        </div>
                                                     );
                                                 })}
-                                             </ul>
-                                         )}
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Note</label>
-                                        <textarea 
-                                            className="w-full p-3 text-sm bg-slate-50 border border-slate-100 rounded-xl resize-none focus:outline-none focus:bg-white focus:border-slate-300 transition-all"
-                                            rows={2}
-                                            placeholder="Reason for return..."
-                                            value={returnNote}
-                                            onChange={e => setReturnNote(e.target.value)}
-                                        />
-                                    </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
-                                <div className="p-5 border-t border-slate-100 bg-slate-50/50">
-                                    <Button
-                                        className="w-full h-14 cursor-pointer !bg-red-600 text-white hover:!bg-red-700 shadow-xl shadow-red-600/30 font-bold text-base rounded-2xl flex items-center justify-center gap-2 transition-all"
-                                        disabled={returnCart.size === 0 || !returnSupplierId || isSendingReturn}
-                                        onClick={executeReturn}
-                                    >
-                                        {isSendingReturn ? "Sending..." : "Submit Return Request"}
-                                    </Button>
-                                </div>
-                             </div>
-                        </div>
-                    </motion.div>
+                            </motion.div>
+                        )}
+                    </div>
                 )}
 
                 {activeTab === 'sale' && (

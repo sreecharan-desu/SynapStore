@@ -22,7 +22,7 @@ export const Sidebar = () => {
     return (
         <div className="w-64 bg-white border-r border-slate-200 min-h-screen flex flex-col fixed left-0 top-0 bottom-0 z-10">
             <div className="p-6 flex items-center gap-2 border-b border-slate-100">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
+                <div className="w-8 h-8 rounded-lg bg-black flex items-center justify-center text-white">
                     <Store size={20} />
                 </div>
                 <span className="font-bold text-lg text-slate-800">SynapStore</span>
@@ -36,7 +36,7 @@ export const Sidebar = () => {
                             key={link.path}
                             to={link.path}
                             className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${active
-                                    ? "bg-emerald-50 text-emerald-600 font-medium"
+                                    ? "bg-black text-emerald-600 font-medium"
                                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                                 }`}
                         >

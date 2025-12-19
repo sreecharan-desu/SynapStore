@@ -144,7 +144,7 @@ export default function CTAAndFooter() {
             </p>
             <a
               href="/login"
-              className="inline-flex items-center justify-center gap-3 px-12 py-6 bg-white text-emerald-700 rounded-full font-bold text-xl shadow-[0_0_40px_-10px_rgba(255,255,255,0.5)] hover:bg-emerald-50 hover:scale-105 transition-all"
+              className="inline-flex items-center justify-center gap-3 px-12 py-6 bg-white text-emerald-700 rounded-full font-bold text-xl shadow-[0_0_40px_-10px_rgba(255,255,255,0.5)] hover:bg-black hover:scale-105 transition-all"
             >
               Get Started Free
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-6 h-6"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
@@ -208,10 +208,10 @@ export default function CTAAndFooter() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100 shadow-sm">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black border border-emerald-100 shadow-sm">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-black"></span>
               </span>
               <span className="text-emerald-700 font-bold text-xs tracking-wide uppercase">All Systems Normal</span>
             </div>

@@ -60,7 +60,7 @@ export const HeroParallax = ({
             {/* Background Elements */}
             <div className="absolute inset-0 h-full w-full bg-white bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
-                <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[100px]" />
+                <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-black/10 rounded-full blur-[100px]" />
                 <div className="absolute top-[20%] right-[-10%] w-[400px] h-[400px] bg-teal-500/10 rounded-full blur-[100px]" />
             </div>
 
@@ -109,10 +109,10 @@ export const HeroParallax = ({
 export const Header = () => {
     return (
         <div className="max-w-7xl relative mx-auto py-10 md:py-24 px-4 w-full left-0 top-0 text-center flex flex-col items-center z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100/80 border border-emerald-200 text-emerald-700 text-sm font-medium mb-8 backdrop-blur-sm">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/80 border border-emerald-200 text-emerald-700 text-sm font-medium mb-8 backdrop-blur-sm">
                 <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-black"></span>
                 </span>
                 Powering Next-Gen Pharmacies
             </div>

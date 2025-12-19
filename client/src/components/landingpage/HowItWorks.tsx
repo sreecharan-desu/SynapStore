@@ -36,7 +36,7 @@ export default function HowItWorks() {
       content: (
         <div>
           <div className="flex items-center gap-4 mb-4">
-            <span className="text-sm font-semibold text-emerald-600 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-200">Step 02</span>
+            <span className="text-sm font-semibold text-emerald-600 px-3 py-1 bg-black rounded-full border border-emerald-200">Step 02</span>
           </div>
           <p className="text-slate-600 text-lg leading-relaxed mb-6">
             Gain a God's-eye view of your operations. Our platform mirrors your physical shelves in real-time digital twins.

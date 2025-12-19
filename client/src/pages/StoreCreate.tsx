@@ -187,7 +187,7 @@ const StoreCreate = () => {
           y: [0, 50, 0],
         }}
         transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute bottom-[-20%] right-[-10%] w-[700px] h-[700px] bg-emerald-200/30 rounded-full blur-[120px] pointer-events-none"
+        className="absolute bottom-[-20%] right-[-10%] w-[700px] h-[700px] bg-black rounded-full blur-[120px] pointer-events-none"
       />
 
       <button
@@ -240,7 +240,7 @@ const StoreCreate = () => {
               <p className="text-sm font-medium text-slate-700">Role assigned automatically</p>
             </div>
             <div className="flex items-center gap-4 p-4 rounded-2xl bg-white/60 border border-white/80 shadow-sm backdrop-blur-sm hover:scale-[1.02] transition-transform duration-300 delay-75">
-              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-700 font-bold text-sm">2</div>
+              <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0 text-emerald-700 font-bold text-sm">2</div>
               <p className="text-sm font-medium text-slate-700">Configure settings later</p>
             </div>
           </div>
@@ -264,8 +264,8 @@ const StoreCreate = () => {
                   </div>
                 )}
                 {success && (
-                  <div className="text-sm rounded-2xl border border-emerald-100 bg-emerald-50/80 text-emerald-600 px-5 py-4 flex items-center gap-3 shadow-sm backdrop-blur-sm">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 shadow-lg shadow-emerald-500/30" />
+                  <div className="text-sm rounded-2xl border border-emerald-100 bg-black/80 text-emerald-600 px-5 py-4 flex items-center gap-3 shadow-sm backdrop-blur-sm">
+                    <span className="w-2 h-2 rounded-full bg-black shrink-0 shadow-lg shadow-emerald-500/30" />
                     <span className="font-medium">{success}</span>
                   </div>
                 )}

@@ -42,7 +42,7 @@ const notifications = [
     description: "New shipment of 150 items processed",
     time: "8m ago",
     icon: Package,
-    color: "bg-emerald-500",
+    color: "bg-black",
     textColor: "text-emerald-500",
     badge: "Success",
   },
@@ -69,7 +69,7 @@ const notifications = [
     description: "Stock levels synced across 3 locations",
     time: "18m ago",
     icon: CheckCircle2,
-    color: "bg-emerald-600",
+    color: "bg-black",
     textColor: "text-emerald-600",
     badge: "Synced",
   },
@@ -120,7 +120,7 @@ const ExcelUploadCard = () => {
     <Card className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-emerald-100 rounded-2xl text-emerald-600">
+          <div className="p-3 bg-black rounded-2xl text-emerald-600">
             <FileSpreadsheet className="w-6 h-6" />
           </div>
           <div>
@@ -142,7 +142,7 @@ const ExcelUploadCard = () => {
               <div
                 className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300",
-                  isDone ? "bg-emerald-500 text-white" : isActive ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400"
+                  isDone ? "bg-black text-white" : isActive ? "bg-black text-emerald-600" : "bg-slate-100 text-slate-400"
                 )}
               >
                 {isDone ? <Check className="w-4 h-4" /> : <s.icon className="w-4 h-4" />}
@@ -158,7 +158,7 @@ const ExcelUploadCard = () => {
               {isActive && (
                 <motion.div
                   layoutId="active-indicator"
-                  className="ml-auto w-2 h-2 bg-emerald-500 rounded-full"
+                  className="ml-auto w-2 h-2 bg-black rounded-full"
                 />
               )}
             </div>
@@ -168,7 +168,7 @@ const ExcelUploadCard = () => {
 
       <div className="mt-8 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
         <motion.div
-          className="h-full bg-emerald-500 rounded-full"
+          className="h-full bg-black rounded-full"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -307,7 +307,7 @@ export default function AnimatedInventoryShowcase() {
     <section className="py-24 bg-white relative overflow-hidden">
       {/* Background Decor */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-full pointer-events-none">
-        <div className="absolute top-40 left-10 w-72 h-72 bg-emerald-100/50 rounded-full blur-3xl" />
+        <div className="absolute top-40 left-10 w-72 h-72 bg-black/50 rounded-full blur-3xl" />
         <div className="absolute bottom-40 right-10 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl" />
       </div>
 

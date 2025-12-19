@@ -45,7 +45,7 @@ const LandingPage: React.FC = () => {
   }, [scrollY]);
 
   return (
-    <div className="relative min-h-screen w-full bg-slate-50 selection:bg-emerald-500 selection:text-white font-sans">
+    <div className="relative min-h-screen w-full bg-slate-50 selection:bg-black selection:text-white font-sans">
 
       {/* Scroll Progress Bar */}
       <motion.div
