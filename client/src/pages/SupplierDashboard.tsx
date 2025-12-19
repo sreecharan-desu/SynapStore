@@ -121,6 +121,7 @@ const SupplierDashboard: React.FC = () => {
         }
     };
 
+  
     const [historyDetailRequest, setHistoryDetailRequest] = useState<SupplierRequest | null>(null);
     const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string; subtext?: string } | null>(null);
     const [profileResult, setProfileResult] = useState<{ success: boolean; message: string; subtext?: string } | null>(null);
@@ -146,6 +147,7 @@ const SupplierDashboard: React.FC = () => {
             // Validate only if REORDER
             if (!isReturn && fulfillItems.some(i => !i.batchNumber || !i.expiryDate)) {
                 setActionResult({ type: 'error', title: 'Validation Error', message: "Please provide Batch Number and Expiry Date for all items." });
+                alert("Please provide Batch Number and Expiry Date for all items.");
                 return;
             }
 
@@ -228,7 +230,7 @@ const SupplierDashboard: React.FC = () => {
         }
     };
 
-    // UseEffect: Initial Load + Refresh on Tab Change only if needed
+    // UseEffect: Initial Load only if needed
     useEffect(() => {
         if (!currentSupplier) return;
 
@@ -236,19 +238,10 @@ const SupplierDashboard: React.FC = () => {
         if (!dataLoaded) {
             refreshData();
         }
+    }, [currentSupplier, dataLoaded]);
 
-        // If switching to marketplace and we don't have stores, fetch them specifically?
-        // refreshData covers it.
-
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentSupplier, dataLoaded]); // Remove activeTab dependency to prevent refetch on tab switch
-
-    // Special case: If user switches to Marketplace and stores are empty, we might want to trigger a fetch even if dataLoaded is true
-    useEffect(() => {
-        if (activeTab === 'marketplace' && stores.length === 0 && dataLoaded) {
-            refreshData();
-        }
-    }, [activeTab]);
+    // Note: Removed tab-specific refetch to ensure caching as requested.
+    // Users must click the Refresh button for new data.
 
     // ... (rest of code) ...
 
@@ -1298,9 +1291,10 @@ const SupplierDashboard: React.FC = () => {
                                                                                 </Button>
                                                                             </>
                                                                         ) : isAccepted ? (
-                                                                            <Button onClick={() => openFulfillModal(req)} className={`!bg-black hover:!bg-slate-800 !text-white px-8 shadow-lg shadow-black/20 ${req.payload?.type === 'RETURN' ? '!bg-red-600 hover:!bg-red-700 shadow-red-600/20' : ''}`}>
-                                                                                {req.payload?.type === 'RETURN' ? 'Process Return' : 'Fulfill Order'}
-                                                                            </Button>
+                                                                            <></>
+                                                                            // <Button onClick={() => openFulfillModal(req)} className={`!bg-black hover:!bg-slate-800 !text-white px-8 shadow-lg shadow-black/20 ${req.payload?.type === 'RETURN' ? '!bg-red-600 hover:!bg-red-700 shadow-red-600/20' : ''}`}>
+                                                                            //     {req.payload?.type === 'RETURN' ? 'Process Return' : 'Fulfill Order'}
+                                                                            // </Button>
                                                                         ) : (
                                                                             <div className="text-slate-400 italic text-sm">No actions available</div>
                                                                         )}

@@ -17,6 +17,8 @@ import SuppliersPage from "./pages/suppliers/SuppliersPage";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import SupplierDashboard from "./pages/SupplierDashboard";
 import StoreOwnerDashboard from "./pages/StoreOwnerDashboard";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import PaymentFailure from "./pages/PaymentFailure";
 
 createRoot(document.getElementById("root")!).render(
   <RecoilRoot>
@@ -95,6 +97,9 @@ createRoot(document.getElementById("root")!).render(
             }
           />
 
+
+          <Route path="/payment/success" element={<PaymentSuccess />} />
+          <Route path="/payment/failure" element={<PaymentFailure />} />
 
         </Routes>
       </BrowserRouter>

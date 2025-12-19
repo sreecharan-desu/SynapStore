@@ -51,7 +51,9 @@ import noAuthEmailRouter from "./no-auth/email";
 v1Router.use("/email", noAuthEmailRouter);
 
 import cronRouter from "./cron/stock-alerts";
-
 v1Router.use("/cron", cronRouter);
+
+import paymentRouter from "./payments/paymentRoutes";
+v1Router.use("/payments", paymentRouter);
 
 export default v1Router;

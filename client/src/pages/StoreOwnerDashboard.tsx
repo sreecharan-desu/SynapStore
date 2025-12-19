@@ -8,8 +8,10 @@ import { Bell, Settings, LogOut, Users, Package, Search, X, Sparkles, Lock, Truc
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
-import { dashboardApi } from "../lib/api/endpoints";
+import { dashboardApi, paymentApi } from "../lib/api/endpoints";
 import { Button } from "../components/ui/button-1";
+import FeedbackToast from "../components/ui/feedback-toast";
+import PharmacyPayment from "../components/payments/PharmacyPayment";
 
 
 
@@ -197,6 +199,42 @@ const getActivityConfig = (action: string) => {
     return { icon: Zap, color: 'text-violet-600', bg: 'bg-violet-100', border: 'border-violet-200' };
 };
 
+const EmptyState = ({ 
+    icon: Icon, 
+    title, 
+    description, 
+    action, 
+    type = "neutral" 
+}: { 
+    icon: any, 
+    title: string, 
+    description?: string, 
+    action?: React.ReactNode,
+    type?: "neutral" | "success" | "warning" | "error"
+}) => {
+    const colors = {
+        neutral: "bg-slate-50 text-slate-300 border-slate-100",
+        success: "bg-emerald-50 text-emerald-300 border-emerald-100",
+        warning: "bg-amber-50 text-amber-300 border-amber-100",
+        error: "bg-red-50 text-red-300 border-red-100"
+    };
+
+    return (
+        <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center justify-center py-16 px-6 text-center"
+        >
+            <div className={`w-20 h-20 ${colors[type]} rounded-[2rem] flex items-center justify-center mb-6 shadow-sm border`}>
+                <Icon className="w-10 h-10 opacity-60" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">{title}</h3>
+            {description && <p className="text-slate-500 text-sm max-w-xs mx-auto leading-relaxed mb-8">{description}</p>}
+            {action}
+        </motion.div>
+    );
+};
+
 const StoreOwnerDashboard: React.FC = () => {
     const [auth, setAuth] = useRecoilState(authState);
     const logout = useLogout();
@@ -249,18 +287,18 @@ const StoreOwnerDashboard: React.FC = () => {
     };
 
     React.useEffect(() => {
-        if (activeTab === 'reorder') {
+        if (activeTab === 'reorder' && inventoryList.length === 0) {
             handleOpenReorder();
             // Clear cart when switching filters to avoid mixing types
             setCart(new Map());
             setCartMode(inventoryFilter === 'expired' ? 'return' : 'reorder');
             setReorderNote("");
-        } else if (activeTab === 'return') {
+        } else if (activeTab === 'return' && returnList.length === 0) {
             handleOpenReturn();
             setReturnCart(new Map());
             setReturnNote("");
         }
-    }, [inventoryFilter, activeTab]);
+    }, [inventoryFilter, activeTab, inventoryList.length]);
 
     const [isReorderLoading, setIsReorderLoading] = React.useState(false);
     const [isHistoryLoading, setIsHistoryLoading] = React.useState(false);
@@ -276,6 +314,15 @@ const StoreOwnerDashboard: React.FC = () => {
     // POS Payment & Receipt Preview State
     const [posPaymentMethod, setPosPaymentMethod] = React.useState<string>("CASH");
     const [showReceiptPreview, setShowReceiptPreview] = React.useState(false);
+    const [showPayUModal, setShowPayUModal] = React.useState(false);
+    const [payUPaymentInfo, setPayUPaymentInfo] = React.useState<{
+        amount: number;
+        email: string;
+        name: string;
+        phone: string;
+        orderId: string;
+        payuData?: any;
+    } | null>(null);
     const [currentReceiptUrl, setCurrentReceiptUrl] = React.useState<string | null>(null);
     const [currentSaleId, setCurrentSaleId] = React.useState<string | null>(null);
     const [posInventoryFilter, setPosInventoryFilter] = React.useState<"all" | "in_stock" | "out_of_stock">("all");
@@ -568,6 +615,7 @@ const StoreOwnerDashboard: React.FC = () => {
     const [isCheckoutLoading, setIsCheckoutLoading] = React.useState(false);
     const [showPOSConfirm, setShowPOSConfirm] = React.useState(false);
     const [requestToReject, setRequestToReject] = React.useState<string | null>(null);
+    const [viewingSubstitutesFor, setViewingSubstitutesFor] = React.useState<string | null>(null);
 
 
     // --- Forecast State ---
@@ -652,14 +700,14 @@ const StoreOwnerDashboard: React.FC = () => {
             const detail = err.response?.data?.detail;
 
             if (detail && typeof detail === "string" && (detail.toLowerCase().includes("not enough") || detail.toLowerCase().includes("data"))) {
-                setForecastError(`Forecast Failed: ${detail}`);
+                setForecastError("No enough data to show forecast data");
                 setFailedForecasts(prev => {
                     const next = new Set(prev);
                     next.add(medicine.id);
                     return next;
                 });
             } else {
-                setForecastError("Failed to generate forecast");
+                setForecastError("Failed to generate forecast due to a system error. Please try again later.");
             }
 
             // Mark as failed to prevent auto-fetch loop even on generic errors
@@ -875,39 +923,86 @@ const StoreOwnerDashboard: React.FC = () => {
         try {
             const items = Array.from(posCart.values()).map(({ medicine, qty }) => ({ medicineId: medicine.id, qty }));
 
-            // Pass paymentMethod from state
+            const isOnline = posPaymentMethod === "ONLINE";
+
+            // If online, we don't want a blob, we want JSON. 
+            // But dashboardApi.checkoutSale is defined with responseType: 'blob'.
+            // Actually, we can just use dashboardApi.checkoutSale and then check the response.
+            // However, Axios with responseType: 'blob' will try to parse JSON as a Blob.
+            // We can convert Blob back to text/JSON if needed.
+            
             const res = await dashboardApi.checkoutSale(items, posPaymentMethod);
 
-            // "res.data" is the blob because responseType: 'blob'
-            const blob = new Blob([res.data], { type: 'application/pdf' });
-            const url = window.URL.createObjectURL(blob);
+            if (isOnline) {
+                // Convert blob back to JSON string
+                const text = await (res.data as Blob).text();
+                const json = JSON.parse(text);
 
-            // Extract Sale ID from headers
-            const saleId = res.headers['x-sale-id'];
+                if (json.success) {
+                    const saleData = json.data;
+                    
+                    setPayUPaymentInfo({
+                        amount: Number(saleData.total),
+                        email: saleData.email || "",
+                        name: saleData.name || "",
+                        phone: saleData.phone || "",
+                        orderId: saleData.saleId,
+                        payuData: saleData.payuData // Now returned directly from checkoutSale
+                    });
+                    setShowPayUModal(true);
 
-            setCurrentReceiptUrl(url);
-            if (saleId) setCurrentSaleId(saleId);
+                    // Reset cart and query
+                    setPosCart(new Map());
+                    setPosQuery("");
+                    setPosPaymentMethod("CASH");
+                } else {
+                    throw new Error(json.message || "Failed to initiate online payment");
+                }
+            } else {
+                // "res.data" is the blob because responseType: 'blob'
+                const blob = new Blob([res.data], { type: 'application/pdf' });
+                const url = window.URL.createObjectURL(blob);
 
-            setShowReceiptPreview(true);
+                // Extract Sale ID from headers
+                const saleId = res.headers['x-sale-id'];
 
-            // Reset cart
-            setPosCart(new Map());
-            setPosQuery("");
-            setPosPaymentMethod("CASH"); // Reset to default
-            searchPOSMedicines(""); // Force refresh stock
+                setCurrentReceiptUrl(url);
+                if (saleId) setCurrentSaleId(saleId);
 
-            // Refresh dashboard data/receipts silently?
-            try {
-                const r = await dashboardApi.getReceipts();
-                setReceipts(r.data.data.receipts);
-            } catch (e) {
-                console.error("Failed to refresh receipts", e);
+                setShowReceiptPreview(true);
+
+                // Reset cart
+                setPosCart(new Map());
+                setPosQuery("");
+                setPosPaymentMethod("CASH"); // Reset to default
+                searchPOSMedicines(""); // Force refresh stock
+
+                // Refresh dashboard data/receipts silently?
+                try {
+                    const r = await dashboardApi.getReceipts();
+                    setReceipts(r.data.data.receipts);
+                } catch (e) {
+                    console.error("Failed to refresh receipts", e);
+                }
             }
 
         } catch (err: any) {
             console.error(err);
             setFeedbackMessage("Checkout failed: " + (err.response?.data?.message || err.message));
             setShowFeedback(true);
+            let message = "Checkout failed: ";
+            if (err.response?.data instanceof Blob) {
+                const text = await err.response.data.text();
+                try {
+                    const json = JSON.parse(text);
+                    message += json.message || err.message;
+                } catch (e) {
+                    message += err.message;
+                }
+            } else {
+                message += (err.response?.data?.message || err.message);
+            }
+            alert(message);
         } finally {
             setIsCheckoutLoading(false);
         }
@@ -1003,10 +1098,10 @@ const StoreOwnerDashboard: React.FC = () => {
     }, [auth.user, setAuth]);
 
     React.useEffect(() => {
-        if (auth.token) {
+        if (auth.token && !data) {
             fetchData();
         }
-    }, [auth.token, fetchData]);
+    }, [auth.token, data, fetchData]);
 
     const refreshData = async () => {
         setIsRefreshing(true);
@@ -1035,16 +1130,16 @@ const StoreOwnerDashboard: React.FC = () => {
 
     // Effect to handle tab-specific data fetching
     React.useEffect(() => {
-        if (activeTab === 'reorder') {
+        if (activeTab === 'reorder' && inventoryList.length === 0) {
             handleOpenReorder();
-        } else if (activeTab === 'sale') {
+        } else if (activeTab === 'sale' && posResults.length === 0) {
             searchPOSMedicines("");
-        } else if (activeTab === 'history') {
+        } else if (activeTab === 'history' && receipts.length === 0) {
             handleViewReceipts();
-        } else if (activeTab === 'overview' || activeTab === 'return') {
+        } else if ((activeTab === 'overview' || activeTab === 'return') && returnList.length === 0) {
             handleOpenReturn();
         }
-    }, [activeTab]);
+    }, [activeTab, inventoryList.length, posResults.length, receipts.length, returnList.length]);
 
 
     // Directory State
@@ -1187,6 +1282,7 @@ const StoreOwnerDashboard: React.FC = () => {
             const file = new Blob([res.data as any], { type: 'application/pdf' });
             const fileURL = URL.createObjectURL(file);
             setCurrentReceiptUrl(fileURL);
+            setCurrentSaleId(id);
             setShowReceiptPreview(true);
         } catch (err) {
             console.error("Failed to load PDF", err);
@@ -1311,12 +1407,12 @@ const StoreOwnerDashboard: React.FC = () => {
         },
         {
             icon: Package,
-            label: "Low Stock",
-            value: data?.lists.lowStock.length.toString() ?? "0",
+            label: "totalMedicines",
+            value: data?.overview.totalMedicines.toString() ?? "0",
             color: theme.primary,
             bg: theme.light,
             text: theme.text,
-            change: data?.lists.lowStock.length ? "Action needed" : "Healthy",
+            change: ((data?.overview.totalMedicines ? data.overview.totalMedicines : 0) < 10)  ? "Get some medicines" : "Okay",
         },
         {
             icon: Users,
@@ -1415,12 +1511,11 @@ const StoreOwnerDashboard: React.FC = () => {
 
                                         <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
                                             {supplierRequests.length === 0 ? (
-                                                <div className="text-center py-8">
-                                                    <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                                                        <Bell className="w-5 h-5 text-slate-300" />
-                                                    </div>
-                                                    <p className="text-sm text-slate-400">No new notifications</p>
-                                                </div>
+                                                <EmptyState 
+                                                    icon={Bell}
+                                                    title="All Caught Up"
+                                                    description="You don't have any new supplier connection requests at the moment."
+                                                />
                                             ) : (
                                                 supplierRequests.map(req => (
                                                     <div key={req.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-100 transition-colors">
@@ -1959,6 +2054,41 @@ const StoreOwnerDashboard: React.FC = () => {
                                                             Fetching latest market signals...
                                                         </div>
                                                     )}
+                    
+                                                    {/* Forecast Error State */}
+                                                    {!isForecastLoading && forecastError && (
+                                                        <div className="text-center py-16 border border-slate-100 bg-white rounded-[2.5rem] animate-in fade-in zoom-in duration-500 shadow-sm">
+                                                            <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-slate-100">
+                                                                <AlertTriangle className="w-7 h-7 text-slate-400" />
+                                                            </div>
+                                                            <h4 className="text-xl font-bold text-slate-900 mb-2 tracking-tight">Intelligence Threshold Not Met</h4>
+                                                            <p className="text-slate-500 text-sm mt-1 max-w-sm mx-auto font-medium leading-relaxed px-6">
+                                                                {forecastError}
+                                                            </p>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setForecastError(null);
+                                                                    setForecastData(null);
+                                                                    setSelectedForecastMedicine(null);
+                                                                }}
+                                                                className="mt-8 px-10 py-3.5 bg-black text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-black/10 hover:shadow-black/20 hover:-translate-y-0.5 transition-all active:scale-95"
+                                                            >
+                                                                Clear and Search Again
+                                                            </button>
+                                                        </div>
+                                                    )}
+                    
+                                                    {!isForecastLoading && !forecastData && !forecastError && (
+                                                        <div className="text-center py-20 border border-slate-100 rounded-[2.5rem] bg-slate-50/30">
+                                                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-100">
+                                                                <Sparkles className="w-6 h-6 text-slate-300" />
+                                                            </div>
+                                                            <h4 className="font-bold text-slate-900 tracking-tight">Predictive Engine Ready</h4>
+                                                            <p className="text-slate-400 text-xs mt-2 max-w-[240px] mx-auto font-medium leading-relaxed">
+                                                                Search for a medicine to begin analyzing historical trends and market signals.
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                 </MetricCardContent>
                                             </MetricCard>
                                         </div>
@@ -2017,50 +2147,51 @@ const StoreOwnerDashboard: React.FC = () => {
                                         </div>
 
                                         <div className="grow">
-                                            {/* Stats Row */}
                                             {(() => {
                                                 const currentTrendData = data?.charts.salesByDay
                                                     .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0) || [];
+
+                                                if (currentTrendData.length === 0) {
+                                                    return (
+                                                        <div className="h-full flex flex-col items-center justify-center py-20">
+                                                            <motion.div
+                                                                initial={{ opacity: 0, scale: 0.9 }}
+                                                                animate={{ opacity: 1, scale: 1 }}
+                                                                className="flex flex-col items-center"
+                                                            >
+                                                                <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-6 shadow-inner border border-slate-100 relative">
+                                                                    <BarChart2 className="w-10 h-10 text-slate-300" />
+                                                                    <div className="absolute top-0 right-0 w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center -mr-1 -mt-1 border-2 border-white">
+                                                                        <div className="w-2 h-2 bg-amber-400 rounded-full animate-ping" />
+                                                                    </div>
+                                                                </div>
+                                                                <h3 className="text-xl font-bold text-slate-400 tracking-tight">Analytics Awaiting Activity</h3>
+                                                                <p className="text-sm text-slate-400 mt-2 max-w-[240px] text-center leading-relaxed font-medium">
+                                                                    Start processing sales to unlock real-time revenue visualization and growth tracking.
+                                                                </p>
+                                                                <button
+                                                                    onClick={() => setActiveTab('sale')}
+                                                                    className={`mt-8 px-8 py-3.5 rounded-2xl font-bold text-sm text-white shadow-xl transition-all hover:translate-y-[-2px] hover:shadow-2xl active:scale-95 flex items-center gap-3 cursor-pointer`}
+                                                                    style={{ backgroundColor: theme.hex }}
+                                                                >
+                                                                    <ShoppingCart className="w-4 h-4" /> Go to Register
+                                                                </button>
+                                                            </motion.div>
+                                                        </div>
+                                                    );
+                                                }
+
                                                 const revenues = currentTrendData.map(d => d.revenue);
                                                 const highValue = revenues.length ? Math.max(...revenues) : 0;
                                                 const lowValue = revenues.length ? Math.min(...revenues) : 0;
                                                 const lastRevenue = revenues.length ? revenues[revenues.length - 1] : 0;
                                                 const change = revenues.length > 1 ? ((revenues[revenues.length - 1] - revenues[revenues.length - 2]) / (revenues[revenues.length - 2] || 1) * 100).toFixed(1) : 0;
 
-                                                return (
-                                                    <div className="flex items-center justify-between flex-wrap gap-2.5 text-sm mb-6">
-                                                        <div className="flex items-center gap-6">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-muted-foreground font-medium">Latest Sale:</span>
-                                                                <span className="font-bold text-slate-800">₹{lastRevenue.toLocaleString()}</span>
-                                                                <div className={`flex items-center gap-1 ${Number(change) >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-bold`}>
-                                                                    {Number(change) >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                                                    <span>({Number(change) >= 0 ? '+' : ''}{change}%)</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex items-center gap-6 text-muted-foreground">
-                                                            <span>
-                                                                High: <span className="text-sky-600 font-bold">₹{highValue.toLocaleString()}</span>
-                                                            </span>
-                                                            <span>
-                                                                Low: <span className="text-amber-600 font-bold">₹{lowValue.toLocaleString()}</span>
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })()}
-
-                                            {/* Chart */}
-                                            {(() => {
-                                                const trendData = data?.charts.salesByDay
-                                                    .slice(selectedPeriod === '7d' ? -7 : selectedPeriod === '15d' ? -15 : selectedPeriod === '30d' ? -30 : 0)
-                                                    .map(d => ({
-                                                        date: new Date(d.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
-                                                        value: d.revenue,
-                                                        fullDate: d.date
-                                                    })) || [];
+                                                const trendData = currentTrendData.map(d => ({
+                                                    date: new Date(d.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+                                                    value: d.revenue,
+                                                    fullDate: d.date
+                                                }));
 
                                                 const CustomTooltip = ({ active, payload }: any) => {
                                                     if (active && payload && payload.length) {
@@ -2079,13 +2210,32 @@ const StoreOwnerDashboard: React.FC = () => {
                                                 };
 
                                                 return (
-                                                    <ChartContainer
-                                                        config={{ value: { label: 'Revenue', color: theme.hex } }}
-                                                        className="h-96 w-full [&_.recharts-curve.recharts-tooltip-cursor]:stroke-initial"
-                                                    >
-                                                        <ComposedChart
-                                                            data={trendData}
-                                                            margin={{ top: 20, right: 10, left: 5, bottom: 20 }}
+                                                    <>
+                                                        <div className="flex items-center justify-between flex-wrap gap-2.5 text-sm mb-6">
+                                                            <div className="flex items-center gap-6">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-muted-foreground font-medium">Latest Sale:</span>
+                                                                    <span className="font-bold text-slate-800">₹{lastRevenue.toLocaleString()}</span>
+                                                                    <div className={`flex items-center gap-1 ${Number(change) >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-bold`}>
+                                                                        {Number(change) >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                                                        <span>({Number(change) >= 0 ? '+' : ''}{change}%)</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex items-center gap-6 text-muted-foreground">
+                                                                <span>
+                                                                    High: <span className="text-sky-600 font-bold">₹{highValue.toLocaleString()}</span>
+                                                                </span>
+                                                                <span>
+                                                                    Low: <span className="text-amber-600 font-bold">₹{lowValue.toLocaleString()}</span>
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        <ChartContainer
+                                                            config={{ value: { label: 'Revenue', color: theme.hex } }}
+                                                            className="h-96 w-full [&_.recharts-curve.recharts-tooltip-cursor]:stroke-initial"
                                                         >
                                                             <defs>
                                                                 <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
@@ -2119,8 +2269,35 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                     stroke={theme.hex}
                                                                     strokeDasharray="4 4"
                                                                     strokeWidth={1.5}
+                                                            <ComposedChart
+                                                                data={trendData}
+                                                                margin={{ top: 20, right: 10, left: 5, bottom: 20 }}
+                                                            >
+                                                                <defs>
+                                                                    <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                        <stop offset="0%" stopColor={theme.hex} stopOpacity={0.15} />
+                                                                        <stop offset="100%" stopColor={theme.hex} stopOpacity={0} />
+                                                                    </linearGradient>
+                                                                    <pattern id="dotGrid" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+                                                                        <circle cx="10" cy="10" r="1" fill="var(--border)" fillOpacity="0.3" />
+                                                                    </pattern>
+                                                                    <filter id="dotShadow" x="-50%" y="-50%" width="200%" height="200%">
+                                                                        <feDropShadow dx="2" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.1)" />
+                                                                    </filter>
+                                                                    <filter id="lineShadow" x="-100%" y="-100%" width="300%" height="300%">
+                                                                        <feDropShadow dx="0" dy="10" stdDeviation="15" floodColor={`${theme.hex}44`} />
+                                                                    </filter>
+                                                                </defs>
+
+                                                                <rect x="0" y="0" width="100%" height="100%" fill="url(#dotGrid)" style={{ pointerEvents: 'none' }} />
+
+                                                                <CartesianGrid
+                                                                    strokeDasharray="4 8"
+                                                                    stroke="#f1f5f9"
+                                                                    strokeOpacity={1}
+                                                                    horizontal={true}
+                                                                    vertical={false}
                                                                 />
-                                                            )}
 
                                                             <XAxis
                                                                 dataKey="date"
@@ -2191,6 +2368,85 @@ const StoreOwnerDashboard: React.FC = () => {
                                                             />
                                                         </ComposedChart>
                                                     </ChartContainer>
+                                                                {trendData.length > 0 && (
+                                                                    <ReferenceLine
+                                                                        x={trendData[trendData.length - 1].date}
+                                                                        stroke={theme.hex}
+                                                                        strokeDasharray="4 4"
+                                                                        strokeWidth={1.5}
+                                                                    />
+                                                                )}
+
+                                                                <XAxis
+                                                                    dataKey="date"
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 800 }}
+                                                                    tickMargin={15}
+                                                                    interval="preserveStartEnd"
+                                                                />
+
+                                                                <YAxis
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 800 }}
+                                                                    tickFormatter={(v) => `₹${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`}
+                                                                    tickMargin={15}
+                                                                />
+
+                                                                <ChartTooltip
+                                                                    content={<CustomTooltip />}
+                                                                    cursor={{ strokeDasharray: '4 4', stroke: '#cbd5e1', strokeOpacity: 0.8 }}
+                                                                />
+
+                                                                <Area
+                                                                    type="monotone"
+                                                                    dataKey="value"
+                                                                    stroke="none"
+                                                                    fill="url(#areaGradient)"
+                                                                    animationDuration={3000}
+                                                                />
+
+                                                                <Line
+                                                                    type="monotone"
+                                                                    dataKey="value"
+                                                                    stroke={theme.hex}
+                                                                    strokeWidth={4}
+                                                                    filter="url(#lineShadow)"
+                                                                    dot={(props) => {
+                                                                        const { cx, cy, index } = props;
+                                                                        const revenues = trendData.map(d => d.value);
+                                                                        const high = Math.max(...revenues);
+                                                                        const low = Math.min(...revenues);
+                                                                        const val = trendData[index].value;
+
+                                                                        if (index === 0 || index === trendData.length - 1 || val === high || (val === low && low !== high)) {
+                                                                            return (
+                                                                                <circle
+                                                                                    key={`dot-${index}`}
+                                                                                    cx={cx}
+                                                                                    cy={cy}
+                                                                                    r={6}
+                                                                                    fill={theme.hex}
+                                                                                    stroke="white"
+                                                                                    strokeWidth={3}
+                                                                                    filter="url(#dotShadow)"
+                                                                                />
+                                                                            );
+                                                                        }
+                                                                        return <g key={`dot-${index}`} />;
+                                                                    }}
+                                                                    activeDot={{
+                                                                        r: 8,
+                                                                        fill: theme.hex,
+                                                                        stroke: 'white',
+                                                                        strokeWidth: 4,
+                                                                        filter: 'url(#dotShadow)',
+                                                                    }}
+                                                                />
+                                                            </ComposedChart>
+                                                        </ChartContainer>
+                                                    </>
                                                 );
                                             })()}
                                         </div>
@@ -2243,12 +2499,11 @@ const StoreOwnerDashboard: React.FC = () => {
                                     })}
 
                                     {(!data?.lists.activity || data.lists.activity.length === 0) && (
-                                        <div className="text-center py-20 flex flex-col items-center">
-                                            <div className="w-20 h-20 bg-slate-50 rounded-[2rem] flex items-center justify-center mb-6 rotate-12 shadow-inner">
-                                                <FileText className="w-10 h-10 text-slate-200" />
-                                            </div>
-                                            <p className="text-sm font-black text-slate-300 uppercase tracking-widest">Quiet for now</p>
-                                        </div>
+                                        <EmptyState 
+                                            icon={Activity}
+                                            title="System Quiet"
+                                            description="No recent activities recorded. Start exploring your dashboard to see logs here."
+                                        />
                                     )}
                                 </div>
 
@@ -2524,15 +2779,11 @@ const StoreOwnerDashboard: React.FC = () => {
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-4">
-                                        <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center">
-                                            <Users className={`w-8 h-8 ${theme.text} opacity-50`} />
-                                        </div>
-                                        <div className="text-center space-y-1">
-                                            <h3 className="text-base font-bold text-slate-600">No Connected Suppliers</h3>
-                                            <p className="max-w-xs mx-auto text-xs opacity-70">Connect with suppliers from the recommended list above to start ordering.</p>
-                                        </div>
-                                    </div>
+                                    <EmptyState 
+                                        icon={Users}
+                                        title="No Connected Suppliers"
+                                        description="You haven't connected with any suppliers yet. Start by exploring the directory to build your network."
+                                    />
                                 )}
                             </div>
                         </div>
@@ -2630,21 +2881,19 @@ const StoreOwnerDashboard: React.FC = () => {
                                     }
 
                                     return (
-                                        <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-6">
-                                            <div className="w-24 h-24 rounded-full bg-white shadow-sm flex items-center justify-center">
-                                                <Package className={`w-10 h-10 ${theme.text} opacity-50`} />
-                                            </div>
-                                            <div className="text-center space-y-2">
-                                                <h3 className="text-lg font-bold text-slate-700">No Reorders Given</h3>
-                                                <p className="max-w-xs mx-auto text-sm">Your sent reorder requests will appear here once you place orders with suppliers.</p>
-                                            </div>
-                                            <Button
-                                                onClick={() => setActiveTab('reorder')}
-                                                className="!bg-slate-900 text-white hover:opacity-90 shadow-lg shadow-slate-900/20 border-none font-bold rounded-xl pointer-events-auto"
-                                            >
-                                                Create New Reorder
-                                            </Button>
-                                        </div>
+                                        <EmptyState 
+                                            icon={Package}
+                                            title="No Reorders Yet"
+                                            description="Your sent reorder requests will appear here once you place orders with suppliers."
+                                            action={
+                                                <Button
+                                                    onClick={() => setActiveTab('reorder')}
+                                                    className="!bg-slate-900 text-white hover:opacity-90 shadow-lg shadow-slate-900/20 border-none font-bold rounded-xl pointer-events-auto"
+                                                >
+                                                    Create New Reorder
+                                                </Button>
+                                            }
+                                        />
                                     );
                                 })()}
                             </div>
@@ -2737,12 +2986,11 @@ const StoreOwnerDashboard: React.FC = () => {
                                                     med.genericName.toLowerCase().includes(reorderSearchQuery.toLowerCase());
                                                 return matchesSearch;
                                             }).length === 0 && (
-                                                    <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                                                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                                                            <Search className="w-8 h-8 opacity-20" />
-                                                        </div>
-                                                        <p className="font-medium text-slate-500">No matching items</p>
-                                                    </div>
+                                                    <EmptyState 
+                                                        icon={Search}
+                                                        title="No Items Found"
+                                                        description={`We couldn't find any items matching "${reorderSearchQuery}".`}
+                                                    />
                                                 )}
                                             {inventoryList.filter(med => {
                                                 const matchesSearch = med.brandName.toLowerCase().includes(reorderSearchQuery.toLowerCase()) ||
@@ -2992,6 +3240,12 @@ const StoreOwnerDashboard: React.FC = () => {
                                                     <p className="font-medium text-slate-500">No expiring items found</p>
                                                     <p className="text-sm opacity-70">Your inventory looks healthy!</p>
                                                 </div>
+                                                <EmptyState 
+                                                    icon={CheckCircle}
+                                                    type="success"
+                                                    title="Inventory Healthy"
+                                                    description="No expiring items found in your inventory. Good job with the stock management!"
+                                                />
                                             ) : (
                                                 returnList.map((item) => {
                                                     const key = `${item.id}_${item.batchNumber}`;
@@ -3287,80 +3541,149 @@ const StoreOwnerDashboard: React.FC = () => {
                                     ) : (
                                         <>
                                             {posResults.filter((med: any) => {
-                                                const totalStock = med.inventory?.reduce((acc: any, b: any) => acc + b.qtyAvailable, 0) || 0;
+                                                const totalStock = med.totalStock || 0;
                                                 if (posInventoryFilter === 'out_of_stock') return totalStock === 0;
                                                 if (posInventoryFilter === 'in_stock') return totalStock > 0;
                                                 return true;
                                             }).length === 0 && (
-                                                    <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                                                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                                                            <Search className="w-8 h-8 opacity-20" />
-                                                        </div>
-                                                        <p className="font-medium text-slate-500">No products found</p>
-                                                        <p className="text-sm opacity-70">Try searching for a different medicine</p>
-                                                    </div>
+                                                    <EmptyState 
+                                                        icon={Search}
+                                                        title="No Products Found"
+                                                        description="Try searching for a different medicine or adjust your filters."
+                                                    />
                                                 )}
                                             {posResults.filter((med: any) => {
-                                                const totalStock = med.inventory?.reduce((acc: any, b: any) => acc + b.qtyAvailable, 0) || 0;
+                                                const totalStock = med.totalStock || 0;
                                                 if (posInventoryFilter === 'out_of_stock') return totalStock === 0;
                                                 if (posInventoryFilter === 'in_stock') return totalStock > 0;
                                                 return true;
                                             }).map((med: any) => {
-                                                const totalStock = med.inventory?.reduce((acc: any, b: any) => acc + b.qtyAvailable, 0) || 0;
+                                                const totalStock = med.totalStock || 0;
                                                 const cartItem = posCart.get(med.id);
                                                 const inCart = cartItem ? cartItem.qty : 0;
+                                                const hasSubstitutes = med.substitutes && med.substitutes.length > 0;
+
                                                 return (
-                                                    <div
-                                                        key={med.id}
-                                                        className={`group flex items-center p-3 rounded-2xl border transition-all duration-200 ${totalStock > 0 ? 'bg-white border-slate-100 hover:border-slate-300 hover:shadow-sm' : 'bg-slate-50 border-slate-100 opacity-70'}`}
-                                                    >
-                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center mr-4 ${totalStock > 0 ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>
-                                                            <Package className="w-5 h-5" />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0 mr-4">
-                                                            <h4 className="font-bold text-slate-800 truncate">{med.brandName}</h4>
-                                                            <div className="flex items-center gap-2 text-xs text-slate-500">
-                                                                <span className="truncate">{med.genericName}</span>
-                                                                <span className="w-1 h-1 rounded-full bg-slate-300" />
-                                                                <span>{med.strength}</span>
+                                                    <div key={med.id} className="flex flex-col gap-1">
+                                                        <div
+                                                            className={`group flex items-center p-3 rounded-2xl border transition-all duration-200 ${totalStock > 0 ? 'bg-white border-slate-100 hover:border-slate-300 hover:shadow-sm' : 'bg-slate-50 border-slate-100'}`}
+                                                        >
+                                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center mr-4 ${totalStock > 0 ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-400 opacity-60'}`}>
+                                                                <Package className="w-5 h-5" />
                                                             </div>
+                                                            <div className="flex-1 min-w-0 mr-4">
+                                                                <h4 className="font-bold text-slate-800 truncate">{med.brandName}</h4>
+                                                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                                                    <span className="truncate">{med.genericName}</span>
+                                                                    <span className="w-1 h-1 rounded-full bg-slate-300" />
+                                                                    <span>{med.strength}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {totalStock > 0 ? (
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="text-right mr-2 hidden sm:block">
+                                                                        <div className={`text-xs font-bold ${totalStock - inCart < 10 ? 'text-amber-600' : 'text-slate-500'}`}>
+                                                                            {totalStock - inCart} in stock
+                                                                        </div>
+                                                                    </div>
+                                                                    {inCart > 0 ? (
+                                                                        <div className="flex items-center !bg-black rounded-lg p-1 shadow-md shadow-black/10">
+                                                                            <i
+                                                                                onClick={() => handlePOSAddToCart(med, inCart - 1)}
+                                                                                className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:!text-white rounded-md hover:bg-white/10 transition-colors"
+                                                                            >
+                                                                                -
+                                                                            </i>
+                                                                            <span className="w-8 text-center font-bold text-sm !text-white">{inCart}</span>
+                                                                            <i
+                                                                                onClick={() => handlePOSAddToCart(med, inCart + 1)}
+                                                                                className="w-7 h-7 cursor-pointer flex items-center justify-center !text-white hover:!text-white rounded-md hover:bg-white/10 transition-colors"
+                                                                            >
+                                                                                +
+                                                                            </i>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => handlePOSAddToCart(med, 1)}
+                                                                            className="!bg-black border border-transparent !text-white hover:!bg-slate-800 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md shadow-black/10 cursor-pointer"
+                                                                        >
+                                                                            Add
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex flex-col items-end gap-1.5">
+                                                                    <span className="text-[10px] font-black text-red-500 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-wider border border-red-100">Out of Stock</span>
+                                                                    {hasSubstitutes && (
+                                                                        <button 
+                                                                            onClick={() => setViewingSubstitutesFor(viewingSubstitutesFor === med.id ? null : med.id)}
+                                                                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                                                        >
+                                                                            <Sparkles className="w-3 h-3" />
+                                                                            {viewingSubstitutesFor === med.id ? "Hide Substitutes" : "Find Substitutes"}
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </div>
 
-                                                        {totalStock > 0 ? (
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="text-right mr-2 hidden sm:block">
-                                                                    <div className={`text-xs font-bold ${totalStock - inCart < 10 ? 'text-amber-600' : 'text-slate-500'}`}>
-                                                                        {totalStock - inCart} in stock
+                                                        {/* Substitutes Section */}
+                                                        <AnimatePresence>
+                                                            {viewingSubstitutesFor === med.id && hasSubstitutes && (
+                                                                <motion.div
+                                                                    initial={{ height: 0, opacity: 0 }}
+                                                                    animate={{ height: 'auto', opacity: 1 }}
+                                                                    exit={{ height: 0, opacity: 0 }}
+                                                                    className="overflow-hidden"
+                                                                >
+                                                                    <div className="bg-slate-50/50 rounded-2xl p-2 mt-1 border border-slate-100 ml-6 space-y-1.5 shadow-inner">
+                                                                        <div className="px-3 pt-1 pb-2">
+                                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Available Alternatives</p>
+                                                                        </div>
+                                                                        {med.substitutes.map((sub: any) => {
+                                                                            const subCartItem = posCart.get(sub.id);
+                                                                            const subInCart = subCartItem ? subCartItem.qty : 0;
+                                                                            return (
+                                                                                <div key={sub.id} className="bg-white rounded-xl p-2.5 border border-slate-100 flex items-center justify-between shadow-sm">
+                                                                                    <div className="flex-1 min-w-0 mr-3">
+                                                                                        <h5 className="font-bold text-slate-700 text-sm truncate">{sub.brandName}</h5>
+                                                                                        <p className="text-[10px] text-emerald-600 font-bold">{sub.available_units} units available</p>
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <span className="text-sm font-bold text-slate-900 mr-2">₹{Number(sub.price).toFixed(2)}</span>
+                                                                                        {subInCart > 0 ? (
+                                                                                            <div className="flex items-center bg-indigo-600 rounded-lg p-0.5">
+                                                                                                <i
+                                                                                                    onClick={() => handlePOSAddToCart(sub, subInCart - 1)}
+                                                                                                    className="w-6 h-6 flex cursor-pointer items-center justify-center !text-white rounded-md hover:bg-white/10 transition-colors text-xs"
+                                                                                                >
+                                                                                                    -
+                                                                                                </i>
+                                                                                                <span className="w-6 text-center font-bold text-xs !text-white">{subInCart}</span>
+                                                                                                <i
+                                                                                                    onClick={() => handlePOSAddToCart(sub, subInCart + 1)}
+                                                                                                    className="w-6 h-6 cursor-pointer flex items-center justify-center !text-white rounded-md hover:bg-white/10 transition-colors text-xs"
+                                                                                                >
+                                                                                                    +
+                                                                                                </i>
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            <button
+                                                                                                onClick={() => handlePOSAddToCart(sub, 1)}
+                                                                                                className="!bg-indigo-600 !text-white hover:!bg-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-sm shadow-indigo-100"
+                                                                                            >
+                                                                                                Add
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
                                                                     </div>
-                                                                </div>
-                                                                {inCart > 0 ? (
-                                                                    <div className="flex items-center !bg-black rounded-lg p-1 shadow-md shadow-black/10">
-                                                                        <i
-                                                                            onClick={() => handlePOSAddToCart(med, inCart - 1)}
-                                                                            className="w-7 h-7 flex cursor-pointer items-center justify-center !text-white hover:!text-white rounded-md hover:bg-white/10 transition-colors"
-                                                                        >
-                                                                            -
-                                                                        </i>
-                                                                        <span className="w-8 text-center font-bold text-sm !text-white">{inCart}</span>
-                                                                        <i
-                                                                            onClick={() => handlePOSAddToCart(med, inCart + 1)}
-                                                                            className="w-7 h-7 cursor-pointer flex items-center justify-center !text-white hover:!text-white rounded-md hover:bg-white/10 transition-colors"
-                                                                        >
-                                                                            +
-                                                                        </i>
-                                                                    </div>
-                                                                ) : (
-                                                                    <button
-                                                                        onClick={() => handlePOSAddToCart(med, 1)}
-                                                                        className="!bg-black border border-transparent !text-white hover:!bg-slate-800 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md shadow-black/10"
-                                                                    >
-                                                                        Add
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-xs font-bold text-red-400 bg-red-50 px-2 py-1 rounded-lg">Out of Stock</span>
-                                                        )}
+                                                                </motion.div>
+                                                            )}
+                                                        </AnimatePresence>
                                                     </div>
                                                 );
                                             })}
@@ -3380,7 +3703,6 @@ const StoreOwnerDashboard: React.FC = () => {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-slate-900">Current Sale</h3>
-
                                         </div>
                                     </div>
                                     <div className="text-xs font-bold bg-white border border-slate-200 px-2 py-1 rounded-lg text-slate-600">
@@ -3399,8 +3721,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                     ) : (
                                         <ul className="space-y-4">
                                             {Array.from(posCart.values()).map(({ medicine: m, qty }) => {
-                                                // Fallback to first batch MRP if sellingPrice is not set
-                                                const price = m.sellingPrice || (m.inventory && m.inventory.length > 0 ? Number(m.inventory[0].mrp) : 0) || 0;
+                                                const price = m.sellingPrice || (m.inventory && m.inventory.length > 0 ? Number(m.inventory[0].mrp) : (m.price || 0));
                                                 const subtotal = price * qty;
                                                 return (
                                                     <li key={m.id} className="flex justify-between items-start group">
@@ -3416,12 +3737,11 @@ const StoreOwnerDashboard: React.FC = () => {
                                                 );
                                             })}
                                             <div className="border-t-2 border-dashed border-slate-100 my-4" />
-                                            {/* Removed Subtotal and Tax as requested */}
                                             <div className="flex justify-between items-center text-lg font-bold text-slate-900 mt-2">
                                                 <span>Total</span>
                                                 <span className="font-mono">₹{Array.from(posCart.values()).reduce((acc, item) => {
                                                     const m = item.medicine;
-                                                    const price = m.sellingPrice || (m.inventory && m.inventory.length > 0 ? Number(m.inventory[0].mrp) : 0) || 0;
+                                                    const price = m.sellingPrice || (m.inventory && m.inventory.length > 0 ? Number(m.inventory[0].mrp) : (m.price || 0));
                                                     return acc + (price * item.qty);
                                                 }, 0).toFixed(2)}</span>
                                             </div>
@@ -3435,7 +3755,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-2 mb-2">
                                         {[
                                             { id: "CASH", icon: Banknote, label: "Cash", disabled: false },
-                                            { id: "CARD", icon: CreditCard, label: "Card", disabled: true },
+                                            { id: "ONLINE", icon: CreditCard, label: "Online", disabled: false },
                                             { id: "UPI", icon: Smartphone, label: "UPI", disabled: true },
                                             { id: "OTHER", icon: MoreHorizontal, label: "Other", disabled: true }
                                         ].map((item) => (
@@ -3455,8 +3775,8 @@ const StoreOwnerDashboard: React.FC = () => {
                                             </button>
                                         ))}
                                     </div>
-                                    <p className="text-[10px] text-amber-600 font-medium text-center mb-4 flex items-center justify-center gap-1">
-                                        <Activity className="w-3 h-3" /> Only Cash payments accepted at this time
+                                    <p className="text-[10px] text-emerald-600 font-medium text-center mb-4 flex items-center justify-center gap-1">
+                                        <Activity className="w-3 h-3" /> Cash and Online payments are now accepted
                                     </p>
 
                                     <Button
@@ -3538,12 +3858,19 @@ const StoreOwnerDashboard: React.FC = () => {
                                             ) : receipts.length === 0 ? (
                                                 <tr>
                                                     <td colSpan={4} className="px-6 py-12">
-                                                        <div className="flex flex-col items-center justify-center text-slate-400 gap-4">
-                                                            <div className="bg-slate-50 p-4 rounded-full shadow-sm border border-slate-100">
-                                                                <FileText className="w-8 h-8 opacity-50" />
-                                                            </div>
-                                                            <p>No receipts found.</p>
-                                                        </div>
+                                                        <EmptyState 
+                                                            icon={FileText}
+                                                            title="No Sales History"
+                                                            description="You haven't processed any sales yet. Complete a checkout in the POS section to see receipts here."
+                                                            action={
+                                                                <Button
+                                                                    onClick={() => setActiveTab('sale')}
+                                                                    className="!bg-black !text-white rounded-xl px-8"
+                                                                >
+                                                                    Go to POS
+                                                                </Button>
+                                                            }
+                                                        />
                                                     </td>
                                                 </tr>
                                             ) : (
@@ -3617,6 +3944,40 @@ const StoreOwnerDashboard: React.FC = () => {
 
             </main >
 
+            {/* PayU Payment Modal */}
+            <AnimatePresence>
+                {showPayUModal && payUPaymentInfo && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="w-full max-w-md"
+                        >
+                            <PharmacyPayment
+                                amount={payUPaymentInfo.amount}
+                                email={payUPaymentInfo.email}
+                                name={payUPaymentInfo.name}
+                                phone={payUPaymentInfo.phone}
+                                orderId={payUPaymentInfo.orderId}
+                                payuData={payUPaymentInfo.payuData}
+                            />
+                            <button
+                                onClick={() => setShowPayUModal(false)}
+                                className="mt-4 w-full py-3 text-sm font-bold text-white/60 hover:text-white transition-colors"
+                            >
+                                Cancel Payment
+                            </button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+            <FeedbackToast
+                visible={showFeedback}
+                onClose={() => setShowFeedback(false)}
+                message={feedbackMessage}
+                onFeedback={(type) => console.log("Feedback:", type)}
+            />
 
             {/* Logout Confirmation Modal */}
             <AnimatePresence>
@@ -4068,37 +4429,7 @@ const StoreOwnerDashboard: React.FC = () => {
             </AnimatePresence>
 
 
-            {/* Forecast Error Modal */}
-            <AnimatePresence>
-                {forecastError && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center relative overflow-hidden"
-                        >
-                            <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 bg-red-100 text-red-600">
-                                <XCircle className="w-8 h-8" />
-                            </div>
 
-                            <h3 className="text-xl font-bold text-slate-900 mb-2">
-                                Forecast Failed
-                            </h3>
-                            <p className="text-slate-500 mb-8 leading-relaxed">
-                                {forecastError}
-                            </p>
-
-                            <Button
-                                onClick={() => setForecastError(null)}
-                                className="w-full h-12 cursor-pointer rounded-xl font-bold !bg-black !text-white hover:!bg-slate-800"
-                            >
-                                Close
-                            </Button>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
 
             {/* Feedback / Notification Modal */}
             <AnimatePresence>

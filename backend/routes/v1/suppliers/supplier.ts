@@ -78,7 +78,7 @@ router.post(
         return handleZodError(res, parsed.error);
       }
 
-      const user:any = req.user!;
+      const user: any = req.user!;
       const payload = parsed.data;
 
       // 1. Check if user is already associated with a supplier (prioritize this to allow profile updates)
@@ -110,7 +110,7 @@ router.post(
             contactName: payload.contactName ?? undefined,
             defaultLeadTime: payload.defaultLeadTime ?? undefined,
             defaultMOQ: payload.defaultMOQ ?? undefined,
-         
+
             // userId already set
           },
         });
@@ -182,15 +182,15 @@ router.post(
 
       // EMAIL NOTIFICATION: Supplier Profile Update
       if (user.email) {
-          sendMail({
-            to: user.email,
-            subject: "Supplier Profile Updated",
-            html: getNotificationEmailTemplate(
-              "Supplier Profile Updated",
-              `Your supplier profile for "<strong>${supplier.name}</strong>" has been successfully saved.<br/><br/>
+        sendMail({
+          to: user.email,
+          subject: "Supplier Profile Updated",
+          html: getNotificationEmailTemplate(
+            "Supplier Profile Updated",
+            `Your supplier profile for "<strong>${supplier.name}</strong>" has been successfully saved.<br/><br/>
                You can now manage your catalog and connection requests.`
-            ),
-          }).catch(e => console.error("Failed to send supplier profile update email", e));
+          ),
+        }).catch(e => console.error("Failed to send supplier profile update email", e));
       }
 
       return sendSuccess(res, "Supplier profile created/updated", { supplier }, 201);
@@ -460,20 +460,20 @@ router.get(
         prisma.supplier.findUnique({
           where: { id: supplierId },
           include: {
-              supplierStores: {
-                  include: {
-                      store: {
-                          select: {
-                              id: true,
-                              name: true,
-                              slug: true,
-                              currency: true,
-                              timezone: true,
-                              isActive: true
-                          }
-                      }
+            supplierStores: {
+              include: {
+                store: {
+                  select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    currency: true,
+                    timezone: true,
+                    isActive: true
                   }
+                }
               }
+            }
           }
         }),
         prisma.supplierRequest.findMany({
@@ -487,7 +487,7 @@ router.get(
             status: true,
             storeId: true,
             supplierId: true,
-            updatedAt : true,
+            updatedAt: true,
             payload: true,
             store: {
               select: {
@@ -517,35 +517,35 @@ router.delete(
   authenticate,
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
-        const { requestId } = req.params;
-        const user = req.user!;
-        const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
-        
-        if (!supplier) return sendError(res, "Supplier profile not found", 404);
+      const { requestId } = req.params;
+      const user = req.user!;
+      const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
 
-        const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
-        if (!request) return sendError(res, "Request not found", 404);
+      if (!supplier) return sendError(res, "Supplier profile not found", 404);
 
-        if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
-        
-        // Only allow cancelling PENDING requests? Or any?
-        // If ACCEPTED, cancelling probably doesn't break connection (separate call).
-        if (request.status !== "PENDING") return sendError(res, "Can only cancel pending requests", 400);
+      const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+      if (!request) return sendError(res, "Request not found", 404);
 
-        await prisma.supplierRequest.delete({ where: { id: requestId } });
+      if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
 
-        await prisma.activityLog.create({
-            data: {
-                storeId: request.storeId, // storeId is required in activityLog? Yes usually.
-                userId: user.id,
-                action: "supplier_request_cancelled",
-                payload: { requestId }
-            }
-        });
-        
-        return sendSuccess(res, "Request cancelled");
+      // Only allow cancelling PENDING requests? Or any?
+      // If ACCEPTED, cancelling probably doesn't break connection (separate call).
+      if (request.status !== "PENDING") return sendError(res, "Can only cancel pending requests", 400);
+
+      await prisma.supplierRequest.delete({ where: { id: requestId } });
+
+      await prisma.activityLog.create({
+        data: {
+          storeId: request.storeId, // storeId is required in activityLog? Yes usually.
+          userId: user.id,
+          action: "supplier_request_cancelled",
+          payload: { requestId }
+        }
+      });
+
+      return sendSuccess(res, "Request cancelled");
     } catch (err) {
-        next(err);
+      next(err);
     }
   }
 );
@@ -555,86 +555,86 @@ router.delete(
  * Description: Supplier disconnects from a store.
  */
 router.delete(
-    "/stores/:storeId",
-    authenticate,
-    async (req: RequestWithUser, res: Response, next: NextFunction) => {
-      try {
-          const { storeId } = req.params;
-          const user = req.user!;
-          const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
-          
-          if (!supplier) return sendError(res, "Supplier profile not found", 404);
-  
-          // Check connection
-          const conn = await prisma.supplierStore.findUnique({
-              where: {
-                  supplierId_storeId: {
-                      supplierId: supplier.id,
-                      storeId
-                  }
-              }
-          });
-          
-          if (!conn) return sendError(res, "Connection not found", 404);
-  
-          // Delete connection
-          await prisma.supplierStore.delete({
-              where: {
-                  supplierId_storeId: {
-                      supplierId: supplier.id,
-                      storeId
-                  } 
-              }
-          });
+  "/stores/:storeId",
+  authenticate,
+  async (req: RequestWithUser, res: Response, next: NextFunction) => {
+    try {
+      const { storeId } = req.params;
+      const user = req.user!;
+      const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
 
-          // Also cancel the ACCEPTED request so it doesn't block re-discovery
-          const acceptedRequest = await prisma.supplierRequest.findFirst({
-            where: {
-                supplierId: supplier.id,
-                storeId,
-                status: "ACCEPTED"
-            }
-          });
-          
-          if (acceptedRequest) {
-            await prisma.supplierRequest.delete({
-                where: { id: acceptedRequest.id }
-            });
+      if (!supplier) return sendError(res, "Supplier profile not found", 404);
+
+      // Check connection
+      const conn = await prisma.supplierStore.findUnique({
+        where: {
+          supplierId_storeId: {
+            supplierId: supplier.id,
+            storeId
           }
+        }
+      });
 
-          // Notify Store Owner(s)
-          const store = await prisma.store.findUnique({ where: { id: storeId } });
-          if (store) {
-            const owners = await prisma.userStoreRole.findMany({
-                where: { storeId, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
-                include: { user: true }
-            });
-            for (const owner of owners) {
-                if (owner.user.email) {
-                    sendMail({
-                        to: owner.user.email,
-                        subject: `Connection Ended: ${supplier.name}`,
-                        html: getDisconnectionEmailTemplate(supplier.name)
-                    }).catch(e => console.error("Email failed", e));
-                }
-            }
+      if (!conn) return sendError(res, "Connection not found", 404);
+
+      // Delete connection
+      await prisma.supplierStore.delete({
+        where: {
+          supplierId_storeId: {
+            supplierId: supplier.id,
+            storeId
           }
+        }
+      });
 
-          await prisma.activityLog.create({
-            data: {
-                storeId,
-                userId: user.id,
-                action: "supplier_disconnected_from_store",
-                payload: { storeId }
-            }
-          });
+      // Also cancel the ACCEPTED request so it doesn't block re-discovery
+      const acceptedRequest = await prisma.supplierRequest.findFirst({
+        where: {
+          supplierId: supplier.id,
+          storeId,
+          status: "ACCEPTED"
+        }
+      });
 
-          return sendSuccess(res, "Disconnected from store");
-      } catch (err) {
-          next(err);
+      if (acceptedRequest) {
+        await prisma.supplierRequest.delete({
+          where: { id: acceptedRequest.id }
+        });
       }
+
+      // Notify Store Owner(s)
+      const store = await prisma.store.findUnique({ where: { id: storeId } });
+      if (store) {
+        const owners = await prisma.userStoreRole.findMany({
+          where: { storeId, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
+          include: { user: true }
+        });
+        for (const owner of owners) {
+          if (owner.user.email) {
+            sendMail({
+              to: owner.user.email,
+              subject: `Connection Ended: ${supplier.name}`,
+              html: getDisconnectionEmailTemplate(supplier.name)
+            }).catch(e => console.error("Email failed", e));
+          }
+        }
+      }
+
+      await prisma.activityLog.create({
+        data: {
+          storeId,
+          userId: user.id,
+          action: "supplier_disconnected_from_store",
+          payload: { storeId }
+        }
+      });
+
+      return sendSuccess(res, "Disconnected from store");
+    } catch (err) {
+      next(err);
     }
-  );
+  }
+);
 
 /**
  * POST /v1/suppliers/requests/:requestId/accept
@@ -645,82 +645,97 @@ router.post(
   authenticate,
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
-        const { requestId } = req.params;
-        const user = req.user!;
-        
-        const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
-        if (!supplier) return sendError(res, "Supplier profile not found", 404);
+      const { requestId } = req.params;
+      const user = req.user!;
 
-        const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
-        if (!request) return sendError(res, "Request not found", 404);
+      const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
+      if (!supplier) return sendError(res, "Supplier profile not found", 404);
 
-        if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
-        if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
+      const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+      if (!request) return sendError(res, "Request not found", 404);
 
-        // Transaction: Update Request -> Create Connection -> Handle Inventory cleanup -> Log
-        const payload = (request.payload as any) || {};
-        const isReturn = payload.type === "RETURN";
+      if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
+      if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
 
-        await prisma.$transaction(async (tx) => {
-            await tx.supplierRequest.update({
-                where: { id: requestId },
-                data: { status: "ACCEPTED" }
-            });
+      // Transaction: Update Request -> Create Connection -> Handle Inventory cleanup -> Log
+      const payload = (request.payload as any) || {};
+      const isReturn = payload.type === "RETURN";
 
-            // If it's a return, cleanup inventory batches that are now zeroed out
-            await cleanupReturnInventory(tx, payload);
-            
-            await tx.supplierStore.upsert({
-                where: {
-                    supplierId_storeId: {
-                        supplierId: supplier.id,
-                        storeId: request.storeId
-                    }
-                },
-                create: {
-                    supplierId: supplier.id,
-                    storeId: request.storeId,
-                    linkedAt: new Date()
-                },
-                update: { linkedAt: new Date() }
-            });
-
-            await tx.activityLog.create({
-                data: {
-                    storeId: request.storeId,
-                    userId: user.id,
-                    action: "supplier_request_accepted_inbound",
-                    payload: { requestId, isReturn }
-                }
-            });
+      await prisma.$transaction(async (tx) => {
+        await tx.supplierRequest.update({
+          where: { id: requestId },
+          data: { status: "ACCEPTED" }
         });
 
-        // Notify Store Owner
-        const store = await prisma.store.findUnique({ 
-            where: { id: request.storeId },
-            include: { users: { include: { user: true } } }
-         });
-        
-        if (store) {
-             const owners = await prisma.userStoreRole.findMany({
-                 where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
-                 include: { user: true }
-             });
-             
-             for (const owner of owners) {
-                 if (owner.user.email) {
-                     sendMail({
-                         to: owner.user.email,
-                         subject: `Connection Accepted: ${supplier.name}`,
-                         html: getRequestAcceptedEmailTemplate(supplier.name) 
-                     }).catch(e => console.error("Email failed", e));
-                 }
-             }
-        }
+        // If it's a return, cleanup inventory batches that are now zeroed out
+        await cleanupReturnInventory(tx, payload);
 
-        return sendSuccess(res, "Request accepted");
+        await tx.supplierStore.upsert({
+          where: {
+            supplierId_storeId: {
+              supplierId: supplier.id,
+              storeId: request.storeId
+            }
+          },
+          create: {
+            supplierId: supplier.id,
+            storeId: request.storeId,
+            linkedAt: new Date()
+          },
+          update: { linkedAt: new Date() }
+        });
+
+        await tx.activityLog.create({
+          data: {
+            storeId: request.storeId,
+            userId: user.id,
+            action: "supplier_request_accepted_inbound",
+            payload: { requestId, isReturn }
+          }
+        });
+
+            if (isReturn) {
+                await tx.activityLog.create({
+                    data: {
+                        storeId: request.storeId,
+                        userId: user.id,
+                        action: "product_return_accepted",
+                        payload: { 
+                            requestId, 
+                            supplierName: supplier.name,
+                            itemsCount: payload.items?.length || 0
+                        }
+                    }
+                });
+            }
+      }, { timeout: 45000 });
+
+      // Notify Store Owner
+      const store = await prisma.store.findUnique({
+        where: { id: request.storeId },
+        include: { users: { include: { user: true } } }
+      });
+
+      if (store) {
+        const owners = await prisma.userStoreRole.findMany({
+          where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
+          include: { user: true }
+        });
+
+        for (const owner of owners) {
+          if (owner.user.email) {
+            sendMail({
+              to: owner.user.email,
+              subject: `Connection Accepted: ${supplier.name}`,
+              html: getRequestAcceptedEmailTemplate(supplier.name)
+            }).catch(e => console.error("Email failed", e));
+          }
+        }
+      }
+
+      return sendSuccess(res, "Request accepted");
     } catch (err) {
-        next(err);
+      next(err);
     }
   }
 );
@@ -734,78 +749,78 @@ router.post(
   authenticate,
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
-        const { requestId } = req.params;
-        const { reason } = req.body; // Capture rejection reason
-        const user = req.user!;
-        
-        const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
-        if (!supplier) return sendError(res, "Supplier profile not found", 404);
+      const { requestId } = req.params;
+      const { reason } = req.body; // Capture rejection reason
+      const user = req.user!;
 
-        const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
-        if (!request) return sendError(res, "Request not found", 404);
+      const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
+      if (!supplier) return sendError(res, "Supplier profile not found", 404);
 
-        if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
-        if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
+      const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+      if (!request) return sendError(res, "Request not found", 404);
 
-        const payload = (request.payload as any) || {};
-        const isReturn = payload.type === "RETURN";
+      if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
+      if (request.status !== "PENDING") return sendError(res, "Request is not pending", 400);
 
-        await prisma.$transaction(async (tx) => {
-            await tx.supplierRequest.update({
-                where: { id: requestId },
-                data: { 
-                    status: "REJECTED"
-                }
-            });
+      const payload = (request.payload as any) || {};
+      const isReturn = payload.type === "RETURN";
 
-            // Restore inventory if return is rejected
-            if (isReturn && payload.items) {
-                for (const item of payload.items) {
-                    if (item.inventoryBatchId && item.quantity > 0) {
-                        try {
-                            await tx.inventoryBatch.update({
-                                where: { id: item.inventoryBatchId },
-                                data: { qtyAvailable: { increment: item.quantity } }
-                            });
-                        } catch (e) {
-                            console.error(`Failed to restore inventory for rejected return: ${item.inventoryBatchId}`, e);
-                        }
-                    }
-                }
-            }
-
-            await tx.activityLog.create({
-                data: {
-                    storeId: request.storeId,
-                    userId: user.id,
-                    action: "supplier_request_rejected",
-                    payload: { requestId, reason, isReturn }
-                }
-            });
+      await prisma.$transaction(async (tx) => {
+        await tx.supplierRequest.update({
+          where: { id: requestId },
+          data: {
+            status: "REJECTED"
+          }
         });
 
-        // Notify Store with Reason
-        const store = await prisma.store.findUnique({ where: { id: request.storeId } });
-        if (store) {
-             const owners = await prisma.userStoreRole.findMany({
-                 where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
-                 include: { user: true }
-             });
-             
-             for (const owner of owners) {
-                 if (owner.user.email) {
-                     sendMail({
-                         to: owner.user.email,
-                         subject: `Your request Rejected: ${supplier.name}`,
-                         html: getRequestRejectedEmailTemplate(supplier.name, reason) // Pass reason
-                     }).catch(e => console.error("Email failed", e));
-                 }
-             }
+        // Restore inventory if return is rejected
+        if (isReturn && payload.items) {
+          for (const item of payload.items) {
+            if (item.inventoryBatchId && item.quantity > 0) {
+              try {
+                await tx.inventoryBatch.update({
+                  where: { id: item.inventoryBatchId },
+                  data: { qtyAvailable: { increment: item.quantity } }
+                });
+              } catch (e) {
+                console.error(`Failed to restore inventory for rejected return: ${item.inventoryBatchId}`, e);
+              }
+            }
+          }
         }
 
-        return sendSuccess(res, "Request rejected");
+        await tx.activityLog.create({
+          data: {
+            storeId: request.storeId,
+            userId: user.id,
+            action: "supplier_request_rejected",
+            payload: { requestId, reason, isReturn }
+          }
+        });
+      }, { timeout: 45000 });
+
+      // Notify Store with Reason
+      const store = await prisma.store.findUnique({ where: { id: request.storeId } });
+      if (store) {
+        const owners = await prisma.userStoreRole.findMany({
+          where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
+          include: { user: true }
+        });
+
+        for (const owner of owners) {
+          if (owner.user.email) {
+            sendMail({
+              to: owner.user.email,
+              subject: `Your request Rejected: ${supplier.name}`,
+              html: getRequestRejectedEmailTemplate(supplier.name, reason) // Pass reason
+            }).catch(e => console.error("Email failed", e));
+          }
+        }
+      }
+
+      return sendSuccess(res, "Request rejected");
     } catch (err) {
-        next(err);
+      next(err);
     }
   }
 );
@@ -832,121 +847,121 @@ router.post(
   authenticate,
   async (req: RequestWithUser, res: Response, next: NextFunction) => {
     try {
-        const { requestId } = req.params;
-        const user = req.user!;
-        
-        const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
-        if (!supplier) return sendError(res, "Supplier profile not found", 404);
+      const { requestId } = req.params;
+      const user = req.user!;
 
-        const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
-        if (!request) return sendError(res, "Request not found", 404);
+      const supplier = await prisma.supplier.findUnique({ where: { userId: user.id } });
+      if (!supplier) return sendError(res, "Supplier profile not found", 404);
 
-        if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
-        // Allow PENDING status for direct fulfillment (Accept & Fulfill)
-        if (request.status !== "ACCEPTED" && request.status !== "PENDING") {
-           return sendError(res, "Request must be PENDING or ACCEPTED to fulfill", 400);
-        }
+      const request = await prisma.supplierRequest.findUnique({ where: { id: requestId } });
+      if (!request) return sendError(res, "Request not found", 404);
 
-        const parsed = fulfillSchema.safeParse(req.body);
-        if (!parsed.success) return handleZodError(res, parsed.error);
+      if (request.supplierId !== supplier.id) return sendError(res, "Unauthorized", 403);
+      // Allow PENDING status for direct fulfillment (Accept & Fulfill)
+      if (request.status !== "ACCEPTED" && request.status !== "PENDING") {
+        return sendError(res, "Request must be PENDING or ACCEPTED to fulfill", 400);
+      }
 
-        // @ts-ignore
-        const requestType = request.payload?.type || "REORDER";
+      const parsed = fulfillSchema.safeParse(req.body);
+      if (!parsed.success) return handleZodError(res, parsed.error);
 
-        // Logic for RETURN requests
-        if (requestType === "RETURN") {
-            await prisma.$transaction(async (tx) => {
-                await tx.supplierRequest.update({
-                    where: { id: requestId },
-                    data: { status: "FULFILLED" }
-                });
+      // @ts-ignore
+      const requestType = request.payload?.type || "REORDER";
 
-                // Clean up inventory even in fulfillment path for returns
-                // @ts-ignore
-                await cleanupReturnInventory(tx, request.payload);
-            });
+      // Logic for RETURN requests
+      if (requestType === "RETURN") {
+        await prisma.$transaction(async (tx) => {
+          await tx.supplierRequest.update({
+            where: { id: requestId },
+            data: { status: "FULFILLED" }
+          });
 
-             // Notify Store Owner
-            const store = await prisma.store.findUnique({ 
-                 where: { id: request.storeId },
-                 include: { users: { include: { user: true } } }
-            });
-            if (store) {
-                 const owners = await prisma.userStoreRole.findMany({
-                     where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
-                     include: { user: true }
-                 });
-                 for (const owner of owners) {
-                     if (owner.user.email) {
-                         sendMail({
-                             to: owner.user.email,
-                             subject: `Return Processed: ${supplier.name}`,
-                             html: getNotificationEmailTemplate(
-                                "Return Processed",
-                                `Your return request #${request.id.slice(0,6)} has been processed by <strong>${supplier.name}</strong>.`
-                             )
-                         }).catch(e => console.error("Email failed", e));
-                     }
-                 }
+          // Clean up inventory even in fulfillment path for returns
+          // @ts-ignore
+          await cleanupReturnInventory(tx, request.payload);
+        }, { timeout: 45000 });
+
+        // Notify Store Owner
+        const store = await prisma.store.findUnique({
+          where: { id: request.storeId },
+          include: { users: { include: { user: true } } }
+        });
+        if (store) {
+          const owners = await prisma.userStoreRole.findMany({
+            where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
+            include: { user: true }
+          });
+          for (const owner of owners) {
+            if (owner.user.email) {
+              sendMail({
+                to: owner.user.email,
+                subject: `Return Processed: ${supplier.name}`,
+                html: getNotificationEmailTemplate(
+                  "Return Processed",
+                  `Your return request #${request.id.slice(0, 6)} has been processed by <strong>${supplier.name}</strong>.`
+                )
+              }).catch(e => console.error("Email failed", e));
             }
-            return sendSuccess(res, "Return request processed", {});
+          }
         }
+        return sendSuccess(res, "Return request processed", {});
+      }
 
-        // Logic for REORDER requests
-        if (parsed.data.items.length === 0) {
-            return sendError(res, "Items required for reorder fulfillment", 400);
-        }
+      // Logic for REORDER requests
+      if (parsed.data.items.length === 0) {
+        return sendError(res, "Items required for reorder fulfillment", 400);
+      }
 
-        const fulfilledItems = parsed.data.items.map((i: any) => ({
-            ...i,
-            expiryDate: i.expiryDate ? new Date(i.expiryDate) : undefined
-        }));
+      const fulfilledItems = parsed.data.items.map((i: any) => ({
+        ...i,
+        expiryDate: i.expiryDate ? new Date(i.expiryDate) : undefined
+      }));
 
-        const result = await InventoryService.fulfillReorder(
-            request.storeId,
-            supplier.id,
-            requestId,
-            fulfilledItems,
-            user.id
-        );
-        
-        // --- Calculate Discrepancies (Partial Fulfillment) ---
-        let infoHtml = "";
+      const result = await InventoryService.fulfillReorder(
+        request.storeId,
+        supplier.id,
+        requestId,
+        fulfilledItems,
+        user.id
+      );
 
-        if (parsed.data.message) {
-             infoHtml += `
+      // --- Calculate Discrepancies (Partial Fulfillment) ---
+      let infoHtml = "";
+
+      if (parsed.data.message) {
+        infoHtml += `
                <div style="background-color: #f9fafb; padding: 16px; border-left: 4px solid #1f2937; margin-bottom: 20px; color: #4b5563; font-style: italic;">
                  <strong>Note from Supplier:</strong> "${parsed.data.message}"
                </div>
              `;
-        }
-        
-        // Notify Store Owner
-        const store = await prisma.store.findUnique({ 
-             where: { id: request.storeId },
-             include: { users: { include: { user: true } } }
-        });
-        
-        if (store) {
-             const owners = await prisma.userStoreRole.findMany({
-                 where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
-                 include: { user: true }
-             });
-             
-             for (const owner of owners) {
-                 if (owner.user.email) {
-                     sendMail({
-                         to: owner.user.email,
-                         subject: `Reorder Received: ${supplier.name}`,
-                         html: getReceiptEmailTemplate(store.name, { count: fulfilledItems.length }, infoHtml) 
-                     }).catch(e => console.error("Email failed", e));
-                 }
-             }
-        }
+      }
 
-        return sendSuccess(res, "Reorder fulfilled and inventory created", result);
+      // Notify Store Owner
+      const store = await prisma.store.findUnique({
+        where: { id: request.storeId },
+        include: { users: { include: { user: true } } }
+      });
+
+      if (store) {
+        const owners = await prisma.userStoreRole.findMany({
+          where: { storeId: store.id, role: { in: ["STORE_OWNER", "SUPERADMIN"] } },
+          include: { user: true }
+        });
+
+        for (const owner of owners) {
+          if (owner.user.email) {
+            sendMail({
+              to: owner.user.email,
+              subject: `Reorder Received: ${supplier.name}`,
+              html: getReceiptEmailTemplate(store.name, { count: fulfilledItems.length }, infoHtml)
+            }).catch(e => console.error("Email failed", e));
+          }
+        }
+      }
+
+      return sendSuccess(res, "Reorder fulfilled and inventory created", result);
     } catch (err) {
-        next(err);
+      next(err);
     }
   }
 );

@@ -16,6 +16,7 @@ import { z } from "zod";
 import PDFDocument from "pdfkit";
 import { generateReceiptPDF } from "../../../utils/receipt_generator";
 import { decryptCell, dekFromEnv } from "../../../middleware/prisma_crypto_middleware";
+import payuService from "../../../lib/payu";
 
 type RoleEnum = Role;
 
@@ -26,6 +27,7 @@ type AuthRequest = Request & {
     email?: string | null;
     imageUrl?: string | null;
     globalRole?: RoleEnum | null;
+    phone?: string | null;
   };
   store?: any;
   userStoreRoles?: RoleEnum[];
@@ -40,6 +42,28 @@ const dashboardRouter = Router();
  *  - requireStore enforces a store exists
  */
 dashboardRouter.use(authenticate);
+
+/**
+ * GET /v1/dashboard/check-slug/:slug
+ * Description: Checks if a store slug is available.
+ * This is used during store creation onboarding.
+ */
+dashboardRouter.get(
+  "/check-slug/:slug",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const store = await prisma.store.findUnique({
+        where: { slug: slug.toLowerCase() },
+        select: { id: true }
+      });
+      return sendSuccess(res, "Slug availability check", { available: !store });
+    } catch (err) {
+      return sendInternalError(res, err, "Failed to check slug availability");
+    }
+  }
+);
+
 dashboardRouter.use(storeContext);
 dashboardRouter.use(requireStore);
 
@@ -170,7 +194,7 @@ dashboardRouter.get(
         Math.max(Number(req.query.recent ?? 20), 1),
         200
       );
-      const lowStockThreshold = Math.max(Number(req.query.threshold ?? 5), 1);
+      const lowStockThreshold = 50;
       const expiriesDays = Math.max(Number(req.query.expiriesDays ?? 90), 1);
       const agingBuckets = req.query.agingBuckets
         ? String(req.query.agingBuckets)
@@ -185,10 +209,10 @@ dashboardRouter.get(
       );
 
       // 2. Parallel Optimized Fetches
+      // 2. Parallel Optimized Fetches - Chunked into two batches to prevent SSL EPROTO issues with excessive parallel connections
       const [
         totalMedicines,
         totalBatches,
-        // recentSalesCount removed (duplicate of salesStats._count)
         recentRevenueAgg,
         inventorySums,
         lowStockBatches,
@@ -198,18 +222,9 @@ dashboardRouter.get(
         activity,
         suppliers,
         webhookFailures,
-        // Aggregations replacing huge fetches
-        salesStats, // avg order value, count
-        salesByDayRaw,
-        salesByHourRaw,
-        paymentMethodsAgg,
-        categoryBreakdownRaw,
-        stockTurnoverAgg,
-        agingBucketsRaw // Optimization for aging buckets? 
       ] = await Promise.all([
         prisma.medicine.count({ where: { storeId } }),
         prisma.inventoryBatch.count({ where: { storeId } }),
-        // prisma.sale.count removed
         prisma.sale.aggregate({
           where: {
             storeId,
@@ -217,20 +232,19 @@ dashboardRouter.get(
             paymentStatus: "PAID",
           },
           _sum: { totalValue: true },
+          _avg: { totalValue: true },
+          _count: true
         }),
-        // Inventory Totals
         prisma.inventoryBatch.aggregate({
           where: { storeId },
           _sum: { qtyAvailable: true, qtyReserved: true, qtyReceived: true },
         }),
-        // Low Stock (enriched)
         prisma.inventoryBatch.findMany({
-          where: { storeId, qtyAvailable: { lte: lowStockThreshold } },
+          where: { storeId, qtyAvailable: { lte: lowStockThreshold }},
           orderBy: { qtyAvailable: "asc" },
           take: 200,
           include: { medicine: true }
         }),
-        // Expiries (enriched)
         prisma.inventoryBatch.findMany({
           where: {
             storeId,
@@ -241,7 +255,6 @@ dashboardRouter.get(
           take: 500,
           include: { medicine: true }
         }),
-        // Top Movers (qty)
         prisma.saleItem.groupBy({
           by: ["medicineId"],
           where: {
@@ -255,18 +268,16 @@ dashboardRouter.get(
           orderBy: [{ _sum: { qty: "desc" } }],
           take: topLimit,
         }),
-        // Recent Sales (enriched)
         prisma.sale.findMany({
           where: { storeId },
           orderBy: { createdAt: "desc" },
           take: recentSalesLimit,
           include: {
             items: {
-              include: { medicine: true } // Include medicine details directly
+              include: { medicine: true }
             },
           },
         }),
-        // Activity
         prisma.activityLog.findMany({
           where: { storeId },
           orderBy: { createdAt: "desc" },
@@ -279,7 +290,6 @@ dashboardRouter.get(
             createdAt: true,
           },
         }),
-        // Suppliers (Owned OR Connected)
         prisma.supplier.findMany({
           where: {
             OR: [
@@ -299,16 +309,16 @@ dashboardRouter.get(
           },
         }),
         Promise.resolve(0), // Webhooks placeholder
+      ]);
 
-        // --- NEW AGGREGATIONS ---
-
-        // AVG Order Value & Total Items (approx) & Count (replacing standalone count)
-        prisma.sale.aggregate({
-          where: { storeId, createdAt: { gte: salesWindowStart } },
-          _avg: { totalValue: true },
-          _count: true
-        }),
-
+      const [
+        salesByDayRaw,
+        salesByHourRaw,
+        paymentMethodsAgg,
+        categoryBreakdownRaw,
+        stockMovementAgg,
+        agingBucketsRaw 
+      ] = await Promise.all([
         // Sales by Day
         prisma.$queryRaw`
             SELECT TO_CHAR("createdAt", 'YYYY-MM-DD') as date, 
@@ -319,7 +329,6 @@ dashboardRouter.get(
             GROUP BY TO_CHAR("createdAt", 'YYYY-MM-DD')
             ORDER BY date ASC
         `,
-
         // Sales by Hour
         prisma.$queryRaw`
             SELECT EXTRACT(HOUR FROM "createdAt")::int as hour, 
@@ -330,15 +339,13 @@ dashboardRouter.get(
             GROUP BY EXTRACT(HOUR FROM "createdAt")
             ORDER BY hour ASC
         `,
-
-        // Payment Methods
+        // Payment Methods GroupBy
         prisma.sale.groupBy({
-          by: ['paymentMethod'],
-          where: { storeId, createdAt: { gte: salesWindowStart } },
+          by: ["paymentMethod"],
+          where: { storeId, createdAt: { gte: salesWindowStart }, paymentStatus: "PAID" },
           _count: true,
-          _sum: { totalValue: true }
+          _sum: { totalValue: true },
         }),
-
         // Category Breakdown
         prisma.$queryRaw`
             SELECT m.category, 
@@ -353,17 +360,13 @@ dashboardRouter.get(
             GROUP BY m.category
             ORDER BY revenue DESC
         `,
-
-        // Stock Movements (for turnover)
+        // Stock Movements
         prisma.stockMovement.groupBy({
           by: ["reason"],
           where: { storeId },
           _sum: { delta: true },
         }),
-
-        // Inventory Aging (Optimized to fetching just dates, not full objects if possible, or just standard fetch)
-        // Check if we can do this with raw query? 
-        // "receivedAt" buckets: <30, 30-90, 90-180, 180-365, >365
+        // Inventory Aging
         prisma.$queryRaw`
             SELECT 
                 CASE 
@@ -379,6 +382,10 @@ dashboardRouter.get(
             GROUP BY bucket
         `
       ]);
+
+      // Map values after chunked fetches
+      const salesStats = recentRevenueAgg; // Alias for processing logic
+
 
       // Cache for 30s
       res.setHeader('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
@@ -1580,7 +1587,7 @@ dashboardRouter.post(
 
 /**
  * GET /v1/dashboard/reorder-suggestions
- * Desc: Get automated reorder suggestions based on low stock (< 50)
+ * Desc: Get automated reorder suggestions based on low stock (< 15)
  */
 dashboardRouter.get(
   "/reorder-suggestions",
@@ -1599,7 +1606,7 @@ dashboardRouter.get(
             _sum: { qtyAvailable: true }
         });
 
-        const lowStockThreshold = 300;
+        const lowStockThreshold = 15;
         const lowStockIds = inventory
         // Fetch ALL Active Medicines
         const allMedicines = await prisma.medicine.findMany({
@@ -1860,25 +1867,25 @@ dashboardRouter.get(
 /**
  * GET /v1/dashboard/medicines/search
  * Search medicines by brandName, genericName, or SKU.
+ * Includes substitute suggestions for out-of-stock items.
  */
 dashboardRouter.get(
   "/medicines/search",
   async (req: AuthRequest, res: Response) => {
     try {
       const q = (req.query.q as string || "").toLowerCase();
+      const storeId = req.store?.id;
 
-      // Fetch all active medicines for this store
-      // Note: For large inventories, this in-memory filtering is not scalable. 
-      // Ideally, use a search service or deterministic encryption for searchable fields.
+      if (!storeId) {
+        return sendError(res, "Store ID missing", 400);
+      }
+
+      // 1. Fetch ALL active medicines for this store (including OOS)
+      // We pull everything to perform in-memory decryption and cross-referencing for substitutes.
       const allMedicines = await prisma.medicine.findMany({
         where: {
-          storeId: req.store?.id,
+          storeId: storeId,
           isActive: true,
-          inventory: {
-            some: {
-              qtyAvailable: { gt: 0 }
-            }
-          }
         },
         include: {
           inventory: {
@@ -1891,14 +1898,13 @@ dashboardRouter.get(
 
       const dek = dekFromEnv();
 
-      // Decrypt and Filter in-memory
-      const matchedMedicines = allMedicines.map(med => {
+      // 2. Decrypt and enrich ALL medicines with stock total and human-readable names
+      const enrichedMeds = allMedicines.map(med => {
         let brandName = med.brandName;
         let genericName = med.genericName;
         let strength = med.strength;
 
         try {
-          // Attempt decryption
           const decryptedBrand = decryptCell(med.brandName, dek);
           if (decryptedBrand) brandName = decryptedBrand;
 
@@ -1907,39 +1913,43 @@ dashboardRouter.get(
 
           const decryptedStrength = decryptCell(med.strength, dek);
           if (decryptedStrength) strength = decryptedStrength;
-
         } catch (e) { }
 
-        // Decrypt matches within inventory and combine same batches
+        // Consolidate inventory
         const decryptedInventoryMap = new Map();
+        let totalStock = 0;
 
         med.inventory.forEach(inv => {
-             let bn = inv.batchNumber;
-             try {
-                if (bn) {
-                    const d = decryptCell(bn, dek);
-                    if (d) bn = d;
-                }
-             } catch (e) {}
-             
-             // Normalize 'null' or undefined batch number to a string if needed, or keep as is.
-             // Usually batchNumber is a string. If null, we might group all nulls or keep separate.
-             // Assumption: Group by batchNumber string.
-             const key = bn || 'UnknownBatch';
-             
-             if (decryptedInventoryMap.has(key)) {
-                 const existing = decryptedInventoryMap.get(key);
-                 existing.qtyAvailable += inv.qtyAvailable;
-                 // Optionally keep newest/oldest expiry? Keeping first one found (usually oldest due to default sort order if any)
-             } else {
-                 decryptedInventoryMap.set(key, { ...inv, batchNumber: bn });
-             }
+          totalStock += inv.qtyAvailable;
+          let bn = inv.batchNumber;
+          try {
+            if (bn) {
+              const d = decryptCell(bn, dek);
+              if (d) bn = d;
+            }
+          } catch (e) { }
+
+          const key = bn || 'UnknownBatch';
+          if (decryptedInventoryMap.has(key)) {
+            const existing = decryptedInventoryMap.get(key);
+            existing.qtyAvailable += inv.qtyAvailable;
+          } else {
+            decryptedInventoryMap.set(key, { ...inv, batchNumber: bn });
+          }
         });
 
-        const consolidatedInventory = Array.from(decryptedInventoryMap.values());
+        return { 
+          ...med, 
+          brandName, 
+          genericName, 
+          strength, 
+          totalStock,
+          inventory: Array.from(decryptedInventoryMap.values()) 
+        };
+      });
 
-        return { ...med, brandName, genericName, strength, inventory: consolidatedInventory };
-      }).filter(med => {
+      // 3. Filter matched medicines based on query
+      const matchedMedicines = enrichedMeds.filter(med => {
         if (!q) return true;
         return (
           (med.brandName && med.brandName.toLowerCase().includes(q)) ||
@@ -1948,12 +1958,33 @@ dashboardRouter.get(
         );
       });
 
-      return sendSuccess(res, "Medicines found", { medicines: matchedMedicines });
+      // 4. For out-of-stock items, find substitutes (Same Generic, Stock > 0)
+      const finalResult = matchedMedicines.map(med => {
+        if (med.totalStock > 0) return { ...med, substitutes: [] };
+
+        // Find subs from the full list
+        const substitutes = enrichedMeds.filter(sub => 
+          sub.id !== med.id && 
+          sub.totalStock > 0 &&
+          sub.genericName && 
+          med.genericName &&
+          sub.genericName.toLowerCase() === med.genericName.toLowerCase()
+        ).map(sub => ({
+          ...sub,
+          available_units: sub.totalStock,
+          price: sub.inventory.length > 0 ? sub.inventory[0].mrp : 0
+        }));
+
+        return { ...med, substitutes };
+      });
+
+      return sendSuccess(res, "Medicines found", { medicines: finalResult });
     } catch (error) {
       handlePrismaError(res, error);
     }
   }
 );
+
 
 /* ----------------------------------------
    SALES CHECKOUT (FIXED TRANSACTION)
@@ -2088,8 +2119,8 @@ dashboardRouter.post(
               createdById: req.user?.id,
               subtotal,
               totalValue: subtotal,
-              paymentMethod: paymentMethod || "CASH",
-              paymentStatus: "PAID",
+              paymentMethod: paymentMethod === "ONLINE" ? "UPI" : "CASH",
+              paymentStatus: paymentMethod === 'ONLINE' ? "PENDING" : "PAID",
               items: {
                 create: saleItemsPayload
               }
@@ -2128,7 +2159,7 @@ dashboardRouter.post(
              }
           }
 
-          // 5. Create Receipt Record
+          // 5. Create Receipt Record (Only if PAID or if we want it for pending too)
           const receiptNo = `REC-${Date.now()}`;
           const receiptData = {
             storeName: req.store.name,
@@ -2151,6 +2182,26 @@ dashboardRouter.post(
         },
         { timeout: 45000 }
       ); // end transaction
+
+      // If Online Payment, return Sale ID, Total, and PayU initiation data
+      if (paymentMethod === 'ONLINE') {
+        const paymentParams = payuService.createPaymentRequest({
+          amount: Number(result.sale.totalValue),
+          email: req.user?.email || "",
+          name: req.user?.username || "",
+          phone: req.user?.phone || "",
+          orderId: result.sale.id
+        });
+
+        return sendSuccess(res, "Sale initiated. Redirecting to payment...", { 
+            saleId: result.sale.id, 
+            total: result.sale.totalValue,
+            email: req.user?.email,
+            name: req.user?.username,
+            phone: req.user?.phone || "",
+            payuData: paymentParams
+        });
+      }
 
       // Generate & Stream PDF
       const { sale, receiptNo, receiptItems } = result;

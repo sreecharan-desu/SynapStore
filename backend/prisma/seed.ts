@@ -6,61 +6,6 @@ import {
 } from "@prisma/client";
 
 /* =========================================================
-   CONFIG
-========================================================= */
-const SIMULATION_DAYS = 90; // 3 months (Prophet-friendly)
-const START_DATE = new Date();
-START_DATE.setDate(START_DATE.getDate() - SIMULATION_DAYS);
-
-const PAYMENT_METHODS: PaymentMethod[] = [
-  PaymentMethod.CASH,
-  PaymentMethod.CARD,
-  PaymentMethod.UPI,
-];
-
-/* =========================================================
-   MEDICINE DEMAND + PRICE PROFILE
-========================================================= */
-type ForecastProfile = {
-  baseDemand: number;
-  weeklyPattern?: boolean;
-  seasonality?: "winter" | "spring" | "steady";
-  priceTrend?: "up" | "flat";
-};
-
-const KEY_MEDICINES: {
-  brand: string;
-  generic: string;
-  category: string;
-  forecast: ForecastProfile;
-}[] = [
-  {
-    brand: "Paracetamol",
-    generic: "Paracetamol",
-    category: "Analgesics",
-    forecast: { baseDemand: 18, weeklyPattern: true, seasonality: "steady", priceTrend: "flat" },
-  },
-  {
-    brand: "Amoxicillin",
-    generic: "Amoxicillin",
-    category: "Antibiotics",
-    forecast: { baseDemand: 10, weeklyPattern: true, seasonality: "winter", priceTrend: "up" },
-  },
-  {
-    brand: "Cetirizine",
-    generic: "Cetirizine",
-    category: "Antihistamines",
-    forecast: { baseDemand: 14, weeklyPattern: true, seasonality: "spring", priceTrend: "up" },
-  },
-  {
-    brand: "Metformin",
-    generic: "Metformin",
-    category: "Diabetes",
-    forecast: { baseDemand: 20, weeklyPattern: false, seasonality: "steady", priceTrend: "flat" },
-  },
-];
-
-/* =========================================================
    HELPERS
 ========================================================= */
 const rand = (min: number, max: number) =>
@@ -72,215 +17,170 @@ const addDays = (d: Date, days: number) => {
   return x;
 };
 
-function calculateDailyDemand(
-  base: number,
-  date: Date,
-  profile: ForecastProfile
-) {
-  let demand = base;
-  const day = date.getDay();
-  const month = date.getMonth();
-
-  if (profile.weeklyPattern && (day === 0 || day === 6)) {
-    demand *= 1.4;
-  }
-
-  const isWinter = [10, 11, 0, 1].includes(month);
-  const isSpring = [2, 3, 4].includes(month);
-
-  if (profile.seasonality === "winter" && isWinter) demand *= 1.6;
-  if (profile.seasonality === "spring" && isSpring) demand *= 1.4;
-
-  demand += rand(-3, 4);
-  return Math.max(1, Math.round(demand));
-}
-
-function calculateMRP(base: number, dayIndex: number, trend?: "up" | "flat") {
-  if (trend === "up") {
-    return Math.round(base * (1 + dayIndex * 0.003)); // ~9% rise over 30 days
-  }
-  return base;
-}
+const PAYMENT_METHODS: PaymentMethod[] = [
+  PaymentMethod.CASH,
+  PaymentMethod.CARD,
+  PaymentMethod.UPI,
+];
 
 /* =========================================================
-   CLEAN DB
+   MAIN SEED FUNCTION
 ========================================================= */
-async function cleanDB() {
-  process.stdout.write("🧹 Cleaning database... ");
-  await prisma.stockMovement.deleteMany();
-  await prisma.saleItem.deleteMany();
-  await prisma.sale.deleteMany();
-  await prisma.inventoryBatch.deleteMany();
-  await prisma.medicine.deleteMany();
-  process.stdout.write("Done\n");
-}
+async function seedSalesForForecasting() {
+  console.log("📈 Seeding forecast-ready price + demand data");
 
-/* =========================================================
-   MAIN SEED
-========================================================= */
-async function main() {
-  console.log("🌱 Starting Forecast-Ready Seed...");
-  await cleanDB();
+  const store = await prisma.store.findFirst({
+    where: {
+      isActive: true,
+      id: "daca5fe7-a868-4e81-899c-98918d5910ae", // 👈 your store
+    },
+  });
+  if (!store) throw new Error("No store found");
 
-  const stores = await prisma.store.findMany({ include: { users: true } });
-  if (!stores.length) throw new Error("No stores found");
-  console.log(`🔍 Found ${stores.length} stores to seed\n`);
+  const owner = await prisma.user.findFirst({
+    where: { stores: { some: { storeId: store.id } } },
+  });
+  if (!owner) throw new Error("No store owner found");
 
-  for (const store of stores) {
-    const owner = store.users[0];
-    if (!owner) continue;
+  const medicines = await prisma.medicine.findMany({
+    where: { storeId: store.id, isActive: true },
+  });
 
-    console.log(`🏪 Store: ${store.name}`);
+  if (!medicines.length) {
+    throw new Error("No medicines found");
+  }
 
-    /* -----------------------------------------
-       Create medicines
-    ------------------------------------------ */
-    const medicineMap = new Map<string, string>();
+  /* =========================================================
+     DATE CONFIG
+  ========================================================= */
+  const START = addDays(new Date(), -40); // 40 days back
+  const PRICE_POINTS = 15;               // >=10 required for Prophet
+  const SALES_DAYS = 20;                 // unique sales days
 
-    for (const med of KEY_MEDICINES) {
-      process.stdout.write(`  Creating ${med.brand}... `);
-      const m = await prisma.medicine.create({
+  for (const med of medicines) {
+    console.log(`💊 Processing ${med.brandName}`);
+
+    /* =====================================================
+       1️⃣ PRICE HISTORY (INVENTORY REPLENISHMENT)
+       👉 THIS FIXES "NOT ENOUGH PRICE DATA"
+    ===================================================== */
+    let priceDate = START;
+
+    for (let p = 0; p < PRICE_POINTS; p++) {
+      const mrp = rand(18, 40) + rand(-2, 3); // realistic fluctuation
+
+      const batch = await prisma.inventoryBatch.create({
         data: {
           storeId: store.id,
-          brandName: med.brand,
-          genericName: med.generic,
-          category: med.category,
-          strength: "500mg",
-          dosageForm: "Tablet",
-          uom: "Strip",
-          sku: `SKU-${rand(10000, 99999)}`,
-          isActive: true,
+          medicineId: med.id,
+          batchNumber: `PRICE-${p}-${rand(100, 999)}`,
+          qtyReceived: 200,
+          qtyAvailable: 200,
+          mrp,
+          purchasePrice: mrp * 0.7,
+          expiryDate: addDays(priceDate, 365),
+          receivedAt: priceDate,
+          createdAt: priceDate,
         },
       });
-      medicineMap.set(med.brand, m.id);
-      process.stdout.write("Done\n");
+
+      await prisma.stockMovement.create({
+        data: {
+          storeId: store.id,
+          inventoryId: batch.id,
+          medicineId: med.id,
+          delta: 200,
+          reason: StockMovementReason.RECEIPT,
+          performedById: owner.id,
+          createdAt: priceDate,
+        },
+      });
+
+      priceDate = addDays(priceDate, 2); // every 2 days
     }
-    console.log(`💊 All medicines created`);
 
-    /* -----------------------------------------
-       Time simulation
-    ------------------------------------------ */
-    let currentDate = new Date(START_DATE);
-    const today = new Date();
+    /* =====================================================
+       2️⃣ SALES (DEMAND SIGNAL — WHAT PROPHET USES)
+    ===================================================== */
+    for (let i = 0; i < SALES_DAYS; i++) {
+      const saleDate = addDays(START, i + rand(0, 2));
+      const qty = rand(3, 10);
 
-    let dayIndex = 0;
-    let totalSales = 0;
-    let totalBatches = 0;
-    process.stdout.write(`⏳ Simulating ${SIMULATION_DAYS} days: `);
+      const batch = await prisma.inventoryBatch.findFirst({
+        where: {
+          medicineId: med.id,
+          qtyAvailable: { gte: qty },
+        },
+        orderBy: { expiryDate: "asc" },
+      });
 
-    while (currentDate <= today) {
-      const progress = Math.round((dayIndex / SIMULATION_DAYS) * 100);
-      if (dayIndex % 10 === 0 && dayIndex !== 0) {
-        process.stdout.write(`${progress}%... `);
-      }
-      for (const med of KEY_MEDICINES) {
-        const medicineId = medicineMap.get(med.brand)!;
+      if (!batch) continue;
 
-        // 1️⃣ Create batch every ~10 days with new price
-        if (dayIndex % 10 === 0) {
-          const baseMRP = rand(18, 30);
-          const mrp = calculateMRP(baseMRP, dayIndex, med.forecast.priceTrend);
+      const unitPrice = Number(batch.mrp);
+      const total = qty * unitPrice;
 
-          const batch = await prisma.inventoryBatch.create({
-            data: {
-              storeId: store.id,
-              medicineId,
-              batchNumber: `B-${dayIndex}-${rand(100, 999)}`,
-              qtyReceived: 300,
-              qtyAvailable: 300,
-              mrp,
-              purchasePrice: mrp * 0.7,
-              expiryDate: addDays(currentDate, 365),
-              receivedAt: currentDate,
-              createdAt: currentDate,
+      const sale = await prisma.sale.create({
+        data: {
+          storeId: store.id,
+          createdById: owner.id,
+          subtotal: total,
+          totalValue: total,
+          paymentMethod:
+            PAYMENT_METHODS[rand(0, PAYMENT_METHODS.length - 1)],
+          paymentStatus: PaymentStatus.PAID,
+          createdAt: saleDate,
+          items: {
+            create: {
+              medicineId: med.id,
+              qty,
+              unitPrice,
+              lineTotal: total,
+              inventoryBatchId: batch.id,
             },
-          });
+          },
+        },
+        include: { items: true },
+      });
 
-          totalBatches++;
+      await prisma.inventoryBatch.update({
+        where: { id: batch.id },
+        data: { qtyAvailable: { decrement: qty } },
+      });
 
-          await prisma.stockMovement.create({
-            data: {
-              storeId: store.id,
-              inventoryId: batch.id,
-              medicineId,
-              delta: 300,
-              reason: StockMovementReason.RECEIPT,
-              createdAt: currentDate,
-            },
-          });
-        }
-
-        // 2️⃣ Daily sales
-        const dailyQty = calculateDailyDemand(
-          med.forecast.baseDemand,
-          currentDate,
-          med.forecast
-        );
-
-        if (dailyQty > 0) {
-          const batch = await prisma.inventoryBatch.findFirst({
-            where: { medicineId, qtyAvailable: { gt: dailyQty } },
-            orderBy: { expiryDate: "asc" },
-          });
-
-          if (!batch) continue;
-
-          const total = dailyQty * Number(batch.mrp);
-
-          const sale = await prisma.sale.create({
-            data: {
-              storeId: store.id,
-              totalValue: total,
-              paymentMethod: PAYMENT_METHODS[rand(0, PAYMENT_METHODS.length - 1)],
-              paymentStatus: PaymentStatus.PAID,
-              createdAt: currentDate,
-              items: {
-                create: {
-                  medicineId,
-                  qty: dailyQty,
-                  unitPrice: batch.mrp,
-                  lineTotal: total,
-                  inventoryBatchId: batch.id,
-                },
-              },
-            },
-            include: { items: true },
-          });
-
-          totalSales++;
-
-          await prisma.inventoryBatch.update({
-            where: { id: batch.id },
-            data: { qtyAvailable: { decrement: dailyQty } },
-          });
-
-          await prisma.stockMovement.create({
-            data: {
-              storeId: store.id,
-              inventoryId: batch.id,
-              medicineId,
-              delta: -dailyQty,
-              reason: StockMovementReason.SALE,
-              saleItemId: sale.items[0].id,
-              createdAt: currentDate,
-            },
-          });
-        }
-      }
-
-      currentDate = addDays(currentDate, 1);
-      dayIndex++;
+      // 🔥 THIS IS WHAT YOUR FORECAST READS
+      await prisma.stockMovement.create({
+        data: {
+          storeId: store.id,
+          inventoryId: batch.id,
+          medicineId: med.id,
+          delta: -qty,
+          reason: StockMovementReason.SALE,
+          saleItemId: sale.items[0].id,
+          performedById: owner.id,
+          createdAt: saleDate,
+        },
+      });
     }
-    process.stdout.write("100%! Done.\n");
-    console.log(`📊 Stats for ${store.name}:`);
-    console.log(`   - Batches created: ${totalBatches}`);
-    console.log(`   - Sales generated: ${totalSales}`);
-    console.log(`✨ Store simulation complete\n`);
+
+    console.log(`   ✔ Price points: ${PRICE_POINTS}`);
+    console.log(`   ✔ Sales days: ${SALES_DAYS}`);
   }
 
   console.log("✅ Forecast-ready seed completed");
 }
 
-main()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+/* =========================================================
+   RUN
+========================================================= */
+async function main() {
+  try {
+    await seedSalesForForecasting();
+  } catch (error) {
+    console.error("❌ Seeding failed:", error);
+    process.exit(1);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main();
