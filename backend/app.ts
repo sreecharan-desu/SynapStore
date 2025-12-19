@@ -26,6 +26,7 @@ app.use(compression({
   }
 }));
 app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Prettify Logs Middleware
 // Prettify Logs Middleware - Hacker/Sreecharan Vibe

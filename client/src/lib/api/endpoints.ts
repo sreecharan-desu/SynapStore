@@ -91,3 +91,9 @@ export const adminApi = {
 
     getGraphData: () => client.get<{ success: boolean; data: any }>("api/v1/admin/graph"),
 };
+
+// --- Payments ---
+export const paymentApi = {
+    initiate: (data: { amount: number; email: string; name: string; phone: string; orderId: string }) =>
+        client.post<{ success: boolean; data: any }>("api/v1/payments/initiate", data),
+};

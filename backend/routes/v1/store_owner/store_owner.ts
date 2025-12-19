@@ -26,6 +26,7 @@ type AuthRequest = Request & {
     email?: string | null;
     imageUrl?: string | null;
     globalRole?: RoleEnum | null;
+    phone?: string | null;
   };
   store?: any;
   userStoreRoles?: RoleEnum[];
@@ -2134,7 +2135,7 @@ dashboardRouter.post(
               subtotal,
               totalValue: subtotal,
               paymentMethod: paymentMethod || "CASH",
-              paymentStatus: "PAID",
+              paymentStatus: paymentMethod === 'ONLINE' ? "PENDING" : "PAID",
               items: {
                 create: saleItemsPayload
               }
@@ -2173,7 +2174,7 @@ dashboardRouter.post(
              }
           }
 
-          // 5. Create Receipt Record
+          // 5. Create Receipt Record (Only if PAID or if we want it for pending too)
           const receiptNo = `REC-${Date.now()}`;
           const receiptData = {
             storeName: req.store.name,
@@ -2196,6 +2197,18 @@ dashboardRouter.post(
         },
         { timeout: 45000 }
       ); // end transaction
+
+      // If Online Payment, return Sale ID and Total for Frontend to initiate PayU
+      if (paymentMethod === 'ONLINE') {
+        return sendSuccess(res, "Sale initiated. Please complete online payment.", { 
+            saleId: result.sale.id, 
+            total: result.sale.totalValue,
+            email: req.user?.email,
+          name: req.user?.username,
+            
+            phone: req.user?.phone || ""
+        });
+      }
 
       // Generate & Stream PDF
       const { sale, receiptNo, receiptItems } = result;

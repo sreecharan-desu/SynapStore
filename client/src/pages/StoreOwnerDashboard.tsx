@@ -11,6 +11,7 @@ import { useLogout } from "../hooks/useLogout";
 import { dashboardApi } from "../lib/api/endpoints";
 import { Button } from "../components/ui/button-1";
 import FeedbackToast from "../components/ui/feedback-toast";
+import PharmacyPayment from "../components/payments/PharmacyPayment";
 
 
 import { 
@@ -312,6 +313,14 @@ const StoreOwnerDashboard: React.FC = () => {
     // POS Payment & Receipt Preview State
     const [posPaymentMethod, setPosPaymentMethod] = React.useState<string>("CASH");
     const [showReceiptPreview, setShowReceiptPreview] = React.useState(false);
+    const [showPayUModal, setShowPayUModal] = React.useState(false);
+    const [payUPaymentInfo, setPayUPaymentInfo] = React.useState<{
+        amount: number;
+        email: string;
+        name: string;
+        phone: string;
+        orderId: string;
+    } | null>(null);
     const [currentReceiptUrl, setCurrentReceiptUrl] = React.useState<string | null>(null);
     const [currentSaleId, setCurrentSaleId] = React.useState<string | null>(null);
     const [posInventoryFilter, setPosInventoryFilter] = React.useState<"all" | "in_stock" | "out_of_stock">("all");
@@ -897,38 +906,81 @@ const StoreOwnerDashboard: React.FC = () => {
         try {
             const items = Array.from(posCart.values()).map(({ medicine, qty }) => ({ medicineId: medicine.id, qty }));
 
-            // Pass paymentMethod from state
+            const isOnline = posPaymentMethod === "ONLINE";
+
+            // If online, we don't want a blob, we want JSON. 
+            // But dashboardApi.checkoutSale is defined with responseType: 'blob'.
+            // Actually, we can just use dashboardApi.checkoutSale and then check the response.
+            // However, Axios with responseType: 'blob' will try to parse JSON as a Blob.
+            // We can convert Blob back to text/JSON if needed.
+            
             const res = await dashboardApi.checkoutSale(items, posPaymentMethod);
 
-            // "res.data" is the blob because responseType: 'blob'
-            const blob = new Blob([res.data], { type: 'application/pdf' });
-            const url = window.URL.createObjectURL(blob);
+            if (isOnline) {
+                // Convert blob back to JSON string
+                const text = await (res.data as Blob).text();
+                const json = JSON.parse(text);
 
-            // Extract Sale ID from headers
-            const saleId = res.headers['x-sale-id'];
+                if (json.success) {
+                    setPayUPaymentInfo({
+                        amount: json.data.total,
+                        email: json.data.email || "",
+                        name: json.data.name || "",
+                        phone: json.data.phone || "",
+                        orderId: json.data.saleId
+                    });
+                    setShowPayUModal(true);
 
-            setCurrentReceiptUrl(url);
-            if (saleId) setCurrentSaleId(saleId);
+                    // Reset cart and query
+                    setPosCart(new Map());
+                    setPosQuery("");
+                    setPosPaymentMethod("CASH");
+                } else {
+                    throw new Error(json.message || "Failed to initiate online payment");
+                }
+            } else {
+                // "res.data" is the blob because responseType: 'blob'
+                const blob = new Blob([res.data], { type: 'application/pdf' });
+                const url = window.URL.createObjectURL(blob);
 
-            setShowReceiptPreview(true);
+                // Extract Sale ID from headers
+                const saleId = res.headers['x-sale-id'];
 
-            // Reset cart
-            setPosCart(new Map());
-            setPosQuery("");
-            setPosPaymentMethod("CASH"); // Reset to default
-            searchPOSMedicines(""); // Force refresh stock
+                setCurrentReceiptUrl(url);
+                if (saleId) setCurrentSaleId(saleId);
 
-            // Refresh dashboard data/receipts silently?
-            try {
-                const r = await dashboardApi.getReceipts();
-                setReceipts(r.data.data.receipts);
-            } catch (e) {
-                console.error("Failed to refresh receipts", e);
+                setShowReceiptPreview(true);
+
+                // Reset cart
+                setPosCart(new Map());
+                setPosQuery("");
+                setPosPaymentMethod("CASH"); // Reset to default
+                searchPOSMedicines(""); // Force refresh stock
+
+                // Refresh dashboard data/receipts silently?
+                try {
+                    const r = await dashboardApi.getReceipts();
+                    setReceipts(r.data.data.receipts);
+                } catch (e) {
+                    console.error("Failed to refresh receipts", e);
+                }
             }
 
         } catch (err: any) {
             console.error(err);
-            alert("Checkout failed: " + (err.response?.data?.message || err.message));
+            let message = "Checkout failed: ";
+            if (err.response?.data instanceof Blob) {
+                const text = await err.response.data.text();
+                try {
+                    const json = JSON.parse(text);
+                    message += json.message || err.message;
+                } catch (e) {
+                    message += err.message;
+                }
+            } else {
+                message += (err.response?.data?.message || err.message);
+            }
+            alert(message);
         } finally {
             setIsCheckoutLoading(false);
         }
@@ -3546,7 +3598,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-2 mb-2">
                                         {[
                                             { id: "CASH", icon: Banknote, label: "Cash", disabled: false },
-                                            { id: "CARD", icon: CreditCard, label: "Card", disabled: true },
+                                            { id: "ONLINE", icon: CreditCard, label: "Online", disabled: false },
                                             { id: "UPI", icon: Smartphone, label: "UPI", disabled: true },
                                             { id: "OTHER", icon: MoreHorizontal, label: "Other", disabled: true }
                                         ].map((item) => (
@@ -3566,8 +3618,8 @@ const StoreOwnerDashboard: React.FC = () => {
                                             </button>
                                         ))}
                                     </div>
-                                    <p className="text-[10px] text-amber-600 font-medium text-center mb-4 flex items-center justify-center gap-1">
-                                        <Activity className="w-3 h-3" /> Only Cash payments accepted at this time
+                                    <p className="text-[10px] text-emerald-600 font-medium text-center mb-4 flex items-center justify-center gap-1">
+                                        <Activity className="w-3 h-3" /> Cash and Online payments are now accepted
                                     </p>
 
                                     <Button
@@ -3734,6 +3786,34 @@ const StoreOwnerDashboard: React.FC = () => {
 
 
             </main >
+
+            {/* PayU Payment Modal */}
+            <AnimatePresence>
+                {showPayUModal && payUPaymentInfo && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="w-full max-w-md"
+                        >
+                            <PharmacyPayment
+                                amount={payUPaymentInfo.amount}
+                                email={payUPaymentInfo.email}
+                                name={payUPaymentInfo.name}
+                                phone={payUPaymentInfo.phone}
+                                orderId={payUPaymentInfo.orderId}
+                            />
+                            <button
+                                onClick={() => setShowPayUModal(false)}
+                                className="mt-4 w-full py-3 text-sm font-bold text-white/60 hover:text-white transition-colors"
+                            >
+                                Cancel Payment
+                            </button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
             <FeedbackToast
                 visible={showFeedback}
                 onClose={() => setShowFeedback(false)}

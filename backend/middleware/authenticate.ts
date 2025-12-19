@@ -62,6 +62,7 @@ export async function authenticate(
         isActive: true,
         isverified: true,
         globalRole: true,
+        phone: true,
       },
     });
 
@@ -81,6 +82,7 @@ export async function authenticate(
       username: userRow.username ?? null,
       imageUrl: userRow.imageUrl ?? null,
       globalRole: userRow.globalRole ?? null,
+      phone: (userRow as any).phone ?? null,
       isverified: userRow.isverified ?? false,
       rawTokenClaims: decoded,
     };
