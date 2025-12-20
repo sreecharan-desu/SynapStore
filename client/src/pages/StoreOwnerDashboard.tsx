@@ -2066,7 +2066,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                     )}
                     
                                                     {/* Forecast Error State */}
-                                                    {!isForecastLoading && forecastError && (
+                                                    {!isForecastLoading && forecastError && !forecastData && forecastData.length === 0 && (
                                                         <div className="text-center py-16 border border-slate-100 bg-white rounded-[2.5rem] animate-in fade-in zoom-in duration-500 shadow-sm">
                                                             <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-slate-100">
                                                                 <AlertTriangle className="w-7 h-7 text-slate-400" />

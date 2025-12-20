@@ -43,6 +43,9 @@ const PharmacyPayment: React.FC<PharmacyPaymentProps> = ({
                     if (formRef.current) {
                         console.log("Submitting form now.");
                         formRef.current.submit();
+                        // Since it opens in a new tab, reset the loading state here 
+                        // so the user can retry if the popup was blocked.
+                        setTimeout(() => setLoading(false), 2000);
                     }
                 });
             }, 100);
@@ -119,6 +122,7 @@ const PharmacyPayment: React.FC<PharmacyPaymentProps> = ({
                     ref={formRef} 
                     action={submissionFields.action_url} 
                     method="POST" 
+                    target="_blank"
                     encType="application/x-www-form-urlencoded"
                     style={{ position: 'absolute', top: 0, left: 0, width: '1px', height: '1px', opacity: 0.01, pointerEvents: 'none', overflow: 'hidden' }}
                 >
@@ -161,10 +165,10 @@ const PharmacyPayment: React.FC<PharmacyPaymentProps> = ({
                     {loading ? (
                         <>
                             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            Redirecting to PayU...
+                            Opening Secure Link...
                         </>
                     ) : (
-                        'Pay Now with PayU'
+                        'Pay Now (Opens Secure Tab)'
                     )}
                 </Button>
             </CardFooter>
