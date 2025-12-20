@@ -8,7 +8,7 @@ import { Bell, Settings, LogOut, Users, Package, Search, X, Sparkles, Lock, Truc
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
-import { dashboardApi, paymentApi } from "../lib/api/endpoints";
+import { dashboardApi } from "../lib/api/endpoints";
 import { Button } from "../components/ui/button-1";
 import FeedbackToast from "../components/ui/feedback-toast";
 import PharmacyPayment from "../components/payments/PharmacyPayment";
@@ -760,15 +760,15 @@ const StoreOwnerDashboard: React.FC = () => {
         if (!forecastData?.plot_data) return [];
 
         try {
-            const demand = forecastData.plot_data?.demand || forecastData.plot_data || {};
-            const price = forecastData.price_plot_data || forecastData.plot_data?.price || {};
+            const demandPlot = forecastData.plot_data?.demand || forecastData.plot_data || {};
+            const pricePlot = forecastData.price_plot_data || forecastData.plot_data?.price || {};
 
-            const hist = Array.isArray(demand.history) ? demand.history : [];
-            const fore = Array.isArray(demand.forecast) ? demand.forecast : [];
-            const conf = Array.isArray(demand.confidence) ? demand.confidence : [];
+            const dHist = Array.isArray(demandPlot.history) ? demandPlot.history : [];
+            const dFore = Array.isArray(demandPlot.forecast) ? demandPlot.forecast : [];
+            const dConf = Array.isArray(demandPlot.confidence) ? demandPlot.confidence : [];
 
-            const pHist = price && Array.isArray(price.history) ? price.history : [];
-            const pFore = price && Array.isArray(price.forecast) ? price.forecast : [];
+            const pHist = Array.isArray(pricePlot.history) ? pricePlot.history : [];
+            const pFore = Array.isArray(pricePlot.forecast) ? pricePlot.forecast : [];
 
             // Helper to get price for a date
             const getPrice = (date: string, isForecast: boolean) => {
@@ -808,13 +808,12 @@ const StoreOwnerDashboard: React.FC = () => {
                 }
 
                 return {
-                    date: f.date,
-                    history: null,
-                    forecast: val,
-                    confHigh: high,
-                    confRange: [low, high],
-                    priceHistory: null,
-                    priceForecast: getPrice(f.date, true)
+                    date,
+                    history: historyVal,
+                    forecast: forecastVal,
+                    priceHistory: priceHistVal,
+                    priceForecast: priceForeVal,
+                    confRange
                 };
             });
 
@@ -830,9 +829,19 @@ const StoreOwnerDashboard: React.FC = () => {
                 }
             }
 
-            return [...processedHist, ...processedFore];
+            // 4. Filtering
+            if (forecastDaysFilter !== 'all') {
+                const lastHistoryDate = [...sortedDates].reverse().find(d => dHist.some((h: any) => h.date === d));
+                if (lastHistoryDate) {
+                    const cutoffIdx = sortedDates.indexOf(lastHistoryDate);
+                    const days = parseInt(forecastDaysFilter);
+                    return fullData.slice(0, cutoffIdx + 1 + days);
+                }
+            }
+
+            return fullData;
         } catch (e) {
-            console.error("Error processing chart data", e);
+            console.error("Error processing unified chart data", e);
             return [];
         }
     }, [forecastData, forecastDaysFilter]);
@@ -2185,7 +2194,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                 const highValue = revenues.length ? Math.max(...revenues) : 0;
                                                 const lowValue = revenues.length ? Math.min(...revenues) : 0;
                                                 const lastRevenue = revenues.length ? revenues[revenues.length - 1] : 0;
-                                                const change = revenues.length > 1 ? ((revenues[revenues.length - 1] - revenues[revenues.length - 2]) / (revenues[revenues.length - 2] || 1) * 100).toFixed(1) : 0;
+                                                const change = revenues.length > 1 ? Number(((revenues[revenues.length - 1] - revenues[revenues.length - 2]) / (revenues[revenues.length - 2] || 1) * 100)).toFixed(1) : 0;
 
                                                 const trendData = currentTrendData.map(d => ({
                                                     date: new Date(d.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
@@ -2390,7 +2399,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                     axisLine={false}
                                                                     tickLine={false}
                                                                     tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 800 }}
-                                                                    tickFormatter={(v) => `₹${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`}
+                                                                    tickFormatter={(v) => `₹${Number(v) >= 1000 ? (Number(v) / 1000).toFixed(0) + 'k' : v}`}
                                                                     tickMargin={15}
                                                                 />
 
@@ -3721,7 +3730,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                     ) : (
                                         <ul className="space-y-4">
                                             {Array.from(posCart.values()).map(({ medicine: m, qty }) => {
-                                                const price = m.sellingPrice || (m.inventory && m.inventory.length > 0 ? Number(m.inventory[0].mrp) : (m.price || 0));
+                                                const price = Number(m.sellingPrice || (m.inventory && m.inventory.length > 0 ? Number(m.inventory[0].mrp) : (m.price || 0)));
                                                 const subtotal = price * qty;
                                                 return (
                                                     <li key={m.id} className="flex justify-between items-start group">
@@ -3731,7 +3740,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                         </div>
                                                         <div className="flex items-center gap-3">
                                                             <div className="text-xs font-bold text-slate-500">x{qty}</div>
-                                                            <span className="font-mono text-sm font-bold text-slate-900">₹{subtotal.toFixed(2)}</span>
+                                                            <span className="font-mono text-sm font-bold text-slate-900">₹{Number(subtotal).toFixed(2)}</span>
                                                         </div>
                                                     </li>
                                                 );
@@ -3739,11 +3748,11 @@ const StoreOwnerDashboard: React.FC = () => {
                                             <div className="border-t-2 border-dashed border-slate-100 my-4" />
                                             <div className="flex justify-between items-center text-lg font-bold text-slate-900 mt-2">
                                                 <span>Total</span>
-                                                <span className="font-mono">₹{Array.from(posCart.values()).reduce((acc, item) => {
+                                                <span className="font-mono">₹{Number(Array.from(posCart.values()).reduce((acc, item) => {
                                                     const m = item.medicine;
-                                                    const price = m.sellingPrice || (m.inventory && m.inventory.length > 0 ? Number(m.inventory[0].mrp) : (m.price || 0));
+                                                    const price = Number(m.sellingPrice || (m.inventory && m.inventory.length > 0 ? Number(m.inventory[0].mrp) : (m.price || 0)));
                                                     return acc + (price * item.qty);
-                                                }, 0).toFixed(2)}</span>
+                                                }, 0)).toFixed(2)}</span>
                                             </div>
                                         </ul>
                                     )}

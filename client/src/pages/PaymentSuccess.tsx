@@ -53,8 +53,7 @@ const PaymentSuccess: React.FC = () => {
                         </Link>
                     </Button>
                     <Button variant="outline" className="w-full border-zinc-800 text-zinc-400 hover:text-white h-12">
-                        <Download className="w-4 h-4 mr-2" />
-                        Download Receipt
+                        Ask your Store Manager for reciept
                     </Button>
                 </CardFooter>
             </Card>

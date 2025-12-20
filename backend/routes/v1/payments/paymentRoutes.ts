@@ -27,17 +27,18 @@ router.post('/initiate', authenticate, async (req: any, res: Response) => {
 
 // 2. Success Callback (POST from PayU)
 router.post('/callback/success', async (req: Request, res: Response) => {
-    // PayU sends data as x-www-form-urlencoded
     const responseData = req.body;
-    
     console.log(`PayU Success Callback received for TXN: ${responseData.txnid}`);
     
+    // Verify hash integrity
     const verification = payuService.verifyPaymentResponse(responseData);
     
-    const frontendSuccessUrl = `${process.env.FRONTEND_URL}/payment/success`;
-    const frontendFailureUrl = `${process.env.FRONTEND_URL}/payment/failure`;
+    // Fallback URL logic
+    const frontendBase = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendSuccessUrl = `${frontendBase}/payment/success`;
+    const frontendFailureUrl = `${frontendBase}/payment/failure`;
 
-    let redirectUrl = `${frontendFailureUrl}?txnid=${responseData.txnid}&error=tampered`;
+    let redirectUrl = `${frontendFailureUrl}?txnid=${responseData.txnid}&error=verification_failed`;
 
     if (verification.isValid && verification.status === 'success') {
         try {
@@ -46,33 +47,19 @@ router.post('/callback/success', async (req: Request, res: Response) => {
                 where: { id: verification.orderId },
                 data: { paymentStatus: 'PAID' }
             });
-
-            console.log(`Sale ${verification.orderId} marked as PAID`);
+            console.log(`Sale ${verification.orderId} marked as PAID. Verification valid.`);
             redirectUrl = `${frontendSuccessUrl}?txnid=${responseData.txnid}`;
         } catch (dbError) {
-            console.error(`Failed to update sale ${verification.orderId}:`, dbError);
+            console.error(`Failed to update DB for Sale ${verification.orderId}:`, dbError);
             redirectUrl = `${frontendFailureUrl}?txnid=${responseData.txnid}&error=db_update_failed`;
         }
+    } else {
+        console.warn(`PayU Hash Verification failed for TXN: ${responseData.txnid}. Expected SUCCESS but got ${verification.status}`);
+        redirectUrl = `${frontendFailureUrl}?txnid=${responseData.txnid}&error=hash_mismatch`;
     }
 
-    // Return HTML to redirect the user's browser back to the React App
-    const htmlContent = `
-    <html>
-        <head><title>Redirecting...</title></head>
-        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: white;">
-            <div style="text-align: center;">
-                <h2>Payment Processed</h2>
-                <p>Redirecting back to SynapStore...</p>
-                <script>
-                    setTimeout(() => {
-                        window.location.replace("${redirectUrl}");
-                    }, 1500);
-                </script>
-            </div>
-        </body>
-    </html>
-    `;
-    res.send(htmlContent);
+    console.log(`Redirecting user to: ${redirectUrl}`);
+    return res.redirect(redirectUrl);
 });
 
 // 3. Failure Callback (POST from PayU)
@@ -81,42 +68,27 @@ router.post('/callback/failure', async (req: Request, res: Response) => {
     console.log(`PayU Failure Callback received for TXN: ${responseData.txnid}`);
 
     try {
-        // Update the Sale record as FAILED. Note: udf1 contains our internal saleId
+        // udf1 contains our internal saleId
         const saleId = responseData.udf1;
         if (saleId) {
             await prisma.sale.update({
                 where: { id: saleId },
                 data: { paymentStatus: 'FAILED' }
             });
-            console.log(`Sale ${saleId} marked as FAILED`);
-        } else {
-            console.warn(`No udf1 (saleId) found in failure callback for txnid: ${responseData.txnid}`);
+            console.log(`Sale ${saleId} marked as FAILED in database.`);
         }
     } catch (dbError) {
-        console.error(`Failed to update sale status for txnid ${responseData.txnid}:`, dbError);
+        console.error(`Database update failed for failed transaction ${responseData.txnid}:`, dbError);
     }
 
-    const frontendFailureUrl = `${process.env.FRONTEND_URL}/payment/failure`;
-    const errorMsg = responseData.error_Message || "Payment Failed";
-    const redirectUrl = `${frontendFailureUrl}?txnid=${responseData.txnid}&error=${encodeURIComponent(errorMsg)}`;
-
-    const htmlContent = `
-    <html>
-        <head><title>Redirecting...</title></head>
-        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: white;">
-            <div style="text-align: center;">
-                <h2>Payment Failed</h2>
-                <p>Redirecting back to SynapStore...</p>
-                <script>
-                    setTimeout(() => {
-                        window.location.replace("${redirectUrl}");
-                    }, 1500);
-                </script>
-            </div>
-        </body>
-    </html>
-    `;
-    res.send(htmlContent);
+    const frontendBase = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendFailureUrl = `${frontendBase}/payment/failure`;
+    const errorMsg = responseData.error_Message || responseData.field9 || "Payment Failed";
+    
+    const finalRedirect = `${frontendFailureUrl}?txnid=${responseData.txnid}&error=${encodeURIComponent(errorMsg)}`;
+    
+    console.log(`Redirecting user to failure page: ${finalRedirect}`);
+    return res.redirect(finalRedirect);
 });
 
 export default router;
