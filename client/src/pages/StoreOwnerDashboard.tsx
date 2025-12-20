@@ -1642,12 +1642,12 @@ const StoreOwnerDashboard: React.FC = () => {
                             </h2>
                             <p className="text-slate-500 mt-1">Here's what's happening in your store today.</p>
                         </div>
-                        {data?.lists.lowStock.length ? (
+                        {/* {data?.lists.lowStock.length ? (
                             <div className="animate-pulse bg-amber-50 text-amber-700 px-4 py-2 rounded-lg text-sm font-medium border border-amber-200 flex items-center gap-2">
                                 <Package className="w-4 h-4" />
                                 {data.lists.lowStock.length} items low on stock
                             </div>
-                        ) : null}
+                        ) : null} */}
                     </motion.div>
                 )}
 
