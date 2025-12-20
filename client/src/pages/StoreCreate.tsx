@@ -1,27 +1,15 @@
-import { LogOut, Loader2, Building2, Truck, Rocket, ArrowRight, Check, AlertCircle } from "lucide-react";
+import { LogOut, Loader2, Building2, Truck, Rocket, ArrowRight, Check, AlertCircle, Sparkles } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
-import { jsonFetch } from "../utils/api";
 
-import { dashboardApi } from "../lib/api/endpoints";
+import { dashboardApi, storeApi } from "../lib/api/endpoints";
 
-type StoreResponse = {
-  success: boolean;
-  message: string;
-  effectiveStore: {
-    id: string;
-    name: string;
-    slug: string;
-    timezone: string;
-    currency: string;
-    settings: any;
-    roles: string[];
-  };
-};
+
 
 import { DottedSurface } from "../components/ui/dotted-surface";
+import { motion, AnimatePresence } from "framer-motion";
 
 const defaultTimezone = "Asia/Kolkata";
 const defaultCurrency = "INR";
@@ -45,27 +33,27 @@ const StoreCreate = () => {
     // Check if role updated while on this screen
     const checkRole = async () => {
       try {
-        const res = await dashboardApi.getStore(); // or getBootstrap
+        const res = await dashboardApi.getStore();
         if (res.data.success) {
           const fetchedUser = res.data.data.user;
           if (auth.user && fetchedUser.globalRole !== auth.user.globalRole) {
             setAuth((prev: any) => ({
               ...prev,
+              globalRole: fetchedUser.globalRole,
               user: { ...prev.user, globalRole: fetchedUser.globalRole }
             }));
             if (fetchedUser.globalRole === "SUPPLIER") {
               alert("Access Updated: Congrats you are now a SUPPLIER!");
-              // Navigation will happen automatically via RoleGuard or logic below
             }
           }
         }
       } catch (e: any) {
-
         if (e.code === "no_store_found" && e.details?.user?.globalRole) {
           const fetchedRole = e.details.user.globalRole;
           if (auth.user && fetchedRole !== auth.user.globalRole) {
             setAuth((prev: any) => ({
               ...prev,
+              globalRole: fetchedRole,
               user: { ...prev.user, globalRole: fetchedRole }
             }));
             if (fetchedRole === "SUPPLIER") {
@@ -77,7 +65,7 @@ const StoreCreate = () => {
       }
     };
     if (auth.token) checkRole();
-  }, [auth.token]);
+  }, [auth.token, auth.user, navigate, setAuth]);
 
   useEffect(() => {
     if (!auth.needsStoreSetup && auth.effectiveStore) {
@@ -94,7 +82,7 @@ const StoreCreate = () => {
 
   const handleNameChange = (value: string) => {
     setName(value);
-    if (!slug) {
+    if (!slug || slugStatus === 'idle') {
       setSlug(slugify(value));
     }
   };
@@ -129,6 +117,7 @@ const StoreCreate = () => {
       needsStoreSelection: false,
       suppliers: [],
       supplierId: null,
+      globalRole: null,
     });
     navigate("/login");
   };
@@ -154,33 +143,35 @@ const StoreCreate = () => {
       return;
     }
 
+    if (slugStatus === 'taken') {
+      setError("Store slug is already in use.");
+      return;
+    }
+
     try {
       setLoading(true);
 
-      const body = await jsonFetch<StoreResponse>("/api/v1/store/create", {
-        method: "POST",
-        body: JSON.stringify({
-          name: name.trim(),
-          slug: slugify(slug),
-          timezone,
-          currency,
-          settings: { theme: "green", avatar: "fruit-strawberry" }, // Passing default theme and avatar
-        }),
-        token: auth.token,
+      const res = await storeApi.create({
+        name: name.trim(),
+        slug: slugify(slug),
+        timezone,
+        currency,
       });
 
-      setAuth({
-        ...auth,
-        globalRole: "STORE_OWNER", // Explicitly set top-level role
-        user: auth.user ? { ...auth.user, globalRole: "STORE_OWNER" } : null,
-        effectiveStore: body.effectiveStore,
-        needsStoreSetup: false,
-      });
+      if (res.data.success) {
+        setAuth({
+          ...auth,
+          globalRole: "STORE_OWNER",
+          user: auth.user ? { ...auth.user, globalRole: "STORE_OWNER" } : null,
+          effectiveStore: res.data.effectiveStore,
+          needsStoreSetup: false,
+        });
 
-      setSuccess("Store created successfully. Redirecting to dashboard...");
-      setTimeout(() => navigate("/dashboard", { replace: true }), 500);
+        setSuccess("Store created successfully. Redirecting to dashboard...");
+        setTimeout(() => navigate("/dashboard", { replace: true }), 500);
+      }
     } catch (err: any) {
-      setError(err?.message || "Could not create store. Please try again.");
+      setError(err?.response?.data?.message || err?.message || "Could not create store. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -199,7 +190,7 @@ const StoreCreate = () => {
         <LogOut className="w-3 h-3" />
       </button>
 
-      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-0 bg-white/80 backdrop-blur-xl border border-white/50 rounded-[32px] overflow-hidden shadow-2xl shadow-slate-200/50 relative z-10 min-h-[450px]">
+      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-0 bg-white/80 backdrop-blur-xl border border-white/50 rounded-[32px] overflow-hidden shadow-2xl shadow-slate-200/50 relative z-10 min-h-[500px]">
 
         {/* Left Panel: Information */}
         <div className="p-10 md:p-12 flex flex-col justify-center bg-gradient-to-br from-white via-slate-50/30 to-white">
@@ -238,209 +229,212 @@ const StoreCreate = () => {
         </div>
 
         {/* Right Panel: Actions/Form */}
-        <div className="p-10 md:p-12 border-l border-slate-100/50 flex flex-col justify-center bg-white/50">
-
+        <div className="p-10 md:p-12 border-l border-slate-100/50 flex flex-col justify-center bg-white/50 relative overflow-hidden">
+          
           {/* Status Messages */}
-          {(error || success) && (
-            <div className="mb-6 animate-in slide-in-from-top-2 duration-300">
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                  {error}
-                </div>
-              )}
-              {success && (
-                <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-600 font-medium flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  {success}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Main Content Area */}
-          {selectedRole === null ? (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900 tracking-tight">How do you want to get started?</h2>
-              </div>
-
-              <div className="grid gap-4">
-                <button
-                  onClick={() => setSelectedRole("STORE_OWNER")}
-                  className="group w-full p-3 rounded-2xl bg-white border-2 border-slate-100 hover:border-[#45a089] hover:bg-slate-50 transition-all duration-300 text-left flex items-center gap-4 shadow-sm hover:shadow-md hover:-translate-y-0.5"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-300">
-                    <Building2 className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-slate-800 text-base group-hover:text-[#45a089] transition-colors">I want to be a Store Owner</h3>
-                    <p className="text-slate-500 text-[11px] mt-0.5 font-medium group-hover:text-slate-600">Manage inventory, sales, and staff</p>
-                  </div>
-                  <div className="pr-2">
-                    <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-[#45a089] transition-colors" />
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => setSelectedRole("SUPPLIER")}
-                  className="group w-full p-3 rounded-2xl bg-white border-2 border-slate-100 hover:border-[#45a089] hover:bg-slate-50 transition-all duration-300 text-left flex items-center gap-4 shadow-sm hover:shadow-md hover:-translate-y-0.5"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600 shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-300">
-                    <Truck className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-slate-800 text-base group-hover:text-[#45a089] transition-colors">I want to be a Supplier</h3>
-                    <p className="text-slate-500 text-[11px] mt-0.5 font-medium group-hover:text-slate-600">Supply products to stores</p>
-                  </div>
-                  <div className="pr-2">
-                    <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-[#45a089] transition-colors" />
-                  </div>
-                </button>
-              </div>
-            </div>
-          ) : selectedRole === "SUPPLIER" ? (
-            <div className="text-center py-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="w-20 h-20 bg-[#f0fdf4] rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner ring-1 ring-emerald-100">
-                <Truck className="w-10 h-10 text-[#45a089]" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-900 mb-2">Become a Supplier</h2>
-              <p className="text-slate-500 text-xs mb-6 leading-relaxed max-w-xs mx-auto font-medium">
-                We are manually onboarding premium suppliers. Please contact our support team to get verified and listed.
-              </p>
-              <div className="p-4 bg-slate-50/80 rounded-xl mb-6 border border-slate-100/60">
-                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Email Support</p>
-                <a href="mailto:contact@synapstore.me" className="text-lg text-[#45a089] font-bold hover:underline">
-                  contact@synapstore.me
-                </a>
-              </div>
-              <button
-                onClick={() => setSelectedRole(null)}
-                className="text-slate-400 hover:text-slate-800 text-[10px] font-bold transition-colors flex items-center justify-center gap-2 mx-auto uppercase tracking-wider bg-white px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+          <AnimatePresence>
+            {(error || success) && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="mb-6 absolute top-8 left-10 right-10 z-30"
               >
-                ← Back to selection
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={createStore} className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
-                  Store Details
-                </h2>
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium flex items-center gap-2 shadow-sm">
+                    <AlertCircle className="w-4 h-4" />
+                    {error}
+                  </div>
+                )}
+                {success && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-600 font-medium flex items-center gap-2 shadow-sm">
+                    <Check className="w-4 h-4" />
+                    {success}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence mode="wait">
+            {selectedRole === null ? (
+              <motion.div
+                key="selection"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-6"
+              >
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">How do you want to get started?</h2>
+                  <p className="text-slate-500 text-sm">Choose your path to begin your SynapStore journey.</p>
+                </div>
+
+                <div className="grid gap-4">
+                  <button
+                    onClick={() => setSelectedRole("STORE_OWNER")}
+                    className="group w-full p-4 rounded-2xl bg-white border-2 border-slate-100 hover:border-[#45a089] hover:bg-slate-50 transition-all duration-300 text-left flex items-center gap-4 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center text-[#45a089] shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-300">
+                      <Building2 className="w-7 h-7" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-slate-800 text-lg group-hover:text-[#45a089] transition-colors">I want to be a Store Owner</h3>
+                      <p className="text-slate-500 text-xs mt-0.5 font-medium group-hover:text-slate-600">Manage inventory, sales, staff and scale your business</p>
+                    </div>
+                    <div className="pr-2">
+                      <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-[#45a089] transition-colors" />
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedRole("SUPPLIER")}
+                    className="group w-full p-4 rounded-2xl bg-white border-2 border-slate-100 hover:border-[#45a089] hover:bg-slate-50 transition-all duration-300 text-left flex items-center gap-4 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-300">
+                      <Truck className="w-7 h-7" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-slate-800 text-lg group-hover:text-[#45a089] transition-colors">I want to be a Supplier</h3>
+                      <p className="text-slate-500 text-xs mt-0.5 font-medium group-hover:text-slate-600">Supply premium products to stores in our global network</p>
+                    </div>
+                    <div className="pr-2">
+                      <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-[#45a089] transition-colors" />
+                    </div>
+                  </button>
+                </div>
+              </motion.div>
+            ) : selectedRole === "SUPPLIER" ? (
+              <motion.div
+                key="supplier"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="text-center py-6"
+              >
+                <div className="w-24 h-24 bg-[#f0fdf4] rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-inner ring-1 ring-emerald-100/50">
+                  <Truck className="w-12 h-12 text-[#45a089]" />
+                </div>
+                <h2 className="text-[28px] font-bold text-slate-900 mb-3 tracking-tight">Become a Supplier</h2>
+                <p className="text-slate-500 text-sm mb-8 leading-relaxed max-w-sm mx-auto font-medium">
+                  We are manually onboarding premium suppliers to ensure quality. Please contact our support team to get verified and listed in our global directory.
+                </p>
+                <div className="p-6 bg-slate-50/80 rounded-[2rem] mb-8 border border-slate-100/60 backdrop-blur-sm">
+                  <p className="text-[10px] text-slate-400 uppercase font-black tracking-[0.2em] mb-2">Official Channel</p>
+                  <a href="mailto:contact@synapstore.me" className="text-xl text-[#45a089] font-black hover:underline hover:opacity-80 transition-all">
+                    contact@synapstore.me
+                  </a>
+                </div>
                 <button
-                  type="button"
                   onClick={() => setSelectedRole(null)}
-                  className="text-[10px] font-bold text-slate-500 hover:text-[#45a089] bg-slate-100 px-2.5 py-1 rounded-lg hover:bg-emerald-50 transition-all border border-transparent hover:border-emerald-200"
+                  className="text-slate-500 hover:text-slate-900 text-xs font-black transition-all flex items-center justify-center gap-2 mx-auto uppercase tracking-widest bg-white px-5 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm active:scale-95"
                 >
-                  Change Role
+                  ← Back to selection
                 </button>
-              </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="owner"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <form onSubmit={createStore} className="space-y-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-[28px] font-bold text-slate-900 tracking-tight">
+                      Store Details
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRole(null)}
+                      className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-[#45a089] bg-slate-50 px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-all border border-slate-100 hover:border-emerald-200"
+                    >
+                      Back
+                    </button>
+                  </div>
 
-              <div className="space-y-4">
-                <div className="relative group">
-                  <label className="block text-slate-700 text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1">
-                    Store Name
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border-2 border-slate-100 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#45a089] focus:ring-4 focus:ring-[#45a089]/10 transition-all text-sm font-semibold shadow-sm group-hover:border-slate-200"
-                    placeholder="e.g. Sunrise Pharmacy"
-                    disabled={loading}
-                    autoFocus
-                  />
-                </div>
+                  <div className="space-y-4">
+                    <div className="relative group">
+                      <label className="block text-slate-700 text-[10px] font-black uppercase tracking-widest mb-1.5 ml-1">
+                        Store Name
+                      </label>
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => handleNameChange(e.target.value)}
+                        className="w-full px-5 py-3.5 bg-white border-2 border-slate-100 rounded-2xl text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-[#45a089] focus:ring-4 focus:ring-[#45a089]/10 transition-all text-sm font-bold shadow-sm group-hover:border-slate-200"
+                        placeholder="e.g. Sunrise Pharmacy"
+                        disabled={loading}
+                        autoFocus
+                      />
+                    </div>
 
-                <div className="relative group">
-                  <label className="block text-slate-700 text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1">
-                    Store Slug
-                  </label>
-                  <input
-                    type="text"
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50/50 border-2 border-slate-100 rounded-xl text-slate-600 placeholder:text-slate-400 focus:outline-none focus:border-[#45a089] focus:bg-white transition-all text-sm font-mono shadow-sm group-hover:border-slate-200"
-                    placeholder="e.g. sunrise-pharmacy"
-                    disabled={loading}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-slate-700 text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1">
-                      Timezone
-                    </label>
-                    <div className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-slate-500 text-sm font-semibold flex items-center justify-between">
-                      Asia/Kolkata
-                      <div className="w-2 h-2 rounded-full bg-slate-300" />
                     <div className="group">
-                      <div className="flex justify-start gap-2 mb-2 ml-1">
-                        <label className="text-slate-700 text-xs font-bold uppercase tracking-wider">
+                      <div className="flex justify-start gap-2 mb-1.5 ml-1">
+                        <label className="text-slate-700 text-[10px] font-black uppercase tracking-widest">
                           Store Slug
                         </label>
-                        <span className="text-[10px] text-slate-400 py-0.5 bg-slate-100 px-1.5 rounded border border-slate-200 font-medium">URL Safe</span>
+                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-tighter py-0.5 bg-slate-50 px-1.5 rounded border border-slate-100">URL Safe</span>
                       </div>
                       <div className="relative">
                         <input
                           type="text"
                           value={slug}
                           onChange={(e) => setSlug(e.target.value)}
-                          className={`w-full px-5 py-3.5 bg-slate-50/50 border rounded-xl text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all font-mono text-sm shadow-inner pr-12 ${
-                            slugStatus === 'available' ? 'border-emerald-200 focus:ring-emerald-500/10 focus:border-emerald-500' :
-                            slugStatus === 'taken' ? 'border-red-200 focus:ring-red-500/10 focus:border-red-500' :
-                            'border-slate-200 focus:ring-indigo-500/10 focus:border-indigo-500'
+                          className={`w-full px-5 py-3.5 bg-slate-50/50 border-2 rounded-2xl text-slate-800 placeholder:text-slate-300 focus:outline-none transition-all font-mono text-xs shadow-inner pr-12 ${
+                            slugStatus === 'available' ? 'border-emerald-200 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-400' :
+                            slugStatus === 'taken' ? 'border-red-200 focus:ring-4 focus:ring-red-500/10 focus:border-red-400' :
+                            'border-slate-100 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 focus:bg-white'
                           }`}
                           placeholder="e.g. sunrise-pharmacy"
                           disabled={loading}
                         />
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center">
                           {slugStatus === 'checking' && <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />}
-                          {slugStatus === 'available' && <Check className="w-4 h-4 text-emerald-500" />}
-                          {slugStatus === 'taken' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                          {slugStatus === 'available' && <div className="bg-emerald-100 p-1 rounded-full"><Check className="w-3 h-3 text-emerald-600" /></div>}
+                          {slugStatus === 'taken' && <div className="bg-red-100 p-1 rounded-full"><AlertCircle className="w-3 h-3 text-red-600" /></div>}
                         </div>
                       </div>
-                      {slugStatus === 'taken' && (
-                        <p className="text-[10px] text-red-500 font-bold mt-1.5 ml-1">This slug is already taken. Try another one.</p>
-                      )}
-                      {slugStatus === 'available' && (
-                        <p className="text-[10px] text-emerald-600 font-bold mt-1.5 ml-1">Perfect! This slug is available.</p>
-                      )}
+                      <AnimatePresence>
+                        {slugStatus === 'taken' && (
+                          <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-[10px] text-red-500 font-bold mt-2 ml-1">This slug is already taken. Try another one.</motion.p>
+                        )}
+                        {slugStatus === 'available' && (
+                          <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-[10px] text-emerald-600 font-bold mt-2 ml-1 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Perfect! This unique slug is available.</motion.p>
+                        )}
+                      </AnimatePresence>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1">
-                      Currency
-                    </label>
-                    <div className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-slate-500 text-sm font-semibold flex items-center justify-between">
-                      INR (₹)
-                      <div className="w-2 h-2 rounded-full bg-slate-300" />
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#45a089] hover:bg-[#347966] text-white py-3.5 rounded-xl font-bold text-sm shadow-xl shadow-[#45a089]/20 hover:shadow-2xl hover:shadow-[#45a089]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed mt-4 active:scale-[0.98]"
-              >
-                {loading ? (
-                  <Loader2 className="animate-spin w-5 h-5" />
-                ) : (
-                  <>
-                    <span>Launch Store</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-slate-700 text-[10px] font-black uppercase tracking-widest mb-1.5 ml-1">
+                          Timezone
+                        </label>
+                        <div className="w-full px-5 py-3.5 bg-slate-50/80 border-2 border-slate-100 rounded-2xl text-slate-500 text-xs font-bold flex items-center justify-between shadow-sm">
+                          {timezone || "Asia/Kolkata"}
+                          <div className="w-2 h-2 rounded-full bg-slate-200" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-[10px] font-black uppercase tracking-widest mb-1.5 ml-1">
+                          Currency
+                        </label>
+                        <div className="w-full px-5 py-3.5 bg-slate-50/80 border-2 border-slate-100 rounded-2xl text-slate-500 text-xs font-bold flex items-center justify-between shadow-sm">
+                          {currency} (₹)
+                          <div className="w-2 h-2 rounded-full bg-slate-200" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="pt-4">
                     <button
                       type="submit"
                       disabled={loading || slugStatus === 'checking' || slugStatus === 'taken' || !name.trim() || !slug.trim()}
-                      className="w-full !bg-black !text-white py-4 rounded-xl font-bold text-sm shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-0.5 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3 group relative overflow-hidden"
+                      className="w-full !bg-black !text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-0.5 transition-all active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3 group relative overflow-hidden"
                     >
                       <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                       {loading ? (
@@ -448,11 +442,13 @@ const StoreCreate = () => {
                       ) : (
                         <>
                           <span className="relative z-10">Launch Store</span>
-                          <Rocket className="w-5 h-5 group-hover:rotate-12 transition-transform relative z-10" />
+                          <Rocket className="w-4 h-4 group-hover:rotate-12 transition-transform relative z-10" />
                         </>
                       )}
                     </button>
-                    <p className="text-center text-xs text-slate-400 mt-4">By creating a store, you agree to our Terms & Conditions.</p>
+                    <p className="text-center text-[10px] text-slate-400 mt-5 font-medium leading-relaxed">
+                      By launching this store, you agree to our <span className="text-slate-600 underline cursor-pointer">Terms of Service</span> and <span className="text-slate-600 underline cursor-pointer">Data Privacy Policy</span>.
+                    </p>
                   </div>
                 </form>
               </motion.div>

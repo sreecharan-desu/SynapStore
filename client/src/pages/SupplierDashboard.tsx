@@ -97,29 +97,7 @@ const SupplierDashboard: React.FC = () => {
     const [requestToFulfill, setRequestToFulfill] = useState<SupplierRequest | null>(null);
     const [fulfillItems, setFulfillItems] = useState<any[]>([]);
 
-    // Helper to open fulfill modal
-    const openFulfillModal = (req: SupplierRequest) => {
-        // Determine request type
-        const isReorder = req.payload?.type === 'REORDER';
-        const isReturn = req.payload?.type === 'RETURN';
-
-        if ((isReorder || isReturn) && req.payload.items) {
-            setRequestToFulfill(req);
-            // Pre-fill items from request
-            setFulfillItems(req.payload.items.map((i: any) => ({
-                medicineId: i.medicineId,
-                medicineName: i.medicineName || "Unknown Item",
-                quantity: i.quantity,
-                batchNumber: i.batchNumber || "", // Use provided batch for Returns if available
-                expiryDate: i.expiryDate || "",
-                purchasePrice: i.purchasePrice || 0,
-                mrp: i.mrp || 0
-            })));
-            setFulfillModalOpen(true);
-        } else {
-            setActionResult({ type: 'error', title: 'Invalid Request', message: "This request does not contain items or is malformed." });
-        }
-    };
+   
 
   
     const [historyDetailRequest, setHistoryDetailRequest] = useState<SupplierRequest | null>(null);

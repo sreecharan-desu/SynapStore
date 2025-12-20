@@ -4,13 +4,12 @@ import React from "react";
 import { useRecoilState } from "recoil";
 import { authState } from "../state/auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Settings, LogOut, Users, Package, Search, X, Sparkles, Lock, Truck, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, XCircle, Send, History as HistoryIcon, ClipboardList, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, Loader2, Clock, AlertTriangle } from "lucide-react";
+import { Bell, Settings, LogOut, Users, Package, Search, X, Sparkles, Lock, Truck, Check, FileText, ChevronDown, ChevronUp, Activity, ShoppingCart, Link, Store, XCircle, Send, History as HistoryIcon, ClipboardList, Mail, Phone, Trash2, ArrowRight, CreditCard, Banknote, Smartphone, Loader2, Clock, AlertTriangle, BarChart2 } from "lucide-react";
 import { Dock, DockIcon, DockItem, DockLabel } from "../components/ui/dock";
 import { formatDistanceToNow } from "date-fns";
 import { useLogout } from "../hooks/useLogout";
 import { dashboardApi } from "../lib/api/endpoints";
 import { Button } from "../components/ui/button-1";
-import FeedbackToast from "../components/ui/feedback-toast";
 import PharmacyPayment from "../components/payments/PharmacyPayment";
 
 
@@ -770,41 +769,33 @@ const StoreOwnerDashboard: React.FC = () => {
             const pHist = Array.isArray(pricePlot.history) ? pricePlot.history : [];
             const pFore = Array.isArray(pricePlot.forecast) ? pricePlot.forecast : [];
 
-            // Helper to get price for a date
-            const getPrice = (date: string, isForecast: boolean) => {
-                const source = isForecast ? pFore : pHist;
-                if (!source) return null;
-                const match = source.find((p: any) => p.date === date);
-                return match ? (typeof match.qty === 'number' ? match.qty : (typeof match.price === 'number' ? match.price : 0)) : null;
-            };
+            // 1. Create a master list of all unique dates across all data sets
+            const allDates = new Set<string>();
+            [dHist, dFore, pHist, pFore].forEach(arr => {
+                arr.forEach((item: any) => { if (item.date) allDates.add(item.date); });
+            });
+            const sortedDates = Array.from(allDates).sort();
 
-            // 1. Process History
-            const processedHist = hist.map((h: any) => ({
-                date: h.date,
-                history: typeof h.qty === 'number' ? h.qty : 0,
-                forecast: null,
-                confHigh: null,
-                confRange: null,
-                priceHistory: getPrice(h.date, false),
-                priceForecast: null
-            }));
+            // 2. Map data for each unique date
+            const fullData = sortedDates.map(date => {
+                const dh = dHist.find((x: any) => x.date === date);
+                const df = dFore.find((x: any) => x.date === date);
+                const ph = pHist.find((x: any) => x.date === date);
+                const pf = pFore.find((x: any) => x.date === date);
+                const dc = dConf.find((x: any) => x.date === date);
 
-            // 2. Process Forecast (and Filter)
-            let limitedFore = fore;
-            if (forecastDaysFilter !== 'all') {
-                limitedFore = fore.slice(0, parseInt(forecastDaysFilter));
-            }
+                const getVal = (obj: any) => (obj && typeof obj.qty === 'number') ? obj.qty : ((obj && typeof obj.price === 'number') ? obj.price : null);
 
-            const processedFore = limitedFore.map((f: any) => {
-                const c = conf.find((x: any) => x.date === f.date);
-                const val = typeof f.qty === 'number' ? f.qty : 0;
+                const historyVal = getVal(dh);
+                const forecastVal = getVal(df);
+                const priceHistVal = getVal(ph);
+                const priceForeVal = getVal(pf);
 
-                let low = val;
-                let high = val;
-
-                if (c) {
-                    low = typeof c.low === 'number' ? c.low : val;
-                    high = typeof c.high === 'number' ? c.high : val;
+                let confRange = null;
+                if (dc) {
+                    const low = typeof dc.low === 'number' ? dc.low : (forecastVal ?? 0);
+                    const high = typeof dc.high === 'number' ? dc.high : (forecastVal ?? 0);
+                    confRange = [low, high];
                 }
 
                 return {
@@ -817,15 +808,25 @@ const StoreOwnerDashboard: React.FC = () => {
                 };
             });
 
-            // 3. Seamless Stitching
-            if (processedHist.length > 0 && processedFore.length > 0) {
-                const lastHist = processedHist[processedHist.length - 1];
+            // 3. Independent Seamless Stitching
+            // Connect Demand History to Forecast
+            const lastHIdx = [...fullData].reverse().findIndex(x => x.history !== null);
+            if (lastHIdx !== -1) {
+                const actualIdx = fullData.length - 1 - lastHIdx;
+                const lastH = fullData[actualIdx];
+                if (fullData.some((x, i) => i > actualIdx && x.forecast !== null)) {
+                    lastH.forecast = lastH.history;
+                    lastH.confRange = [Number(lastH.history), Number(lastH.history)];
+                }
+            }
 
-                lastHist.forecast = lastHist.history;
-                lastHist.confRange = [lastHist.history, lastHist.history];
-
-                if (lastHist.priceHistory !== null) {
-                    lastHist.priceForecast = lastHist.priceHistory;
+            // Connect Price History to Forecast
+            const lastPHIdx = [...fullData].reverse().findIndex(x => x.priceHistory !== null);
+            if (lastPHIdx !== -1) {
+                const actualPIdx = fullData.length - 1 - lastPHIdx;
+                const lastPH = fullData[actualPIdx];
+                if (fullData.some((x, i) => i > actualPIdx && x.priceForecast !== null)) {
+                    lastPH.priceForecast = lastPH.priceHistory;
                 }
             }
 
@@ -2194,7 +2195,7 @@ const StoreOwnerDashboard: React.FC = () => {
                                                 const highValue = revenues.length ? Math.max(...revenues) : 0;
                                                 const lowValue = revenues.length ? Math.min(...revenues) : 0;
                                                 const lastRevenue = revenues.length ? revenues[revenues.length - 1] : 0;
-                                                const change = revenues.length > 1 ? Number(((revenues[revenues.length - 1] - revenues[revenues.length - 2]) / (revenues[revenues.length - 2] || 1) * 100)).toFixed(1) : 0;
+                                                const change = revenues.length > 1 ? Number(((Number(revenues[revenues.length - 1]) - Number(revenues[revenues.length - 2])) / (Number(revenues[revenues.length - 2]) || 1) * 100)).toFixed(1) : 0;
 
                                                 const trendData = currentTrendData.map(d => ({
                                                     date: new Date(d.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
@@ -2246,38 +2247,6 @@ const StoreOwnerDashboard: React.FC = () => {
                                                             config={{ value: { label: 'Revenue', color: theme.hex } }}
                                                             className="h-96 w-full [&_.recharts-curve.recharts-tooltip-cursor]:stroke-initial"
                                                         >
-                                                            <defs>
-                                                                <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                                                                    <stop offset="0%" stopColor={theme.hex} stopOpacity={0.15} />
-                                                                    <stop offset="100%" stopColor={theme.hex} stopOpacity={0} />
-                                                                </linearGradient>
-                                                                <pattern id="dotGrid" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-                                                                    <circle cx="10" cy="10" r="1" fill="var(--border)" fillOpacity="0.3" />
-                                                                </pattern>
-                                                                <filter id="dotShadow" x="-50%" y="-50%" width="200%" height="200%">
-                                                                    <feDropShadow dx="2" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.1)" />
-                                                                </filter>
-                                                                <filter id="lineShadow" x="-100%" y="-100%" width="300%" height="300%">
-                                                                    <feDropShadow dx="0" dy="10" stdDeviation="15" floodColor={`${theme.hex}44`} />
-                                                                </filter>
-                                                            </defs>
-
-                                                            <rect x="0" y="0" width="100%" height="100%" fill="url(#dotGrid)" style={{ pointerEvents: 'none' }} />
-
-                                                            <CartesianGrid
-                                                                strokeDasharray="4 8"
-                                                                stroke="#f1f5f9"
-                                                                strokeOpacity={1}
-                                                                horizontal={true}
-                                                                vertical={false}
-                                                            />
-
-                                                            {trendData.length > 0 && (
-                                                                <ReferenceLine
-                                                                    x={trendData[trendData.length - 1].date}
-                                                                    stroke={theme.hex}
-                                                                    strokeDasharray="4 4"
-                                                                    strokeWidth={1.5}
                                                             <ComposedChart
                                                                 data={trendData}
                                                                 margin={{ top: 20, right: 10, left: 5, bottom: 20 }}
@@ -2308,75 +2277,6 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                     vertical={false}
                                                                 />
 
-                                                            <XAxis
-                                                                dataKey="date"
-                                                                axisLine={false}
-                                                                tickLine={false}
-                                                                tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 800 }}
-                                                                tickMargin={15}
-                                                                interval="preserveStartEnd"
-                                                            />
-
-                                                            <YAxis
-                                                                axisLine={false}
-                                                                tickLine={false}
-                                                                tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 800 }}
-                                                                tickFormatter={(v) => `₹${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`}
-                                                                tickMargin={15}
-                                                            />
-
-                                                            <ChartTooltip
-                                                                content={<CustomTooltip />}
-                                                                cursor={{ strokeDasharray: '4 4', stroke: '#cbd5e1', strokeOpacity: 0.8 }}
-                                                            />
-
-                                                            <Area
-                                                                type="monotone"
-                                                                dataKey="value"
-                                                                stroke="none"
-                                                                fill="url(#areaGradient)"
-                                                                animationDuration={3000}
-                                                            />
-
-                                                            <Line
-                                                                type="monotone"
-                                                                dataKey="value"
-                                                                stroke={theme.hex}
-                                                                strokeWidth={4}
-                                                                filter="url(#lineShadow)"
-                                                                dot={(props) => {
-                                                                    const { cx, cy, index } = props;
-                                                                    const revenues = trendData.map(d => d.value);
-                                                                    const high = Math.max(...revenues);
-                                                                    const low = Math.min(...revenues);
-                                                                    const val = trendData[index].value;
-
-                                                                    if (index === 0 || index === trendData.length - 1 || val === high || (val === low && low !== high)) {
-                                                                        return (
-                                                                            <circle
-                                                                                key={`dot-${index}`}
-                                                                                cx={cx}
-                                                                                cy={cy}
-                                                                                r={6}
-                                                                                fill={theme.hex}
-                                                                                stroke="white"
-                                                                                strokeWidth={3}
-                                                                                filter="url(#dotShadow)"
-                                                                            />
-                                                                        );
-                                                                    }
-                                                                    return <g key={`dot-${index}`} />;
-                                                                }}
-                                                                activeDot={{
-                                                                    r: 8,
-                                                                    fill: theme.hex,
-                                                                    stroke: 'white',
-                                                                    strokeWidth: 4,
-                                                                    filter: 'url(#dotShadow)',
-                                                                }}
-                                                            />
-                                                        </ComposedChart>
-                                                    </ChartContainer>
                                                                 {trendData.length > 0 && (
                                                                     <ReferenceLine
                                                                         x={trendData[trendData.length - 1].date}
@@ -3242,16 +3142,8 @@ const StoreOwnerDashboard: React.FC = () => {
                                                     </div>
                                                 ))
                                             ) : returnList.length === 0 ? (
-                                                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                                                    <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
-                                                        <CheckCircle className="w-8 h-8 text-black" />
-                                                    </div>
-                                                    <p className="font-medium text-slate-500">No expiring items found</p>
-                                                    <p className="text-sm opacity-70">Your inventory looks healthy!</p>
-                                                </div>
                                                 <EmptyState 
                                                     icon={CheckCircle}
-                                                    type="success"
                                                     title="Inventory Healthy"
                                                     description="No expiring items found in your inventory. Good job with the stock management!"
                                                 />
@@ -3951,7 +3843,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
 
 
-            </main >
+            </main>
 
             {/* PayU Payment Modal */}
             <AnimatePresence>
@@ -3981,12 +3873,7 @@ const StoreOwnerDashboard: React.FC = () => {
                     </div>
                 )}
             </AnimatePresence>
-            <FeedbackToast
-                visible={showFeedback}
-                onClose={() => setShowFeedback(false)}
-                message={feedbackMessage}
-                onFeedback={(type) => console.log("Feedback:", type)}
-            />
+         
 
             {/* Logout Confirmation Modal */}
             <AnimatePresence>
