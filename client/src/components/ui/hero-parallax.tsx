@@ -109,13 +109,7 @@ export const HeroParallax = ({
 export const Header = () => {
     return (
         <div className="max-w-7xl relative mx-auto py-10 md:py-24 px-4 w-full left-0 top-0 text-center flex flex-col items-center z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/80 border border-emerald-200 text-emerald-700 text-sm font-medium mb-8 backdrop-blur-sm">
-                <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-black"></span>
-                </span>
-                Powering Next-Gen Pharmacies
-            </div>
+
 
             <h1 className="text-6xl md:text-9xl font-bold text-slate-900 leading-tight tracking-tight">
                 Smart Pharmacy <br />

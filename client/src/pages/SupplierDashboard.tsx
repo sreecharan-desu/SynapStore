@@ -6,7 +6,7 @@ import {
     Package, Calendar,
     Search, Send, Clock, CheckCircle, XCircle,
     LogOut, LayoutGrid, User, ShoppingBag, Inbox, Upload,
-    Store as StoreIcon, Phone, MapPin, Building, Download, FileSpreadsheet, RefreshCw, X, History, Info
+    Store as StoreIcon, Phone, MapPin, Building, Download, FileSpreadsheet, RefreshCw, X, History, Info, Loader2
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -55,6 +55,7 @@ const SupplierDashboard: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [uploadStatusMessage, setUploadStatusMessage] = useState<string>("");
     const [uploadProgress, setUploadProgress] = useState<number>(0);
+    const [isConnecting, setIsConnecting] = useState(false);
 
     // Data
     const [isScrolled, setIsScrolled] = useState(false);
@@ -389,6 +390,7 @@ const SupplierDashboard: React.FC = () => {
         if (!selectedStore) return;
 
         try {
+            setIsConnecting(true);
             const res = await suppliersApi.createRequest({
                 storeId: selectedStore.id,
                 supplierId: currentSupplier.id,
@@ -404,6 +406,8 @@ const SupplierDashboard: React.FC = () => {
             }
         } catch (err: any) {
             setActionResult({ type: 'error', title: 'Error', message: "Error: " + err.message });
+        } finally {
+            setIsConnecting(false);
         }
     };
 
@@ -697,7 +701,7 @@ const SupplierDashboard: React.FC = () => {
 
                                         {/* Card 2: Pending Requests */}
                                         <div className="bg-white rounded-2xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex items-center gap-5 hover:shadow-md transition-shadow">
-                                            <div className="w-14 h-14 rounded-2xl bg-black text-emerald-600 flex items-center justify-center shrink-0">
+                                            <div className="w-14 h-14 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center shrink-0">
                                                 <Inbox className="w-7 h-7" />
                                             </div>
                                             <div>
@@ -805,7 +809,7 @@ const SupplierDashboard: React.FC = () => {
                                             <div className="bg-white rounded-2xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col h-[420px]">
                                                 <div className="flex justify-between items-center mb-4">
                                                     <h3 className="font-bold text-slate-800">Recent Inbound</h3>
-                                                    <span className="text-xs px-2 py-1 bg-black text-emerald-600 rounded-full font-medium">Live</span>
+                                                    <span className="text-xs px-2 py-1 bg-emerald-50 text-emerald-600 rounded-full font-medium">Live</span>
                                                 </div>
 
                                                 <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
@@ -827,7 +831,7 @@ const SupplierDashboard: React.FC = () => {
                                                                     <div className="flex flex-col">
                                                                         <span className="text-sm font-bold text-slate-800">{req.store?.name}</span>
                                                                         <div className="flex items-center gap-2 mt-0.5">
-                                                                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${req.status === 'ACCEPTED' ? 'bg-black text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                                                                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${req.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                                                                                 {req.status}
                                                                             </span>
                                                                             <span className="text-[10px] text-slate-400 flex items-center gap-1">
@@ -2080,8 +2084,9 @@ const SupplierDashboard: React.FC = () => {
 
                                     <div className="flex justify-end gap-3">
                                         <Button type="button" variant="outline" className="cursor-pointer !border-black !text-black hover:!bg-slate-50 !bg-white" onClick={() => setSelectedStore(null)}>Cancel</Button>
-                                        <Button type="submit" className="cursor-pointer !bg-black hover:!bg-slate-800 !text-white gap-2 border-none shadow-lg shadow-black/20">
-                                            <Send className="w-4 h-4" /> Send Request
+                                        <Button type="submit" disabled={isConnecting} className="cursor-pointer !bg-black hover:!bg-slate-800 !text-white gap-2 border-none shadow-lg shadow-black/20">
+                                            {isConnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                            {isConnecting ? "Sending..." : "Send Request"}
                                         </Button>
                                     </div>
                                 </form>

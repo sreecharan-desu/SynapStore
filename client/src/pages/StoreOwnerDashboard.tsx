@@ -264,6 +264,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const [isReorderLoading, setIsReorderLoading] = React.useState(false);
     const [isHistoryLoading, setIsHistoryLoading] = React.useState(false);
+    const [connectingSupplierId, setConnectingSupplierId] = React.useState<string | null>(null);
 
     // Returns State
     const [returnList, setReturnList] = React.useState<any[]>([]);
@@ -1154,6 +1155,7 @@ const StoreOwnerDashboard: React.FC = () => {
 
     const handleConnectRequest = async (supplierId: string) => {
         try {
+            setConnectingSupplierId(supplierId);
             await dashboardApi.createSupplierRequest({ supplierId });
             // Optimistic update
             setDirectorySuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, connectionStatus: "PENDING" } : s));
@@ -1163,6 +1165,8 @@ const StoreOwnerDashboard: React.FC = () => {
             console.error(err);
             setFeedbackMessage("Failed to send request");
             setShowFeedback(true);
+        } finally {
+            setConnectingSupplierId(null);
         }
     };
 
@@ -2376,9 +2380,17 @@ const StoreOwnerDashboard: React.FC = () => {
                                                                 <Button
                                                                     size="sm"
                                                                     onClick={() => handleConnectRequest(supplier.id)}
+                                                                    disabled={connectingSupplierId === supplier.id}
                                                                     className="h-8 px-3 text-xs font-bold !bg-black !text-white hover:!bg-neutral-800 border-none relative z-10"
                                                                 >
-                                                                    Connect
+                                                                    {connectingSupplierId === supplier.id ? (
+                                                                        <>
+                                                                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                                                            Connecting...
+                                                                        </>
+                                                                    ) : (
+                                                                        "Connect"
+                                                                    )}
                                                                 </Button>
                                                             </div>
 

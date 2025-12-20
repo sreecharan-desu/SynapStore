@@ -164,9 +164,9 @@ export default function CTAAndFooter() {
               <img
                 src="/logo.svg"
                 alt="SynapStore Logo"
-                className="w-36 h-36 object-contain"
+                className="w-36 h-36  object-contain"
               />
-              <span className="relative top-1 text-4xl font-semibold tracking-tight text-slate-900">
+              <span className="relative top-1 text-4xl  font-semibold tracking-tight text-slate-900">
                 SynapStore
               </span>
             </div>
