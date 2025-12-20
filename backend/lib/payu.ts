@@ -39,7 +39,21 @@ class PayUService {
             const cleanProductInfo = "Medicine_Purchase";
 
             // Hash Sequence: key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt
-            const hashString = `${this.merchantKey}|${txnid}|${formattedAmount}|${cleanProductInfo}|${name}|${email}|${udf1}|${udf2}|${udf3}|${udf4}|${udf5}||||||${this.salt}`;
+            const hashString = [
+                this.merchantKey,
+                txnid,
+                formattedAmount,
+                cleanProductInfo,
+                name || "",
+                email || "",
+                udf1 || "",
+                udf2 || "",
+                udf3 || "",
+                udf4 || "",
+                udf5 || "",
+                "", "", "", "", "", // udf6 to udf10 placeholders
+                this.salt
+            ].join('|');
             
             const paymentHash = this.generateHash(hashString);
 
@@ -88,8 +102,18 @@ class PayUService {
             const u10 = udf10 || "";
 
             // Reverse Hash Sequence is CRITICAL:
-            // salt|status|||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key
-            const hashString = `${this.salt}|${status}|${u10}|${u9}|${u8}|${u7}|${u6}|${u5}|${u4}|${u3}|${u2}|${u1 || ""}|${email}|${firstname}|${productinfo}|${amount}|${txnid}|${this.merchantKey}`;
+            // salt|status|udf10|udf9|udf8|udf7|udf6|udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key
+            const hashString = [
+                this.salt,
+                status || "",
+                u10, u9, u8, u7, u6, u5, u4, u3, u2, u1,
+                email || "",
+                firstname || "",
+                productinfo || "",
+                amount || "",
+                txnid || "",
+                this.merchantKey
+            ].join('|');
 
             const calculatedHash = this.generateHash(hashString);
             const isValid = (calculatedHash === receivedHash);

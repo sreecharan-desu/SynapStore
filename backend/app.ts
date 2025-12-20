@@ -74,7 +74,13 @@ app.use((req, res, next) => {
   next();
 });
 
-const allowedOrigins = [process.env.FRONTEND_URL || "http://localhost:5173", "https://synapstore.me", "https://www.synapstore.me"];
+const allowedOrigins = [
+  process.env.FRONTEND_URL || "http://localhost:5173", 
+  "https://synapstore.me", 
+  "https://www.synapstore.me", 
+  "https://secure.payu.in", 
+  "https://test.payu.in"
+];
 
 app.use(
   cors({
