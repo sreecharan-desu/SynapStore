@@ -1050,9 +1050,11 @@ const StoreOwnerDashboard: React.FC = () => {
     // Directory State
     const [directorySuppliers, setDirectorySuppliers] = React.useState<any[]>([]);
     const [searchQuery, setSearchQuery] = React.useState("");
+    const [isDirectoryLoading, setIsDirectoryLoading] = React.useState(false);
     const [imgError, setImgError] = React.useState(false);
 
     const fetchSuppliersDirectory = React.useCallback(async (q?: string) => {
+        setIsDirectoryLoading(true);
         try {
             const res = await dashboardApi.suppliersDirectory(q);
             if (res.data.success) {
@@ -1060,6 +1062,8 @@ const StoreOwnerDashboard: React.FC = () => {
             }
         } catch (err) {
             console.error(err);
+        } finally {
+            setIsDirectoryLoading(false);
         }
     }, []);
 
@@ -2300,59 +2304,100 @@ const StoreOwnerDashboard: React.FC = () => {
                             <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
 
                                 {/* Recommended/Search Suppliers */}
-                                {(searchQuery || (directorySuppliers && directorySuppliers.filter(s => s.connectionStatus === 'NONE' && !data?.lists?.suppliers?.some(conn => conn.id === s.id)).length > 0)) && (
-                                    <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                                {searchQuery ? (
-                                                    <><Search className="w-5 h-5 text-indigo-500" /> Search Results</>
-                                                ) : (
-                                                    <><Sparkles className="w-5 h-5 text-indigo-500 fill-indigo-100" /> Recommended Suppliers</>
-                                                )}
-                                            </h3>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                            {directorySuppliers
-                                                .filter(s => s.connectionStatus === 'NONE' && !data?.lists?.suppliers?.some(conn => conn.id === s.id))
-                                                .slice(0, searchQuery ? 100 : 5)
-                                                .map((supplier) => (
-                                                    <div key={supplier.id} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group relative overflow-hidden">
-                                                        <div className="flex items-start justify-between">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 flex items-center justify-center text-lg font-bold text-indigo-600 shadow-sm">
-                                                                    {supplier.name.charAt(0).toUpperCase()}
-                                                                </div>
-                                                                <div>
-                                                                    <div className="font-bold text-slate-800">{supplier.name}</div>
-                                                                    <div className="text-xs text-slate-500 flex items-center gap-1">
-                                                                        <Users className="w-3 h-3" /> Supplier
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <Button
-                                                                size="sm"
-                                                                onClick={() => handleConnectRequest(supplier.id)}
-                                                                className="h-8 px-3 text-xs font-bold !bg-black !text-white hover:!bg-neutral-800 border-none relative z-10"
-                                                            >
-                                                                Connect
-                                                            </Button>
-                                                        </div>
-
-                                                        <div className="mt-4 pt-3 border-t border-slate-50 grid grid-cols-2 gap-2">
-                                                            <div className="max-w-full overflow-hidden">
-                                                                <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Email</div>
-                                                                <div className="text-xs font-medium text-slate-700 truncate" title={supplier.email || supplier.user?.email}>{supplier.email || supplier.user?.email}</div>
-                                                            </div>
+                                <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                            {searchQuery ? (
+                                                <><Search className="w-5 h-5 text-indigo-500" /> Search Results</>
+                                            ) : (
+                                                <><Sparkles className="w-5 h-5 text-indigo-500 fill-indigo-100" /> Recommended Suppliers</>
+                                            )}
+                                        </h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {isDirectoryLoading ? (
+                                            Array.from({ length: 3 }).map((_, i) => (
+                                                <div key={i} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex items-center gap-3">
+                                                            <Skeleton className="w-12 h-12 rounded-xl" />
                                                             <div>
-                                                                <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Role</div>
-                                                                <div className="text-xs font-medium text-slate-700">Global Supplier</div>
+                                                                <Skeleton className="h-4 w-24 mb-2" />
+                                                                <Skeleton className="h-3 w-16" />
                                                             </div>
+                                                        </div>
+                                                        <Skeleton className="h-8 w-20 rounded-lg" />
+                                                    </div>
+                                                    <div className="mt-4 pt-3 border-t border-slate-50 grid grid-cols-2 gap-2">
+                                                        <div>
+                                                            <Skeleton className="h-3 w-10 mb-1" />
+                                                            <Skeleton className="h-3 w-full" />
+                                                        </div>
+                                                        <div>
+                                                            <Skeleton className="h-3 w-10 mb-1" />
+                                                            <Skeleton className="h-3 w-20" />
                                                         </div>
                                                     </div>
-                                                ))}
-                                        </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            (() => {
+                                                const filtered = directorySuppliers
+                                                    .filter(s => s.connectionStatus === 'NONE' && !data?.lists?.suppliers?.some(conn => conn.id === s.id));
+
+                                                if (filtered.length === 0) {
+                                                    return (
+                                                        <div className="col-span-full flex flex-col items-center justify-center py-12 text-center bg-white rounded-2xl border border-dashed border-slate-300">
+                                                            <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-3">
+                                                                {searchQuery ? <Search className="w-5 h-5 text-slate-400" /> : <Sparkles className="w-5 h-5 text-slate-400" />}
+                                                            </div>
+                                                            <p className="text-slate-600 font-medium">{searchQuery ? 'No suppliers found' : 'No new recommendations'}</p>
+                                                            <p className="text-slate-400 text-sm mt-1">{searchQuery ? 'Try adjusting your search terms' : 'You have connected with all available suppliers'}</p>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                return filtered
+                                                    .slice(0, searchQuery ? 100 : 5)
+                                                    .map((supplier) => (
+                                                        <div key={supplier.id} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group relative overflow-hidden">
+                                                            <div className="flex items-start justify-between">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 flex items-center justify-center text-lg font-bold text-indigo-600 shadow-sm">
+                                                                        {supplier.name.charAt(0).toUpperCase()}
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="font-bold text-slate-800">{supplier.name}</div>
+                                                                        <div className="text-xs text-slate-500 flex items-center gap-1">
+                                                                            <Users className="w-3 h-3" /> Supplier
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <Button
+                                                                    size="sm"
+                                                                    onClick={() => handleConnectRequest(supplier.id)}
+                                                                    className="h-8 px-3 text-xs font-bold !bg-black !text-white hover:!bg-neutral-800 border-none relative z-10"
+                                                                >
+                                                                    Connect
+                                                                </Button>
+                                                            </div>
+
+                                                            <div className="mt-4 pt-3 border-t border-slate-50 grid grid-cols-2 gap-2">
+                                                                <div className="max-w-full overflow-hidden">
+                                                                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Email</div>
+                                                                    <div className="text-xs font-medium text-slate-700 truncate" title={supplier.email || supplier.user?.email}>{supplier.email || supplier.user?.email}</div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Role</div>
+                                                                    <div className="text-xs font-medium text-slate-700">Global Supplier</div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ));
+                                            })()
+                                        )}
                                     </div>
-                                )}
+                                </div>
 
 
                                 {(supplierRequests.length > 0) && (
@@ -3618,53 +3663,7 @@ const StoreOwnerDashboard: React.FC = () => {
             </main >
 
 
-            {/* Logout Confirmation Modal */}
-            <AnimatePresence>
-                {showDisconnectConfirm && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
-                            onClick={() => setShowDisconnectConfirm(false)}
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
-                        >
-                            <div className="flex flex-col items-center text-center gap-4">
-                                <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2">
-                                    <Trash2 className="w-8 h-8 text-red-500 translate-x-0.5" />
-                                </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-800">Disconnect Supplier?</h3>
-                                    <p className="text-slate-500 mt-2 text-sm leading-relaxed">
-                                        Are you sure you want to disconnect? You will no longer be able to send reorders to this supplier.
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 cursor-pointer rounded-xl !border-black !text-black hover:!bg-slate-50 !bg-white font-semibold"
-                                        onClick={() => setShowDisconnectConfirm(false)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className="h-12 cursor-pointer rounded-xl !bg-black hover:!bg-slate-800 !text-white border-none shadow-lg shadow-black/20 font-semibold"
-                                        onClick={executeDisconnectSupplier}
-                                    >
-                                        Yes, Disconnect
-                                    </Button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+
 
             {/* Logout Confirmation Modal */}
             <AnimatePresence>
@@ -3863,8 +3862,8 @@ const StoreOwnerDashboard: React.FC = () => {
                             className="relative bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm border border-slate-100"
                         >
                             <div className="flex flex-col items-center text-center gap-4">
-                                <div className={`w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-2`}>
-                                    <Trash2 className={`w-8 h-8 text-red-500`} />
+                                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-2">
+                                    <Trash2 className="w-8 h-8 text-slate-900" />
                                 </div>
                                 <div>
                                     <h3 className="text-xl font-bold text-slate-800">Disconnect Supplier?</h3>
@@ -3873,15 +3872,18 @@ const StoreOwnerDashboard: React.FC = () => {
                                     </p>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold"
+                                    <button
+                                        type="button"
+                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: 'none' }}
+                                        className="h-12 rounded-xl w-full font-bold transition-all hover:opacity-80 cursor-pointer"
                                         onClick={() => setShowDisconnectConfirm(false)}
                                     >
                                         Cancel
-                                    </Button>
-                                    <Button
-                                        className={`h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white border-none shadow-lg shadow-red-200 font-semibold`}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: 'none' }}
+                                        className="h-12 rounded-xl w-full font-bold shadow-lg shadow-black/20 hover:opacity-90 transition-all flex items-center justify-center gap-2 cursor-pointer"
                                         disabled={isDisconnectLoading}
                                         onClick={() => {
                                             if (disconnectSupplierId) {
@@ -3891,13 +3893,13 @@ const StoreOwnerDashboard: React.FC = () => {
                                     >
                                         {isDisconnectLoading ? (
                                             <>
-                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                <Loader2 className="w-4 h-4 animate-spin" />
                                                 Disconnecting...
                                             </>
                                         ) : (
                                             "Disconnect"
                                         )}
-                                    </Button>
+                                    </button>
                                 </div>
                             </div>
                         </motion.div>

@@ -155,67 +155,85 @@ export default function CTAAndFooter() {
 
       {/* FOOTER */}
       {/* FOOTER */}
-      <footer className="relative bg-white pt-24 pb-12 overflow-hidden">
-        {/* Background Decor */}
-        <div className="absolute inset-0 w-full h-full bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:24px_24px] opacity-50 pointer-events-none" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-24 bg-gradient-to-b from-slate-50 to-transparent pointer-events-none" />
+      <footer className="relative bg-white border-t border-slate-100">
+        <div className="max-w-7xl mx-auto px-6 py-20">
 
-        <div className="max-w-7xl mx-auto px-6 relative z-10 flex flex-col items-center justify-center text-center">
-
-          {/* Brand Section */}
-          <div className="mb-10 space-y-6 max-w-2xl mx-auto">
-            <div className="flex items-center justify-center gap-3 mb-2">
-              <img src="/logo.svg" alt="SynapStore Logo" className="w-32 h-32 mt-5 -mr-7 object-contain" />
-              <span className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent tracking-tight">SynapStore</span>
+          {/* Brand */}
+          <div className="flex flex-col items-center text-center gap-8">
+            <div className="flex items-center justify-center gap-5">
+              <img
+                src="/logo.svg"
+                alt="SynapStore Logo"
+                className="w-36 h-36 object-contain"
+              />
+              <span className="relative top-1 text-4xl font-semibold tracking-tight text-slate-900">
+                SynapStore
+              </span>
             </div>
 
-            <p className="text-lg text-slate-500 leading-relaxed font-medium">
-              The intelligent inventory operating system for modern pharmacies. <br />
-              Streamlining workflows, preventing stockouts, and maximizing profitability.
+            <p className="max-w-2xl text-lg text-slate-600 leading-relaxed font-medium">
+              Intelligent inventory infrastructure for modern pharmacies.
+              Built to reduce friction, eliminate stockouts, and scale operations
+              with confidence.
             </p>
 
-            {/* Social Links */}
-            <div className="flex items-center justify-center gap-8 pt-4">
-              <a href="https://www.synapstore.me" target="_blank" className="group flex flex-col items-center gap-2">
-                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-sky-500 group-hover:border-sky-500/30 group-hover:shadow-sky-500/20 group-hover:scale-110 transition-all duration-300">
-                  <Twitter className="w-5 h-5" />
-                </div>
-                <span className="text-xs font-semibold text-slate-400 group-hover:text-sky-600 transition-colors opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 duration-300">Twitter</span>
+            {/* Social */}
+            <div className="flex items-center gap-8 pt-4">
+              <a
+                href="https://www.synapstore.me"
+                target="_blank"
+                className="text-slate-400 hover:text-slate-900 transition"
+              >
+                <Twitter className="w-6 h-6" />
               </a>
-              <a href="https://www.synapstore.me" target="_blank" className="group flex flex-col items-center gap-2">
-                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-blue-600 group-hover:border-blue-600/30 group-hover:shadow-blue-600/20 group-hover:scale-110 transition-all duration-300">
-                  <Linkedin className="w-5 h-5" />
-                </div>
-                <span className="text-xs font-semibold text-slate-400 group-hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 duration-300">LinkedIn</span>
+              <a
+                href="https://www.synapstore.me"
+                target="_blank"
+                className="text-slate-400 hover:text-slate-900 transition"
+              >
+                <Linkedin className="w-6 h-6" />
               </a>
-              <a href="https://github.com/sreecharan-desu/SynapStore" target="_blank" className="group flex flex-col items-center gap-2">
-                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-400 group-hover:text-slate-900 group-hover:border-slate-900/30 group-hover:shadow-slate-900/20 group-hover:scale-110 transition-all duration-300">
-                  <Github className="w-5 h-5" />
-                </div>
-                <span className="text-xs font-semibold text-slate-400 group-hover:text-slate-900 transition-colors opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 duration-300">GitHub</span>
+              <a
+                href="https://github.com/sreecharan-desu/SynapStore"
+                target="_blank"
+                className="text-slate-400 hover:text-slate-900 transition"
+              >
+                <Github className="w-6 h-6" />
               </a>
             </div>
           </div>
 
-          {/* Bottom Bar */}
-          <div className="w-full border-t border-dashed border-slate-200 pt-8 mt-8 flex flex-col md:flex-row justify-between items-center gap-6 text-sm text-slate-500">
-            <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
-              <p className="font-medium">&copy; {year} SynapStore Inc.</p>
-              <div className="flex items-center gap-4 text-xs font-medium">
-                <a href="#" className="hover:text-emerald-600 transition-colors">Privacy Policy</a>
-                <a href="#" className="hover:text-emerald-600 transition-colors">Terms of Service</a>
-                <a href="#" className="hover:text-emerald-600 transition-colors">Cookies</a>
+          {/* Divider */}
+          <div className="my-14 border-t border-slate-100" />
+
+          {/* Bottom */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8 text-sm text-slate-500">
+            <div className="flex flex-col md:flex-row items-center gap-6">
+              <span className="font-medium text-slate-600">
+                © {year} SynapStore
+              </span>
+              <div className="flex items-center gap-6">
+                <a href="#" className="hover:text-slate-900 transition">
+                  Privacy
+                </a>
+                <a href="#" className="hover:text-slate-900 transition">
+                  Terms
+                </a>
+                <a href="#" className="hover:text-slate-900 transition">
+                  Cookies
+                </a>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black border border-emerald-100 shadow-sm">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-black"></span>
+            {/* Status */}
+            <div className="flex items-center gap-3">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              <span className="font-semibold text-slate-700">
+                Systems operational
               </span>
-              <span className="text-emerald-700 font-bold text-xs tracking-wide uppercase">All Systems Normal</span>
             </div>
           </div>
+
         </div>
       </footer>
     </div>

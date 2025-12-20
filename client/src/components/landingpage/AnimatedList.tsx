@@ -87,6 +87,16 @@ const receiptItems = [
   { name: "Paracetamol 500mg", qty: 2, price: 45 },
   { name: "Amoxicillin Cap", qty: 1, price: 180 },
   { name: "Vitamin D3", qty: 3, price: 240 },
+  { name: "Cetirizine 10mg", qty: 2, price: 30 },
+  { name: "N95 Masks", qty: 5, price: 50 },
+  { name: "Hand Sanitizer", qty: 1, price: 120 },
+  { name: "Cough Syrup", qty: 1, price: 85 },
+  { name: "Surgical Gloves", qty: 2, price: 150 },
+  { name: "Alcohol Swabs", qty: 10, price: 5 },
+  { name: "Bandages", qty: 5, price: 20 },
+  { name: "Digital Thermometer", qty: 1, price: 280 },
+  { name: "Face Shield", qty: 2, price: 95 },
+  { name: "Multivitamins", qty: 1, price: 450 },
 ];
 
 // --- Components ---
@@ -307,7 +317,7 @@ export default function AnimatedInventoryShowcase() {
     <section className="py-24 bg-white relative overflow-hidden">
       {/* Background Decor */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-full pointer-events-none">
-        <div className="absolute top-40 left-10 w-72 h-72 bg-black/50 rounded-full blur-3xl" />
+
         <div className="absolute bottom-40 right-10 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl" />
       </div>
 

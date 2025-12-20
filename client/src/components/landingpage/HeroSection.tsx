@@ -21,10 +21,9 @@ export const products = [
             "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=2070&auto=format&fit=crop",
     },
     {
-        title: "Easy Tracking",
+        title: "Real-time Tracking",
         link: "#",
-        thumbnail:
-            "https://images.unsplash.com/photo-1566576912904-6df01acdb180?q=80&w=2074&auto=format&fit=crop",
+        thumbnail: "/realtime-tracking.png",
     },
     {
         title: "Low Stock Alerts",
