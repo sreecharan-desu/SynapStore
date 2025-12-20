@@ -114,6 +114,7 @@ const PharmacyPayment: React.FC<PharmacyPaymentProps> = ({
         }
     };
 
+    
     return (
         <div className="relative">
             {/* Hidden form for PayU submission */}
