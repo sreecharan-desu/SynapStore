@@ -2293,14 +2293,14 @@ def forecast_inventory(req: ForecastRequest):
     session = SessionLocal()
 
     try:
-        # 1️⃣ Validate medicine
+        # Validate medicine
         medicine = session.get(Medicine, req.medicine_id)
         if not medicine:
             raise HTTPException(404, "Medicine not found")
 
         medicine_name = decrypt_cell(medicine.brandName)
 
-        # 2️⃣ Demand time series (sales)
+        # Demand time series (sales)
         sales_df = get_daily_sales_df(
             session, req.store_id, req.medicine_id
         )
@@ -2310,7 +2310,7 @@ def forecast_inventory(req: ForecastRequest):
                 400, "Not enough sales data for demand forecasting"
             )
 
-        # 3️⃣ Price time series (MRP history)
+        # Price time series (MRP history)
         price_df = get_daily_price_df(
             session, req.store_id, req.medicine_id
         )
@@ -2320,17 +2320,16 @@ def forecast_inventory(req: ForecastRequest):
                 400, "Not enough price history for price forecasting"
             )
 
-        # 4️⃣ Inventory snapshot
+        # Inventory snapshot
         current_stock, expiry_map = get_inventory_snapshot(
             session, req.store_id, req.medicine_id
         )
 
-        # 5️⃣ Unified horizon
+        # Unified horizon
         max_horizon = max(req.horizon_days)
 
-        # ============================================================
-        # 6️⃣ DEMAND FORECAST (Prophet)
-        # ============================================================
+       
+        # DEMAND FORECAST (Prophet)
         demand_forecast_df = prophet_forecast_series(
             sales_df, max_horizon
         )
@@ -2351,17 +2350,15 @@ def forecast_inventory(req: ForecastRequest):
 
         reorder_now = reorder_quantity[str(min(req.horizon_days))] > 0
 
-        # ============================================================
-        # 7️⃣ PRICE FORECAST (DETERMINISTIC — NOT PROPHET)
-        # ============================================================
+      
+        # PRICE FORECAST (DETERMINISTIC — NOT PROPHET)
         price_forecast, price_confidence = project_price_series(
             price_df, max_horizon
         )
         price_cutoff = price_df["ds"].max()
 
-        # ============================================================
-        # 8️⃣ PRICE SURGE DETECTION
-        # ============================================================
+
+        # PRICE SURGE DETECTION
         price_surge_risk = None
 
         if price_forecast:
@@ -2387,9 +2384,7 @@ def forecast_inventory(req: ForecastRequest):
                     recent_price=round(future_price, 2),
                 )
 
-        # ============================================================
-        # 9️⃣ EXPIRY & WASTE ESTIMATION
-        # ============================================================
+        # EXPIRY & WASTE ESTIMATION
         expiry_risk = {}
         estimated_waste_units = 0
         demand_30d = demand_forecast.get("30", 0)
@@ -2400,9 +2395,7 @@ def forecast_inventory(req: ForecastRequest):
                 if info["qty"] > demand_30d:
                     estimated_waste_units += info["qty"] - demand_30d
 
-        # ============================================================
-        # 🔟 PLOT DATA (UI-READY)
-        # ============================================================
+        # PLOT DATA 
         demand_plot = build_plot_data(
             sales_df, demand_forecast_df, demand_cutoff
         )
@@ -2417,9 +2410,7 @@ def forecast_inventory(req: ForecastRequest):
             "cutoff_date": price_cutoff.strftime("%Y-%m-%d"),
         }
 
-        # ============================================================
-        # ✅ FINAL RESPONSE
-        # ============================================================
+        # FINAL RESPONSE
         return ForecastResponse(
             medicine_name=medicine_name,
             current_stock=current_stock,
