@@ -103,7 +103,7 @@ const Login: React.FC = () => {
                 </div>
               </div>
               <a
-                href="https://youtu.be/EE9Q8NBRvRw?si=xhhSi-gPVe9cUrYK"
+                href="https://youtu.be/XEl50GbJYMY"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition-colors"
