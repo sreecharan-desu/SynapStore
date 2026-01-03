@@ -106,9 +106,46 @@ export const HeroParallax = ({
     );
 };
 
+import { ExternalLink, PlayCircle } from "lucide-react";
+
 export const Header = () => {
     return (
         <div className="max-w-7xl relative mx-auto py-10 md:py-24 px-4 w-full left-0 top-0 text-center flex flex-col items-center z-10">
+
+            {/* Clean Hackathon Notification */}
+            <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="mb-12 max-w-3xl w-full bg-white/70 backdrop-blur-md border border-slate-200/60 rounded-2xl p-4 md:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm hover:shadow-md transition-all duration-300"
+            >
+                <div className="flex items-center gap-4 text-left">
+                    <div className="hidden sm:flex p-3 bg-slate-50 border border-slate-100 rounded-full shrink-0 items-center justify-center">
+                        <PlayCircle className="w-5 h-5 text-slate-600" />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                             <span className="text-sm font-semibold text-slate-900">Developed for Hackathon</span>
+                             <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium border border-slate-200">
+                                Demo Mode
+                             </span>
+                        </div>
+                        <p className="text-xs md:text-sm text-slate-500 leading-relaxed max-w-lg">
+                            Live deployment is currently paused for resource optimization. 
+                            We invite you to explore the full platform capabilities in our workflow demonstration.
+                        </p>
+                    </div>
+                </div>
+                <a
+                    href="https://youtu.be/EE9Q8NBRvRw?si=xhhSi-gPVe9cUrYK"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex shrink-0 items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-medium transition-all shadow-sm group"
+                >
+                    <span>Watch Workflow</span>
+                    <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </a>
+            </motion.div>
 
 
             <h1 className="text-6xl md:text-9xl font-bold text-slate-900 leading-tight tracking-tight">
