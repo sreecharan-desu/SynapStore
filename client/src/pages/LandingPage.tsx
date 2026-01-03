@@ -7,6 +7,7 @@ import Testimonials from "../components/landingpage/Testimonials";
 import Footer from "../components/landingpage/Footer";
 import KeyFeatures from "../components/landingpage/KeyFeatures";
 import { motion, useScroll, useSpring } from "framer-motion";
+import { VideoShowcase } from "../components/landingpage/VideoShowcase";
 
 
 const LandingPage: React.FC = () => {
@@ -82,6 +83,7 @@ const LandingPage: React.FC = () => {
 
 
       <main className="relative z-10 w-full">
+        <VideoShowcase />
         <HeroSection />
 
         <div className="bg-white relative">

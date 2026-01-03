@@ -137,7 +137,7 @@ export const Header = () => {
                     </div>
                 </div>
                 <a
-                    href="https://youtu.be/EE9Q8NBRvRw?si=xhhSi-gPVe9cUrYK"
+                    href="https://youtu.be/XEl50GbJYMY"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex shrink-0 items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-medium transition-all shadow-sm group"
