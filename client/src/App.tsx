@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useAuthContext } from "./context/AuthContext";
 import LandingPage from "./pages/LandingPage";
 import { useEffect, useState } from "react";
-import { SynapNotificationClient } from "./utils/NotificationClient";
+// import { SynapNotificationClient } from "./utils/NotificationClient";
 import { NotificationToastContainer } from "./components/ui/NotificationToast";
 import toast from "react-hot-toast";
 
@@ -75,6 +75,8 @@ const App = () => {
 
 
 
+  /* 
+  // Backend interactions disabled for static demo
   useEffect(() => {
     // Determine Service URL (Env Var > Default)
     // Defaulting to Production URL as Localhost is typically not running the microservice
@@ -122,6 +124,7 @@ const App = () => {
       }
     }
   }, [isAuthenticated, user?.id]);
+  */
 
   const dismissNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));

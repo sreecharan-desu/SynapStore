@@ -7,13 +7,9 @@ import Testimonials from "../components/landingpage/Testimonials";
 import Footer from "../components/landingpage/Footer";
 import KeyFeatures from "../components/landingpage/KeyFeatures";
 import { motion, useScroll, useSpring } from "framer-motion";
-import { ArrowRight } from "lucide-react";
 
-
-import { useNavigate } from "react-router-dom";
 
 const LandingPage: React.FC = () => {
-  const navigate = useNavigate();
   const { scrollY, scrollYProgress } = useScroll();
   const [isHidden, setIsHidden] = useState(false);
   // Still tracking 'scrolled' for background styling
@@ -78,17 +74,7 @@ const LandingPage: React.FC = () => {
 
           {/* CTA Button & Mobile Menu Toggle */}
           <div className="flex items-center gap-4">
-            <motion.button
-              onClick={() => navigate("/login")}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-              className="group relative flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 transition-all duration-300 hover:-translate-y-0.5 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <span className="relative z-10">Get Started</span>
-              <ArrowRight className="w-4 h-4 relative z-10 group-hover:translate-x-1 transition-transform duration-300" />
-            </motion.button>
+
           </div>
         </div>
       </motion.nav>

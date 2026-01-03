@@ -7,7 +7,7 @@ import { authState, type AuthUser, type EffectiveStore } from "../state/auth";
 import { jsonFetch } from "../utils/api";
 // Icons
 import { FcGoogle } from "react-icons/fc";
-import { Mail, Lock, ArrowRight, Loader2, RefreshCw, Eye, EyeOff, ChevronLeft } from "lucide-react";
+import { Mail, Lock, ArrowRight, Loader2, RefreshCw, Eye, EyeOff, ChevronLeft, PlayCircle, ExternalLink } from "lucide-react";
 // Animation
 import { motion, AnimatePresence } from "framer-motion";
 import Login3DCharacter from "../components/Login3DCharacter";
@@ -515,7 +515,7 @@ const Login: React.FC = () => {
           <div className="relative bg-white/80 backdrop-blur-xl border border-emerald-100/50 rounded-3xl shadow-xl p-8 md:p-10">
 
             {/* Header */}
-            <div className="text-center mb-10">
+            <div className="text-center mb-8">
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -528,6 +528,35 @@ const Login: React.FC = () => {
                   Empowering your business with intelligence
                 </p>
               </motion.div>
+            </div>
+
+            {/* Hackathon Notification */}
+            <div className="mb-6 p-3 bg-white/50 border border-slate-200 rounded-xl flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-slate-50 border border-slate-100 rounded-full shrink-0">
+                  <PlayCircle className="w-4 h-4 text-slate-600" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold text-slate-900">Hackathon Demo</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                      Safe Mode
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Deployment paused. Backends are disabled.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="https://youtu.be/EE9Q8NBRvRw?si=xhhSi-gPVe9cUrYK"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition-colors"
+              >
+                <span>Watch Workflow Video</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
             </div>
 
             <AnimatePresence mode="wait">
