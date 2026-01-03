@@ -69,11 +69,12 @@ export const VideoShowcase = () => {
                         
                         <div className="relative aspect-video rounded-2xl md:rounded-[2.5rem] overflow-hidden shadow-2xl border-8 border-white/80 backdrop-blur-sm bg-slate-900 shadow-emerald-500/10 transition-transform duration-500 hover:scale-[1.01]">
                             <iframe
+                                src="https://player.cloudinary.com/embed/?cloud_name=ddrj7yzyl&public_id=SynapStore_-_Intelligent_Pharmacy_Management_System_-_3_January_2026_reqawv&profile=cld-default&autoplay=true"
                                 className="w-full h-full"
-                                src="https://www.youtube.com/embed/XEl50GbJYMY?autoplay=1&mute=1&loop=1&playlist=XEl50GbJYMY&controls=0&rel=0&showinfo=0&iv_load_policy=3"
-                                title="SynapStore Workflow Demo"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                style={{ height: 'auto', width: '100%', aspectRatio: '640 / 360' }}
+                                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                                 allowFullScreen
+                                frameBorder="0"
                             ></iframe>
 
                             {/* Custom Play Overlay (Mobile/Initial) */}
@@ -97,7 +98,7 @@ export const VideoShowcase = () => {
                             </div>
                             
                             <a 
-                                href="https://youtu.be/XEl50GbJYMY" 
+                                href="https://player.cloudinary.com/embed/?cloud_name=ddrj7yzyl&public_id=SynapStore_-_Intelligent_Pharmacy_Management_System_-_3_January_2026_reqawv&profile=cld-default" 
                                 target="_blank" 
                                 rel="noreferrer"
                                 className="p-2 bg-emerald-600 hover:bg-emerald-700 rounded-full text-white transition-colors"

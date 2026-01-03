@@ -137,7 +137,7 @@ export const Header = () => {
                     </div>
                 </div>
                 <a
-                    href="https://youtu.be/XEl50GbJYMY"
+                    href="https://player.cloudinary.com/embed/?cloud_name=ddrj7yzyl&public_id=SynapStore_-_Intelligent_Pharmacy_Management_System_-_3_January_2026_reqawv&profile=cld-default"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex shrink-0 items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-medium transition-all shadow-sm group"
